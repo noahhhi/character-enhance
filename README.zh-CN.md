@@ -1,0 +1,101 @@
+<p align="center">
+  <img src="assets/workshop-preview.jpg" alt="角色增强" width="360" />
+</p>
+
+<h1 align="center">Character Enhance / 角色增强</h1>
+
+<p align="center">
+  <strong>《以撒的结合：忏悔》的可独立配置角色增强与跟班容量保护 Mod。</strong>
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> |
+  <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
+  <a href="#tainted-lost">里游魂</a> •
+  <a href="#tainted-eden">里伊甸</a> •
+  <a href="#bethany">伯大尼</a> •
+  <a href="#familiar-capacity">跟班容量</a> •
+  <a href="#mod-config-menu">配置菜单</a> •
+  <a href="#installation">安装</a>
+</p>
+
+---
+
+## 运行要求
+
+- 《以撒的结合：忏悔》
+- 只使用标准 Lua Mod API，不需要 REPENTOGON
+- Mod Config Menu 为可选依赖
+
+<a id="tainted-lost"></a>
+## 里游魂
+
+- 每次新开局初始携带木十字架（饰品 ID 121）；继续已有游戏不会重复给予。
+- 角色选择界面使用原版风格的静态 `WOODEN CROSS` 图片。关闭功能不会动态改变该图片，也不会删除本局已经获得的饰品。
+
+<a id="tainted-eden"></a>
+## 里伊甸与全身重随
+
+- 全身道具重随会保留每位玩家重随前的血量构成，包括心之容器、已填充红心、魂心/黑心、骨心、腐心、碎心、永恒之心和金心。
+- 覆盖里伊甸惩罚伤害、D4、D100、D 无限对应骰面、虚空或节拍器间接触发的 D4/D100、编号丢失、1 点与 6 点骰子房、“命运之轮？”以及同类被动道具整体替换；里伊甸仍会恰好承受一次触发伤害。
+- 献血、IV 袋、刺房门和献祭房尖刺等自愿伤害保持原版行为。
+- 独立的错误技概率滑块控制每次全身重随的隐藏房池是否包含错误技：`0%` 总是排除，`50%` 平均一半重随会包含，`100%` 保持原版行为。正常底座拾取及重随前已经持有错误技的情况不受限制。
+- 小以扫首次使用时生成的道具会恰好一次登记到原版套装进度；之后切换身体不会重复触发首次拾取效果。
+
+<a id="bethany"></a>
+## 伯大尼
+
+- 一整颗魂心提供 4 点魂心充能，半颗提供 2 点。地面拾取和道具直接给予都有效，包括启示录、睡衣、撒但圣经、钉子、嗝屁猫的爪子及同类来源。
+- 发光沙漏回溯等历史状态恢复不会被误判为新获得的魂心。
+- 会降低恶魔房/天使房概率的惩罚性伤害会优先消耗魂心充能且不扣红心；半颗红心伤害消耗 2 点，整颗消耗 4 点。受伤前只要有正数充能就能吸收一次符合条件的伤害，充能不足时安全归零。
+- 献祭房尖刺、进出刺房和献血等安全伤害仍会正常扣除红心，并且绝不消耗魂心充能。
+- 被吸收的惩罚性伤害仍会摧毁满分考卷并影响其进度；只保护红心和交易房概率。
+
+<a id="familiar-capacity"></a>
+## 跟班容量保护
+
+- 保留原版 64 个真实跟班的硬上限，不需要 REPENTOGON。
+- 蓝苍蝇和蓝蜘蛛只会把真实跟班总数填到 60 的软上限；溢出数量按玩家和类型分别保存，有空位时每 3 帧最多补回 2 个。
+- 永久跟班、任务跟班、魂火、骨刺及其他重要跟班绝不会被主动存入缓冲池。到达硬上限边缘时，会收回一只能够确认归属的蓝苍蝇或蓝蜘蛛，为重要跟班保留位置。
+- 溢出动画会合并并限频。继续游戏会保留缓冲数量；关闭该功能只暂停处理而不会丢失数量；新开局会清零。
+
+<a id="mod-config-menu"></a>
+## Mod Config Menu / 配置菜单
+
+第一个选项用于选择默认的 English 或简体中文。菜单每次只显示所选语言，语言选择与游戏功能设置分别保存。
+
+七项游戏功能默认全部开启，并且可以独立配置：
+
+1. 跟班容量保护
+2. 初始木十字架
+3. 重随血量保护
+4. 小以扫首次拾取登记
+5. 错误技重随概率
+6. 魂心充能增强
+7. 充能伤害护盾
+
+选项分别归入简短的 `通用`、`里游魂`、`里伊甸` 和 `伯大尼` 顶栏。集成同时支持
+[Mod Config Menu Impure](https://github.com/piber20/Mod-Config-Menu-Impure) 的全局 `MCM` 接口，以及提供
+`ModConfigMenu` 的旧版或本地化版本。未安装 MCM 时，已保存设置或默认设置仍会正常工作。
+
+<a id="installation"></a>
+## 安装
+
+将完整的 `character-enhance` 文件夹复制到游戏的 `mods` 目录，然后在游戏内 Mod 菜单中启用。
+
+Steam Deck/Linux：
+
+```text
+/home/deck/.local/share/Steam/steamapps/common/The Binding of Isaac Rebirth/mods/character-enhance
+```
+
+Windows：
+
+```text
+C:\Program Files (x86)\Steam\steamapps\common\The Binding of Isaac Rebirth\mods\character-enhance
+```
+
+多人游戏中，每位符合条件的角色及其跟班缓冲会分别处理。

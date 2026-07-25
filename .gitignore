@@ -1,0 +1,22 @@
+# Generated release artifacts
+character-enhance.zip
+*.zip
+/assets/workshop-preview.png
+
+# Local development and release workflow
+/AGENTS.md
+/WORKSHOP.md
+/tests/
+/tools/
+
+# Steam and local runtime data
+save*.dat
+log.txt
+*.log
+*.dmp
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+*.swp
+*~
