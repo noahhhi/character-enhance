@@ -5,7 +5,7 @@
 <h1 align="center">Character Enhance</h1>
 
 <p align="center">
-  <strong>Independently configurable character and familiar-capacity enhancements for The Binding of Isaac: Repentance.</strong>
+  <strong>Independently configurable character enhancements for The Binding of Isaac: Repentance.</strong>
 </p>
 
 <p align="center">
@@ -28,16 +28,13 @@
 
 - *The Binding of Isaac: Repentance*
 - Standard Lua Mod API; REPENTOGON is not required
-- Mod Config Menu is optional
+- [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951) is optional
 
 <a id="tainted-lost"></a>
 ## Tainted Lost
 
 - Starts each new run with Wooden Cross (trinket ID 121). Continuing a saved
   run does not grant another copy.
-- The character-select screen uses a static vanilla-style `WOODEN CROSS` image.
-  Turning the module off does not dynamically change that image or remove a
-  trinket already obtained during the run.
 
 <a id="tainted-eden"></a>
 ## Tainted Eden and full-inventory rerolls
@@ -48,7 +45,7 @@
 - Covers Tainted Eden penalty hits, D4, D100, matching D Infinity faces,
   D4/D100 invoked through Void or Metronome, Missing No., one-pip and six-pip
   Dice Rooms, the reversed Wheel of Fortune card, and comparable passive-item
-  replacement. Tainted Eden still takes the triggering damage exactly once.
+  replacement.
 - Voluntary damage such as blood donation, IV Bag, Curse Room doors, and
   Sacrifice Room spikes retains vanilla behavior.
 - An independent TMTRAINER slider controls whether TMTRAINER is included in
@@ -61,15 +58,11 @@
 <a id="bethany"></a>
 ## Bethany
 
-- A full Soul Heart provides 4 Soul Charge; a half Soul Heart provides 2.
-  Pickups and direct item grants are covered, including Book of Revelations,
-  PJs, Satanic Bible, The Nail, Guppy's Paw, and comparable sources.
-- Restored historical state, such as a Glowing Hour Glass rollback, is not
-  mistaken for a newly gained Soul Heart.
-- Penalty damage that would lower Devil/Angel Room chance consumes Soul Charge
-  first and does not remove red health. Half-heart damage costs 2 and full-heart
-  damage costs 4. Any positive charge can absorb one qualifying hit and clamps
-  safely to 0 when insufficient.
+- Soul Heart gains provide double Soul Charge: a full Soul Heart grants 4 and a
+  half Soul Heart grants 2. Pickups and direct item grants are both covered.
+- Soul Charge absorbs penalty damage that would lower Devil/Angel Room chance,
+  protecting both red health and deal chance. Half-heart damage costs 2 and
+  full-heart damage costs 4; any positive charge can absorb one qualifying hit.
 - Safe damage, including Sacrifice Room spikes, Curse Room entry/exit, and blood
   donation, removes red health normally and never consumes Soul Charge.
 - Absorbed penalty damage still destroys Perfection and affects its progress;
@@ -90,7 +83,7 @@
   resets them.
 
 <a id="mod-config-menu"></a>
-## Mod Config Menu
+## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
 
 The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
@@ -108,10 +101,9 @@ configurable:
 7. Charge Damage Shield
 
 Options are grouped under the compact tabs `General`, `T-Lost`, `T-Eden`, and
-`Bethany`. The integration supports both
-[Mod Config Menu Impure](https://github.com/piber20/Mod-Config-Menu-Impure)'s
-global `MCM` API and legacy/localized editions exposing `ModConfigMenu`.
-Without MCM, saved or default settings still work normally.
+`Bethany`. The integration supports both Mod Config Menu Impure's global `MCM`
+API and legacy/localized editions exposing `ModConfigMenu`. Without MCM, saved
+or default settings still work normally.
 
 <a id="installation"></a>
 ## Installation
