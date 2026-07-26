@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.6.19"
+local VERSION = "1.8.1"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -8,7 +8,9 @@ local DEFAULT_SETTINGS = {
     taintedBlueBabyPoopCapacity = true,
     bethanySoulCharge = true,
     bethanyDamageShield = true,
+    bethanyShieldFeedback = true,
     familiarCapacity = true,
+    clogGroundDamage = true,
     rerollHealthProtection = true,
     esauJrFirstPickup = true,
     rerollTmtrainerChance = 0,
@@ -144,7 +146,11 @@ local TaintedBlueBabyPoopCapacityModule = include(
 local RerollHealthModule = include("scripts/reroll_health")
 local BethanyChargeModule = include("scripts/bethany_charge")
 local BethanyShieldModule = include("scripts/bethany_shield")
+local BethanyShieldFeedbackModule = include(
+    "scripts/bethany_shield_feedback"
+)
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
+local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local ModConfigMenuModule = include("scripts/mod_config_menu")
 
 local rerollHealthModule = RerollHealthModule.New(Context)
@@ -168,12 +174,20 @@ Context:RegisterModule(
     BethanyChargeModule.New(Context)
 )
 Context:RegisterModule(
+    "bethanyShieldFeedback",
+    BethanyShieldFeedbackModule.New(Context)
+)
+Context:RegisterModule(
     "bethanyDamageShield",
     BethanyShieldModule.New(Context)
 )
 Context:RegisterModule(
     "familiarCapacity",
     FamiliarCapacityModule.New(Context)
+)
+Context:RegisterModule(
+    "clogGroundDamage",
+    ClogGroundDamageModule.New(Context)
 )
 
 ModConfigMenuModule.New(Context)

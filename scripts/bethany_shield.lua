@@ -4,7 +4,11 @@ BethanyShieldModule.__index = BethanyShieldModule
 local SETTING_KEY = "bethanyDamageShield"
 local BETHANY = PlayerType.PLAYER_BETHANY
 local PERFECTION = TrinketType.TRINKET_PERFECTION
+local BLIND_RAGE = TrinketType.TRINKET_BLIND_RAGE
 local FLOOR_DAMAGED = LevelStateFlag.STATE_DAMAGED
+local HALF_HEART_DAMAGE_COOLDOWN = 60
+local FULL_HEART_DAMAGE_COOLDOWN = 120
+local BLIND_RAGE_COOLDOWN_BONUS = 120
 
 function BethanyShieldModule.New(context)
     local self = setmetatable({
@@ -40,6 +44,19 @@ function BethanyShieldModule:IsExcludedDamage(damageFlags, source)
         damageFlags,
         source
     )
+end
+
+function BethanyShieldModule:GetDamageCooldown(player, damageAmount)
+    local baseCooldown = damageAmount >= 2
+        and FULL_HEART_DAMAGE_COOLDOWN
+        or HALF_HEART_DAMAGE_COOLDOWN
+    local blindRageMultiplier = math.max(
+        0,
+        player:GetTrinketMultiplier(BLIND_RAGE)
+    )
+
+    return baseCooldown
+        + blindRageMultiplier * BLIND_RAGE_COOLDOWN_BONUS
 end
 
 function BethanyShieldModule:OnPlayerDamage(
@@ -86,14 +103,26 @@ function BethanyShieldModule:OnPlayerDamage(
         chargeModule:AdoptCurrentCharge(player)
     end
 
-    self.ApplyingAbsorbedDamage[playerHash] = true
-    player:TakeDamage(
-        damageAmount,
-        damageFlags | DamageFlag.DAMAGE_FAKE | DamageFlag.DAMAGE_NO_PENALTIES,
-        source,
-        damageCountdownFrames
+    local feedbackModule = self.Context.Modules.bethanyShieldFeedback
+
+    if feedbackModule and feedbackModule:IsEnabled() then
+        -- The one guarded fake hit restores vanilla controller rumble and
+        -- animation. The feedback module replaces only the newly started hurt
+        -- voice, then supplies the charge-scaled shield sound and visual pulse.
+        self.ApplyingAbsorbedDamage[playerHash] = true
+        feedbackModule:OnAbsorbedHit(
+            player,
+            damageAmount,
+            damageFlags,
+            source,
+            damageCountdownFrames
+        )
+        self.ApplyingAbsorbedDamage[playerHash] = nil
+    end
+
+    player:SetMinDamageCooldown(
+        self:GetDamageCooldown(player, damageAmount)
     )
-    self.ApplyingAbsorbedDamage[playerHash] = nil
 
     Game():GetLevel():SetStateFlag(FLOOR_DAMAGED, true)
 

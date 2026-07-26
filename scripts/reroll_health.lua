@@ -72,7 +72,8 @@ function RerollHealthModule.New(context)
         ModCallbacks.MC_ENTITY_TAKE_DMG,
         function(_, entity, amount, flags, source)
             self:OnEntityTakeDamage(entity, amount, flags, source)
-        end
+        end,
+        EntityType.ENTITY_PLAYER
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_NEW_LEVEL,
@@ -96,7 +97,8 @@ function RerollHealthModule.New(context)
         ModCallbacks.MC_INPUT_ACTION,
         function(_, entity, inputHook, buttonAction)
             self:OnInputAction(entity, inputHook, buttonAction)
-        end
+        end,
+        EntityType.ENTITY_PLAYER
     )
 
     return self
@@ -159,18 +161,8 @@ function RerollHealthModule:RefreshMaxCollectibleId()
     end
 end
 
-function RerollHealthModule:CaptureInventory(player)
-    local inventory = {}
-
-    for collectibleType = 1, self.MaxCollectibleId do
-        local count = player:GetCollectibleNum(collectibleType, true)
-
-        if count > 0 then
-            inventory[collectibleType] = count
-        end
-    end
-
-    return inventory
+function RerollHealthModule:GetTmtrainerCount(player)
+    return player:GetCollectibleNum(TMTRAINER, true)
 end
 
 
@@ -365,16 +357,23 @@ function RerollHealthModule:QueueRestore(
     -- D100 and D Infinity can invoke the D4 callback internally. Keep the
     -- earliest snapshot so nested effects cannot replace the true baseline.
     if not state.pending then
-        local inventory = self:CaptureInventory(player)
+        local tmtrainerCount = nil
         local tmtrainerAllowed = preparedTmtrainerDecision
 
-        if tmtrainerAllowed == nil then
-            tmtrainerAllowed = self:PrepareTmtrainerReroll(player, inventory)
+        if tmtrainerChance < 100 then
+            tmtrainerCount = self:GetTmtrainerCount(player)
+
+            if tmtrainerAllowed == nil then
+                tmtrainerAllowed = self:PrepareTmtrainerReroll(
+                    player,
+                    tmtrainerCount
+                )
+            end
         end
 
         state.pending = {
             health = self:CaptureHealth(player),
-            inventory = inventory,
+            tmtrainerCount = tmtrainerCount,
             damageAmount = damageAmount,
             tmtrainerAllowed = tmtrainerAllowed,
         }
@@ -522,10 +521,10 @@ end
 
 function RerollHealthModule:PrepareTmtrainerReroll(
     player,
-    inventory,
+    tmtrainerCount,
     blacklistMode
 )
-    if (inventory[TMTRAINER] or 0) > 0
+    if (tmtrainerCount or 0) > 0
         or self:GetTmtrainerChance() >= 100
     then
         return true
@@ -596,7 +595,8 @@ function RerollHealthModule:OnUseCard(card, player)
 end
 
 function RerollHealthModule:OnInputAction(entity, inputHook, buttonAction)
-    if inputHook ~= InputHook.IS_ACTION_TRIGGERED
+    if not self.RunActive
+        or inputHook ~= InputHook.IS_ACTION_TRIGGERED
         or buttonAction ~= ButtonAction.ACTION_PILLCARD
     then
         return
@@ -631,13 +631,13 @@ end
 
 function RerollHealthModule:ReplaceUnexpectedTmtrainer(
     player,
-    previousInventory,
-    currentInventory,
+    previousTmtrainerCount,
+    currentTmtrainerCount,
     fullInventoryReroll,
     preRollAllowed
 )
     if not fullInventoryReroll
-        or (previousInventory[TMTRAINER] or 0) > 0
+        or (previousTmtrainerCount or 0) > 0
         or self:GetTmtrainerChance() >= 100
     then
         return false
@@ -654,7 +654,7 @@ function RerollHealthModule:ReplaceUnexpectedTmtrainer(
         return false
     end
 
-    local unexpectedCount = currentInventory[TMTRAINER] or 0
+    local unexpectedCount = currentTmtrainerCount or 0
 
     if unexpectedCount <= 0 then
         return false
@@ -822,21 +822,21 @@ function RerollHealthModule:SyncPlayer(player)
         return
     end
 
-    local currentInventory = self:CaptureInventory(player)
-    local previousInventory = state.pending.inventory
     local preRollAllowed = self.TmtrainerPreparedDecisions[key]
 
     if state.pending.tmtrainerAllowed ~= nil then
         preRollAllowed = state.pending.tmtrainerAllowed
     end
 
-    self:ReplaceUnexpectedTmtrainer(
-        player,
-        previousInventory,
-        currentInventory,
-        true,
-        preRollAllowed
-    )
+    if state.pending.tmtrainerCount ~= nil then
+        self:ReplaceUnexpectedTmtrainer(
+            player,
+            state.pending.tmtrainerCount,
+            self:GetTmtrainerCount(player),
+            true,
+            preRollAllowed
+        )
+    end
 
     if self.Context:IsEnabled(REROLL_SETTING_KEY) then
         local baseline = state.pending.health

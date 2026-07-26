@@ -20,6 +20,7 @@ function TaintedBlueBabyDealsModule.New(context)
     local self = setmetatable({
         Context = context,
         ItemConfig = Isaac.GetItemConfig(),
+        ManagedPickups = setmetatable({}, { __mode = "k" }),
     }, TaintedBlueBabyDealsModule)
 
     context.Mod:AddCallback(
@@ -83,6 +84,7 @@ function TaintedBlueBabyDealsModule:RestorePrice(pickup)
     local state = data[STATE_KEY]
 
     if not state then
+        self.ManagedPickups[pickup] = nil
         return
     end
 
@@ -91,6 +93,7 @@ function TaintedBlueBabyDealsModule:RestorePrice(pickup)
     end
 
     data[STATE_KEY] = nil
+    self.ManagedPickups[pickup] = nil
 end
 
 function TaintedBlueBabyDealsModule:ApplyPrice(pickup)
@@ -111,10 +114,12 @@ function TaintedBlueBabyDealsModule:ApplyPrice(pickup)
         if not stillOwned then
             -- Another price effect took ownership after this module. Preserve it.
             data[STATE_KEY] = nil
+            self.ManagedPickups[pickup] = nil
             return
         end
 
         state.appliedPrice = soulHeartPrice
+        self.ManagedPickups[pickup] = true
         pickup.Price = soulHeartPrice
         return
     end
@@ -127,10 +132,19 @@ function TaintedBlueBabyDealsModule:ApplyPrice(pickup)
         originalPrice = pickup.Price,
         appliedPrice = soulHeartPrice,
     }
+    self.ManagedPickups[pickup] = true
     pickup.Price = soulHeartPrice
 end
 
 function TaintedBlueBabyDealsModule:OnPickupUpdate(pickup)
+    if not self.ManagedPickups[pickup]
+        and pickup.Price ~= THREE_SOUL_HEARTS
+        and pickup.Price ~= ONE_SOUL_HEART
+        and pickup.Price ~= TWO_SOUL_HEARTS
+    then
+        return
+    end
+
     local state = pickup:GetData()[STATE_KEY]
 
     -- Vanilla Tainted Blue Baby deals are the only unowned pedestals that can

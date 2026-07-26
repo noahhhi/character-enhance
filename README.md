@@ -19,6 +19,7 @@
   <a href="#tainted-eden">Tainted Eden</a> •
   <a href="#bethany">Bethany</a> •
   <a href="#familiar-capacity">Familiar Capacity</a> •
+  <a href="#clog-ground-damage">Clog Ground Damage</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
 </p>
@@ -81,6 +82,9 @@
   consumes Soul Charge.
 - Absorbed penalty damage still destroys Perfection and affects its progress;
   only red health and room-deal probability are protected.
+- An independent shield-feedback option adds a Soul Charge-scaled blue halo,
+  charge-scaled ice impacts, and vanilla controller rumble when damage is
+  absorbed.
 
 <a id="familiar-capacity"></a>
 ## Familiar capacity protection
@@ -96,6 +100,13 @@
   continued games and remain stored while this module is disabled; a new run
   resets them.
 
+<a id="clog-ground-damage"></a>
+## The Clog ground damage
+
+- The Clog (entity 914.0.0) can take damage from player creep, including Free
+  Lemonade. Damage, radius, and tick rate follow the creep's current values;
+  other enemies remain unchanged.
+
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
 
@@ -103,17 +114,19 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All nine gameplay settings remain independently configurable:
+All eleven gameplay settings remain independently configurable:
 
 1. Familiar Capacity
-2. Starting Wooden Cross
-3. Equivalent Soul Deals
-4. Full Poop Protection
-5. Reroll Health Protection
-6. Esau Jr. First Pickup
-7. TMTRAINER Reroll Chance
-8. Soul Charge Bonus
-9. Charge Damage Shield
+2. Clog Ground Damage
+3. Starting Wooden Cross
+4. Equivalent Soul Deals
+5. Full Poop Protection
+6. Reroll Health Protection
+7. Esau Jr. First Pickup
+8. TMTRAINER Reroll Chance
+9. Soul Charge Bonus
+10. Charge Damage Shield
+11. Shield Feedback
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's

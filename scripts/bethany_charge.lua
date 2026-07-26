@@ -5,6 +5,7 @@ local SETTING_KEY = "bethanySoulCharge"
 local BETHANY = PlayerType.PLAYER_BETHANY
 local CLICKER = CollectibleType.COLLECTIBLE_CLICKER
 local MAX_SOUL_CHARGE = 99
+local TORN_POCKET = TrinketType.TRINKET_TORN_POCKET
 
 -- Only pure Soul Charge heart pickups are blocked at the cap. Blended Hearts
 -- remain vanilla because they may still be collected to restore red health.
@@ -37,6 +38,8 @@ function BethanyChargeModule.New(context)
         TrackedCharge = {},
         PendingActiveBonus = {},
         PendingBaselineReset = {},
+        RecentDamage = {},
+        PendingTornPocketDebt = {},
         PendingCharacterRefresh = false,
         RunActive = false,
         UpdateCallbackRegistered = false,
@@ -71,6 +74,20 @@ function BethanyChargeModule.New(context)
         end,
         PickupVariant.PICKUP_HEART
     )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_ENTITY_TAKE_DMG,
+        function(_, entity)
+            self:OnPlayerDamage(entity)
+        end,
+        EntityType.ENTITY_PLAYER
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_PICKUP_INIT,
+        function(_, pickup)
+            self:OnHeartPickupInit(pickup)
+        end,
+        PickupVariant.PICKUP_HEART
+    )
     return self
 end
 
@@ -98,6 +115,8 @@ function BethanyChargeModule:ResetTracking()
     self.TrackedCharge = {}
     self.PendingActiveBonus = {}
     self.PendingBaselineReset = {}
+    self.RecentDamage = {}
+    self.PendingTornPocketDebt = {}
     self.PendingCharacterRefresh = false
 end
 
@@ -126,6 +145,63 @@ function BethanyChargeModule:OnGameStarted()
         self:EstablishCurrentBaselines()
         self:SetUpdateCallbackEnabled(next(self.TrackedCharge) ~= nil)
     end
+end
+
+function BethanyChargeModule:OnPlayerDamage(entity)
+    local player = entity and entity:ToPlayer()
+
+    if not self.Context:IsEnabled(SETTING_KEY)
+        or not self:IsBethany(player)
+        or not player:HasTrinket(TORN_POCKET)
+    then
+        return
+    end
+
+    self.RecentDamage[GetPtrHash(player)] = {
+        Player = player,
+        ChargeBefore = player:GetSoulCharge(),
+        Frame = Game():GetFrameCount(),
+    }
+end
+
+function BethanyChargeModule:OnHeartPickupInit(pickup)
+    if not self.Context:IsEnabled(SETTING_KEY)
+        or not pickup
+        or pickup.SubType ~= HeartSubType.HEART_HALF_SOUL
+    then
+        return
+    end
+
+    local spawner = pickup.SpawnerEntity
+    local player = spawner and spawner:ToPlayer()
+
+    if not self:IsBethany(player) or not player:HasTrinket(TORN_POCKET) then
+        return
+    end
+
+    local damage = self.RecentDamage[GetPtrHash(player)]
+    local frame = Game():GetFrameCount()
+
+    if not damage or frame - damage.Frame > 1 then
+        return
+    end
+
+    local currentCharge = player:GetSoulCharge()
+
+    if currentCharge >= damage.ChargeBefore then
+        return
+    end
+
+    if currentCharge > 0 then
+        player:AddSoulCharge(-1)
+    else
+        local playerHash = GetPtrHash(player)
+        self.PendingTornPocketDebt[playerHash] =
+            (self.PendingTornPocketDebt[playerHash] or 0) + 1
+    end
+
+    self.TrackedCharge[GetPtrHash(player)] = player:GetSoulCharge()
+    self:SetUpdateCallbackEnabled(true)
 end
 
 function BethanyChargeModule:OnPlayerInit(player)
@@ -165,8 +241,7 @@ function BethanyChargeModule:OnUseItem(collectibleType, player)
 end
 
 function BethanyChargeModule:OnPrePickupCollision(pickup, collider)
-    if not self.Context:IsEnabled(SETTING_KEY)
-        or not pickup
+    if not pickup
         or pickup.Variant ~= PickupVariant.PICKUP_HEART
         or not SOUL_CHARGE_HEART_PICKUP[pickup.SubType]
         or not collider
@@ -177,13 +252,31 @@ function BethanyChargeModule:OnPrePickupCollision(pickup, collider)
 
     local player = collider:ToPlayer()
 
-    if self:IsBethany(player) and player:GetSoulCharge() >= MAX_SOUL_CHARGE then
+    if not self:IsBethany(player) then
+        return nil
+    end
+
+    local enabled = self.Context:IsEnabled(SETTING_KEY)
+
+    if enabled and player:GetSoulCharge() >= MAX_SOUL_CHARGE then
         -- MC_PRE_PICKUP_COLLISION returns true to ignore the collision, leaving
         -- the pickup available until Bethany has room for more Soul Charge.
         return true
     end
 
     return nil
+end
+
+function BethanyChargeModule:PayTornPocketDebt(player, playerHash)
+    local debt = self.PendingTornPocketDebt[playerHash] or 0
+    local payment = math.min(debt, player:GetSoulCharge())
+
+    if payment > 0 then
+        player:AddSoulCharge(-payment)
+        debt = debt - payment
+    end
+
+    self.PendingTornPocketDebt[playerHash] = debt > 0 and debt or nil
 end
 
 function BethanyChargeModule:SyncPlayer(player)
@@ -203,6 +296,7 @@ function BethanyChargeModule:SyncPlayer(player)
     if self.PendingBaselineReset[playerHash] then
         self.TrackedCharge[playerHash] = currentCharge
         self.PendingBaselineReset[playerHash] = nil
+        self.PendingTornPocketDebt[playerHash] = nil
         previousCharge = currentCharge
     end
 
@@ -210,6 +304,7 @@ function BethanyChargeModule:SyncPlayer(player)
 
     if activeBonus then
         player:AddSoulCharge(activeBonus)
+        self:PayTornPocketDebt(player, playerHash)
         currentCharge = player:GetSoulCharge()
         self.TrackedCharge[playerHash] = currentCharge
         self.PendingActiveBonus[playerHash] = nil
@@ -220,6 +315,7 @@ function BethanyChargeModule:SyncPlayer(player)
 
     if gainedCharge > 0 then
         player:AddSoulCharge(gainedCharge)
+        self:PayTornPocketDebt(player, playerHash)
         currentCharge = player:GetSoulCharge()
     end
 
@@ -253,6 +349,7 @@ function BethanyChargeModule:OnUpdate()
             self.TrackedCharge[playerHash] = nil
             self.PendingActiveBonus[playerHash] = nil
             self.PendingBaselineReset[playerHash] = nil
+            self.PendingTornPocketDebt[playerHash] = nil
         end
     end
 
