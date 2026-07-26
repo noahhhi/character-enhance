@@ -229,6 +229,22 @@ local MENU_SETTINGS = {
             "Turning it off pauses processing without data loss.",
         },
     },
+    {
+        key = "clogGroundDamage",
+        group = "general",
+        zhName = "拦路屎地面伤害",
+        enName = "Clog Ground Damage",
+        zhInfo = {
+            "让拦路屎（914.0.0）受到地面伤害。",
+            "修正原版飞行标记造成的地面伤害免疫。",
+            "只影响拦路屎，不改变其他敌人的飞行状态。",
+        },
+        enInfo = {
+            "Lets The Clog (914.0.0) take ground damage.",
+            "Corrects ground immunity caused by its vanilla flying flag.",
+            "Only The Clog is affected; other enemies keep vanilla flight.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)

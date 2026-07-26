@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.7.0"
+local VERSION = "1.8.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -10,6 +10,7 @@ local DEFAULT_SETTINGS = {
     bethanyDamageShield = true,
     bethanyShieldFeedback = true,
     familiarCapacity = true,
+    clogGroundDamage = true,
     rerollHealthProtection = true,
     esauJrFirstPickup = true,
     rerollTmtrainerChance = 0,
@@ -149,6 +150,7 @@ local BethanyShieldFeedbackModule = include(
     "scripts/bethany_shield_feedback"
 )
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
+local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local ModConfigMenuModule = include("scripts/mod_config_menu")
 
 local rerollHealthModule = RerollHealthModule.New(Context)
@@ -182,6 +184,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "familiarCapacity",
     FamiliarCapacityModule.New(Context)
+)
+Context:RegisterModule(
+    "clogGroundDamage",
+    ClogGroundDamageModule.New(Context)
 )
 
 ModConfigMenuModule.New(Context)
