@@ -7,9 +7,10 @@ local BLUE_SPIDER = FamiliarVariant.BLUE_SPIDER
 local FAMILIAR_SOFT_LIMIT = 60
 local FAMILIAR_HARD_LIMIT = 64
 local BANK_RELEASE_INTERVAL = 3
+local BANK_BLOCKED_RETRY_MAX = 30
 local BANK_RELEASE_BATCH_SIZE = 2
 local BANK_ANIMATION_INTERVAL = 5
-local BANK_SAVE_DELAY = 30
+local BANK_SAVE_DELAY = 60
 local MAX_BANKED_PER_TYPE = 2147483647
 
 function FamiliarCapacityModule.New(context)
@@ -25,6 +26,7 @@ function FamiliarCapacityModule.New(context)
         },
         AnimationFrames = {},
         NextReleaseFrame = 0,
+        ReleaseRetryInterval = BANK_RELEASE_INTERVAL,
         ReleasePlayerCursor = 0,
         ReleaseSpiderNext = false,
         BankDirty = false,
@@ -407,9 +409,15 @@ function FamiliarCapacityModule:ReleaseBankedFamiliars()
     local availableSlots = FAMILIAR_SOFT_LIMIT - snapshot.total
 
     if availableSlots <= 0 then
-        self.NextReleaseFrame = frame + BANK_RELEASE_INTERVAL
+        self.ReleaseRetryInterval = math.min(
+            BANK_BLOCKED_RETRY_MAX,
+            self.ReleaseRetryInterval * 2
+        )
+        self.NextReleaseFrame = frame + self.ReleaseRetryInterval
         return
     end
+
+    self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
 
     local playerCount = game:GetNumPlayers()
 
@@ -506,6 +514,7 @@ function FamiliarCapacityModule:OnGameStarted(isContinued)
     self.RunActive = true
     self.NeedsRebalance = false
     self.NextReleaseFrame = 0
+    self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
     self.ReleasePlayerCursor = 0
     self.ReleaseSpiderNext = false
     self.AnimationFrames = {}
@@ -536,6 +545,7 @@ function FamiliarCapacityModule:OnNewRoom()
     self:ResetSnapshot()
     self.AnimationFrames = {}
     self.NeedsRebalance = self.Context:IsEnabled(SETTING_KEY)
+    self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
     self:RefreshUpdateCallback()
 end
 
@@ -546,6 +556,7 @@ function FamiliarCapacityModule:OnSettingChanged(enabled)
 
     if enabled and self.RunActive then
         self.NextReleaseFrame = Game():GetFrameCount()
+        self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
     end
 
     self:RefreshUpdateCallback()
