@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.6.22"
+local VERSION = "1.7.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -8,6 +8,7 @@ local DEFAULT_SETTINGS = {
     taintedBlueBabyPoopCapacity = true,
     bethanySoulCharge = true,
     bethanyDamageShield = true,
+    bethanyShieldFeedback = true,
     familiarCapacity = true,
     rerollHealthProtection = true,
     esauJrFirstPickup = true,
@@ -144,6 +145,9 @@ local TaintedBlueBabyPoopCapacityModule = include(
 local RerollHealthModule = include("scripts/reroll_health")
 local BethanyChargeModule = include("scripts/bethany_charge")
 local BethanyShieldModule = include("scripts/bethany_shield")
+local BethanyShieldFeedbackModule = include(
+    "scripts/bethany_shield_feedback"
+)
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
 local ModConfigMenuModule = include("scripts/mod_config_menu")
 
@@ -166,6 +170,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "bethanySoulCharge",
     BethanyChargeModule.New(Context)
+)
+Context:RegisterModule(
+    "bethanyShieldFeedback",
+    BethanyShieldFeedbackModule.New(Context)
 )
 Context:RegisterModule(
     "bethanyDamageShield",

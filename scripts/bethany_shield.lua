@@ -11,8 +11,17 @@ local FULL_HEART_DAMAGE_COOLDOWN = 120
 local BLIND_RAGE_COOLDOWN_BONUS = 120
 
 function BethanyShieldModule.New(context)
-    local self = setmetatable({ Context = context }, BethanyShieldModule)
+    local self = setmetatable({
+        Context = context,
+        ApplyingAbsorbedDamage = {},
+    }, BethanyShieldModule)
 
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_GAME_STARTED,
+        function()
+            self.ApplyingAbsorbedDamage = {}
+        end
+    )
     context.Mod:AddCallback(
         ModCallbacks.MC_ENTITY_TAKE_DMG,
         function(_, entity, damageAmount, damageFlags, source, countdown)
@@ -67,6 +76,12 @@ function BethanyShieldModule:OnPlayerDamage(
         return
     end
 
+    local playerHash = GetPtrHash(player)
+
+    if self.ApplyingAbsorbedDamage[playerHash] then
+        return
+    end
+
     -- The charge module is optional. If enabled, synchronize same-frame gains;
     -- if disabled, the shield continues to use the player's vanilla charge.
     local chargeModule = self.Context.Modules.bethanySoulCharge
@@ -83,16 +98,32 @@ function BethanyShieldModule:OnPlayerDamage(
 
     local chargeCost = math.max(1, math.floor(damageAmount * 2 + 0.5))
     player:SetSoulCharge(math.max(0, soulCharge - chargeCost))
-    player:SetMinDamageCooldown(
-        self:GetDamageCooldown(player, damageAmount)
-    )
 
     if chargeModule then
         chargeModule:AdoptCurrentCharge(player)
     end
 
-    -- Record the hit only for Perfection. DAMAGE_FAKE would also trigger
-    -- unrelated player damage effects and must never be synthesized here.
+    local feedbackModule = self.Context.Modules.bethanyShieldFeedback
+
+    if feedbackModule and feedbackModule:IsEnabled() then
+        -- The one guarded fake hit restores vanilla controller rumble and
+        -- animation. The feedback module replaces only the newly started hurt
+        -- voice, then supplies the charge-scaled shield sound and visual pulse.
+        self.ApplyingAbsorbedDamage[playerHash] = true
+        feedbackModule:OnAbsorbedHit(
+            player,
+            damageAmount,
+            damageFlags,
+            source,
+            damageCountdownFrames
+        )
+        self.ApplyingAbsorbedDamage[playerHash] = nil
+    end
+
+    player:SetMinDamageCooldown(
+        self:GetDamageCooldown(player, damageAmount)
+    )
+
     Game():GetLevel():SetStateFlag(FLOOR_DAMAGED, true)
 
     if player:HasTrinket(PERFECTION) then
@@ -100,6 +131,14 @@ function BethanyShieldModule:OnPlayerDamage(
     end
 
     return false
+end
+
+function BethanyShieldModule:OnSettingChanged()
+    self.ApplyingAbsorbedDamage = {}
+end
+
+function BethanyShieldModule:OnPreGameExit()
+    self.ApplyingAbsorbedDamage = {}
 end
 
 return BethanyShieldModule

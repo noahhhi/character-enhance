@@ -194,6 +194,26 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "bethanyShieldFeedback",
+        group = "bethany",
+        zhName = "护盾反馈",
+        enName = "Shield Feedback",
+        zhInfo = {
+            "显示随魂心充能增强的淡蓝色护罩。",
+            "移动和时间会使护罩渐隐渐现。",
+            "格挡时冰盾声会替代伯大尼的受伤声。",
+            "同时保留原版手柄震动和受伤保护时间。",
+            "关闭后不影响充能伤害护盾本身。",
+        },
+        enInfo = {
+            "Shows a pale-blue shield that strengthens with Soul Charge.",
+            "Movement and time make the shield gently fade and pulse.",
+            "An ice impact replaces Bethany's hurt voice on a block.",
+            "Vanilla controller rumble and damage cooldown are retained.",
+            "Turning this off does not disable the damage shield itself.",
+        },
+    },
+    {
         key = "familiarCapacity",
         group = "general",
         zhName = "跟班容量保护",

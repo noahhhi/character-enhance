@@ -81,6 +81,9 @@
   consumes Soul Charge.
 - Absorbed penalty damage still destroys Perfection and affects its progress;
   only red health and room-deal probability are protected.
+- An independent shield-feedback option adds a Soul Charge-scaled blue halo,
+  charge-scaled ice impacts, and vanilla controller rumble when damage is
+  absorbed.
 
 <a id="familiar-capacity"></a>
 ## Familiar capacity protection
@@ -103,7 +106,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All nine gameplay settings remain independently configurable:
+All ten gameplay settings remain independently configurable:
 
 1. Familiar Capacity
 2. Starting Wooden Cross
@@ -114,6 +117,7 @@ All nine gameplay settings remain independently configurable:
 7. TMTRAINER Reroll Chance
 8. Soul Charge Bonus
 9. Charge Damage Shield
+10. Shield Feedback
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
