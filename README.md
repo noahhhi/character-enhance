@@ -103,8 +103,9 @@
 <a id="clog-ground-damage"></a>
 ## The Clog ground damage
 
-- The Clog (entity 914.0.0) can take damage from ground effects. This corrects
-  its vanilla flying flag without changing any other enemy's flight behavior.
+- The Clog (entity 914.0.0) can take damage from player creep, including Free
+  Lemonade. Damage, radius, and tick rate follow the creep's current values;
+  other enemies remain unchanged.
 
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)

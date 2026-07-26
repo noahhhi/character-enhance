@@ -73,7 +73,7 @@
 <a id="clog-ground-damage"></a>
 ## 拦路屎地面伤害
 
-- 拦路屎（实体 914.0.0）可以受到地面效果伤害；此功能只修正其原版飞行标记，不会改变其他敌人的飞行状态。
+- 拦路屎（实体 914.0.0）可以受到玩家水迹伤害，包括免费柠檬水；伤害、范围和触发频率沿用当前水迹的数值，其他敌人不受影响。
 
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951) / 配置菜单
