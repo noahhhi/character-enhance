@@ -5,11 +5,6 @@ local REROLL_SETTING_KEY = "rerollHealthProtection"
 local ESAU_JR_SETTING_KEY = "esauJrFirstPickup"
 local TMTRAINER_SETTING_KEY = "rerollTmtrainerChance"
 local TAINTED_EDEN = PlayerType.PLAYER_EDEN_B
-local DAMAGE_NO_PENALTIES = DamageFlag.DAMAGE_NO_PENALTIES
-local DAMAGE_FAKE = DamageFlag.DAMAGE_FAKE
-local DAMAGE_CURSED_DOOR = DamageFlag.DAMAGE_CURSED_DOOR
-local DAMAGE_IV_BAG = DamageFlag.DAMAGE_IV_BAG
-local DAMAGE_SPIKES = DamageFlag.DAMAGE_SPIKES
 local DICE_FLOOR = EffectVariant.DICE_FLOOR
 local ENTITY_EFFECT = EntityType.ENTITY_EFFECT
 local DICE_TRIGGER_DISTANCE_SQUARED = 40 * 40
@@ -26,10 +21,6 @@ local SECRET_POOL = ItemPoolType.POOL_SECRET
 local REVERSE_WHEEL_OF_FORTUNE = Card.CARD_REVERSE_WHEEL_OF_FORTUNE
 local PASSIVE = ItemType.ITEM_PASSIVE
 local FAMILIAR = ItemType.ITEM_FAMILIAR
-
-local function HasFlag(flags, flag)
-    return flag ~= nil and (flags & flag) ~= 0
-end
 
 function RerollHealthModule.New(context)
     local self = setmetatable({
@@ -763,25 +754,7 @@ function RerollHealthModule:ProcessPendingEsauJr()
 end
 
 function RerollHealthModule:IsExcludedDamage(flags, source)
-    if HasFlag(flags, DAMAGE_NO_PENALTIES)
-        or HasFlag(flags, DAMAGE_FAKE)
-        or HasFlag(flags, DAMAGE_CURSED_DOOR)
-        or HasFlag(flags, DAMAGE_IV_BAG)
-    then
-        return true
-    end
-
-    if HasFlag(flags, DAMAGE_SPIKES)
-        and Game():GetRoom():GetType() == RoomType.ROOM_SACRIFICE
-    then
-        return true
-    end
-
-    local sourceEntity = source and source.Entity
-
-    return sourceEntity
-        and sourceEntity.Type == EntityType.ENTITY_SLOT
-        and sourceEntity.Variant == 2
+    return self.Context.DamagePolicy:IsNonPenaltyDamage(flags, source)
 end
 
 function RerollHealthModule:OnEntityTakeDamage(entity, amount, flags, source)

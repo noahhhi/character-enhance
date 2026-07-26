@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.6.11"
+local VERSION = "1.6.14"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -29,6 +29,9 @@ local Context = {
     Modules = {},
     SettingHandlers = {},
 }
+
+local DamagePolicy = include("scripts/damage_policy")
+Context.DamagePolicy = DamagePolicy.New()
 
 function Context:IsEnabled(settingKey)
     return self.Settings[settingKey] ~= false

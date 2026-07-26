@@ -3,6 +3,15 @@ BethanyChargeModule.__index = BethanyChargeModule
 
 local SETTING_KEY = "bethanySoulCharge"
 local BETHANY = PlayerType.PLAYER_BETHANY
+local MAX_SOUL_CHARGE = 99
+
+-- Only pure Soul Charge heart pickups are blocked at the cap. Blended Hearts
+-- remain vanilla because they may still be collected to restore red health.
+local SOUL_CHARGE_HEART_PICKUP = {
+    [HeartSubType.HEART_SOUL] = true,
+    [HeartSubType.HEART_BLACK] = true,
+    [HeartSubType.HEART_HALF_SOUL] = true,
+}
 
 -- These active items grant Soul/Black Hearts directly instead of spawning a
 -- pickup. The value is the extra Soul Charge needed for the doubled grant.
@@ -47,6 +56,13 @@ function BethanyChargeModule.New(context)
         function(_, collectibleType, _, player)
             self:OnUseItem(collectibleType, player)
         end
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_PRE_PICKUP_COLLISION,
+        function(_, pickup, collider)
+            return self:OnPrePickupCollision(pickup, collider)
+        end,
+        PickupVariant.PICKUP_HEART
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_UPDATE,
@@ -115,6 +131,28 @@ function BethanyChargeModule:OnUseItem(collectibleType, player)
     if CHARGE_BASELINE_RESET_ACTIVE[collectibleType] then
         self.PendingBaselineReset[playerHash] = true
     end
+end
+
+function BethanyChargeModule:OnPrePickupCollision(pickup, collider)
+    if not self.Context:IsEnabled(SETTING_KEY)
+        or not pickup
+        or pickup.Variant ~= PickupVariant.PICKUP_HEART
+        or not SOUL_CHARGE_HEART_PICKUP[pickup.SubType]
+        or not collider
+        or type(collider.ToPlayer) ~= "function"
+    then
+        return nil
+    end
+
+    local player = collider:ToPlayer()
+
+    if self:IsBethany(player) and player:GetSoulCharge() >= MAX_SOUL_CHARGE then
+        -- MC_PRE_PICKUP_COLLISION returns true to ignore the collision, leaving
+        -- the pickup available until Bethany has room for more Soul Charge.
+        return true
+    end
+
+    return nil
 end
 
 function BethanyChargeModule:SyncPlayer(player)
