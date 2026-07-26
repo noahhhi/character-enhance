@@ -41,9 +41,9 @@ function TaintedBlueBabyPoopCapacityModule:OnPrePickupCollision(
     end
 
     if player:GetPoopMana() >= player:GetMaxPoopMana() then
-        -- Ignore the collision so the pickup remains available after a queued
-        -- poop is used. This applies to both small and large poop pickups.
-        return true
+        -- Preserve the physical collision but skip vanilla pickup handling so
+        -- both pickup sizes remain available after a queued poop is used.
+        return false
     end
 
     return nil

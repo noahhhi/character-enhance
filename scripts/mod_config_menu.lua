@@ -102,12 +102,14 @@ local MENU_SETTINGS = {
         enName = "Full Poop Protection",
         zhInfo = {
             "里蓝人的大便队列满容量时不会继续拾取大便。",
+            "保留碰撞，但不会收进队列或消耗拾取物。",
             "小型与大型大便都会留在地上以便之后使用。",
             "未满容量时保持原版拾取行为。",
             "与等价魂心交易开关相互独立。",
         },
         enInfo = {
             "Tainted Blue Baby leaves poop pickups when his queue is full.",
+            "Collision remains active without collecting the pickup.",
             "Both small and large pickups stay available for later.",
             "Below capacity, pickup behavior remains vanilla.",
             "Independent from the equivalent Soul Deal option.",

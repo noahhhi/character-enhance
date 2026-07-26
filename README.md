@@ -45,8 +45,9 @@
 - Devil Deals use Blue Baby's equivalent Soul Heart prices: items worth one or two
   Red Heart containers cost one or two Soul Hearts instead of always costing
   three. In multiplayer, the adjusted payment applies only to Tainted Blue Baby.
-- At full poop capacity, both small and large poop pickups stay on the ground
-  for later. Below capacity, they retain vanilla behavior.
+- At full poop capacity, both small and large poop pickups retain collision but
+  are not collected, staying on the ground for later. Below capacity, they
+  retain vanilla behavior.
 
 <a id="tainted-eden"></a>
 ## Tainted Eden and full-inventory rerolls
