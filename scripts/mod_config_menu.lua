@@ -161,12 +161,14 @@ local MENU_SETTINGS = {
         zhInfo = {
             "伯大尼一整颗魂心获得 4 点充能。",
             "半颗魂心获得 2 点充能。",
+            "破损的口袋掉落半魂心时扣 2 点充能。",
             "充能达到 99 时不会拾取魂心或黑心。",
             "不控制充能伤害护盾。",
         },
         enInfo = {
             "Bethany gains 4 charge per full Soul Heart.",
             "A half Soul Heart grants 2 charge.",
+            "Torn Pocket half Soul drops cost 2 charge.",
             "Soul and Black Hearts stay uncollected at 99 charge.",
             "This does not control the charge damage shield.",
         },
@@ -179,12 +181,14 @@ local MENU_SETTINGS = {
         zhInfo = {
             "惩罚性伤害优先消耗魂心充能。",
             "该次伤害不会扣除红心或交易房概率。",
+            "吸收后保留正常受伤保护时间。",
             "乞丐、赌命和献血等自愿伤害不消耗充能。",
             "不控制魂心充能增强。",
         },
         enInfo = {
             "Penalty damage spends Soul Charge first.",
             "The hit does not remove red health or deal chance.",
+            "Absorbed hits keep normal damage invulnerability.",
             "Beggar, Hell Game and blood payments spend no charge.",
             "This does not control the Soul Charge bonus.",
         },

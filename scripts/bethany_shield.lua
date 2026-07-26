@@ -4,20 +4,15 @@ BethanyShieldModule.__index = BethanyShieldModule
 local SETTING_KEY = "bethanyDamageShield"
 local BETHANY = PlayerType.PLAYER_BETHANY
 local PERFECTION = TrinketType.TRINKET_PERFECTION
+local BLIND_RAGE = TrinketType.TRINKET_BLIND_RAGE
 local FLOOR_DAMAGED = LevelStateFlag.STATE_DAMAGED
+local HALF_HEART_DAMAGE_COOLDOWN = 60
+local FULL_HEART_DAMAGE_COOLDOWN = 120
+local BLIND_RAGE_COOLDOWN_BONUS = 120
 
 function BethanyShieldModule.New(context)
-    local self = setmetatable({
-        Context = context,
-        ApplyingAbsorbedDamage = {},
-    }, BethanyShieldModule)
+    local self = setmetatable({ Context = context }, BethanyShieldModule)
 
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_GAME_STARTED,
-        function()
-            self.ApplyingAbsorbedDamage = {}
-        end
-    )
     context.Mod:AddCallback(
         ModCallbacks.MC_ENTITY_TAKE_DMG,
         function(_, entity, damageAmount, damageFlags, source, countdown)
@@ -42,6 +37,19 @@ function BethanyShieldModule:IsExcludedDamage(damageFlags, source)
     )
 end
 
+function BethanyShieldModule:GetDamageCooldown(player, damageAmount)
+    local baseCooldown = damageAmount >= 2
+        and FULL_HEART_DAMAGE_COOLDOWN
+        or HALF_HEART_DAMAGE_COOLDOWN
+    local blindRageMultiplier = math.max(
+        0,
+        player:GetTrinketMultiplier(BLIND_RAGE)
+    )
+
+    return baseCooldown
+        + blindRageMultiplier * BLIND_RAGE_COOLDOWN_BONUS
+end
+
 function BethanyShieldModule:OnPlayerDamage(
     entity,
     damageAmount,
@@ -56,12 +64,6 @@ function BethanyShieldModule:OnPlayerDamage(
     local player = entity:ToPlayer()
 
     if not player or player:GetPlayerType() ~= BETHANY then
-        return
-    end
-
-    local playerHash = GetPtrHash(player)
-
-    if self.ApplyingAbsorbedDamage[playerHash] then
         return
     end
 
@@ -81,20 +83,16 @@ function BethanyShieldModule:OnPlayerDamage(
 
     local chargeCost = math.max(1, math.floor(damageAmount * 2 + 0.5))
     player:SetSoulCharge(math.max(0, soulCharge - chargeCost))
+    player:SetMinDamageCooldown(
+        self:GetDamageCooldown(player, damageAmount)
+    )
 
     if chargeModule then
         chargeModule:AdoptCurrentCharge(player)
     end
 
-    self.ApplyingAbsorbedDamage[playerHash] = true
-    player:TakeDamage(
-        damageAmount,
-        damageFlags | DamageFlag.DAMAGE_FAKE | DamageFlag.DAMAGE_NO_PENALTIES,
-        source,
-        damageCountdownFrames
-    )
-    self.ApplyingAbsorbedDamage[playerHash] = nil
-
+    -- Record the hit only for Perfection. DAMAGE_FAKE would also trigger
+    -- unrelated player damage effects and must never be synthesized here.
     Game():GetLevel():SetStateFlag(FLOOR_DAMAGED, true)
 
     if player:HasTrinket(PERFECTION) then
@@ -102,14 +100,6 @@ function BethanyShieldModule:OnPlayerDamage(
     end
 
     return false
-end
-
-function BethanyShieldModule:OnSettingChanged()
-    self.ApplyingAbsorbedDamage = {}
-end
-
-function BethanyShieldModule:OnPreGameExit()
-    self.ApplyingAbsorbedDamage = {}
 end
 
 return BethanyShieldModule
