@@ -213,16 +213,21 @@ function ModConfigMenuModule.New(context)
         SubcategoryIds = {},
     }, ModConfigMenuModule)
 
-    self:TrySetup()
-
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_RENDER,
-        function()
-            if not self.IsSetup then
-                self:TrySetup()
-            end
+    self.SetupRetryCallback = function()
+        if self:TrySetup() then
+            self.Context.Mod:RemoveCallback(
+                ModCallbacks.MC_POST_RENDER,
+                self.SetupRetryCallback
+            )
         end
-    )
+    end
+
+    if not self:TrySetup() then
+        context.Mod:AddCallback(
+            ModCallbacks.MC_POST_RENDER,
+            self.SetupRetryCallback
+        )
+    end
 
     return self
 end

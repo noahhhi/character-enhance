@@ -131,6 +131,15 @@ function TaintedBlueBabyDealsModule:ApplyPrice(pickup)
 end
 
 function TaintedBlueBabyDealsModule:OnPickupUpdate(pickup)
+    local state = pickup:GetData()[STATE_KEY]
+
+    -- Vanilla Tainted Blue Baby deals are the only unowned pedestals that can
+    -- need adjustment. Avoid a co-op player scan for ordinary room, shop and
+    -- already adjusted collectible pedestals on every pickup-update frame.
+    if not state and pickup.Price ~= THREE_SOUL_HEARTS then
+        return
+    end
+
     if self.Context:IsEnabled(SETTING_KEY)
         and self:HasOnlyTaintedBlueBabies()
     then
