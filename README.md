@@ -15,6 +15,7 @@
 
 <p align="center">
   <a href="#tainted-lost">Tainted Lost</a> •
+  <a href="#tainted-blue-baby">Tainted ???</a> •
   <a href="#tainted-eden">Tainted Eden</a> •
   <a href="#bethany">Bethany</a> •
   <a href="#familiar-capacity">Familiar Capacity</a> •
@@ -37,6 +38,13 @@
 
 - Starts each new run with Wooden Cross (trinket ID 121). Continuing a saved
   run does not grant another copy.
+
+<a id="tainted-blue-baby"></a>
+## Tainted ???
+
+- Devil Deals use ???'s equivalent Soul Heart prices: items worth one or two
+  Red Heart containers cost one or two Soul Hearts instead of always costing
+  three. In multiplayer, the adjusted payment applies only to Tainted ???.
 
 <a id="tainted-eden"></a>
 ## Tainted Eden and full-inventory rerolls
@@ -92,21 +100,21 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All seven gameplay settings default to enabled and remain independently
-configurable:
+All eight gameplay settings remain independently configurable:
 
 1. Familiar Capacity
 2. Starting Wooden Cross
-3. Reroll Health Protection
-4. Esau Jr. First Pickup
-5. TMTRAINER Reroll Chance
-6. Soul Charge Bonus
-7. Charge Damage Shield
+3. Equivalent Soul Deals
+4. Reroll Health Protection
+5. Esau Jr. First Pickup
+6. TMTRAINER Reroll Chance
+7. Soul Charge Bonus
+8. Charge Damage Shield
 
-Options are grouped under the compact tabs `General`, `T-Lost`, `T-Eden`, and
-`Bethany`. The integration supports both Mod Config Menu Impure's global `MCM`
-API and legacy/localized editions exposing `ModConfigMenu`. Without MCM, saved
-or default settings still work normally.
+Options are grouped under the compact tabs `General`, `T-Lost`, `T-???`,
+`T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
+global `MCM` API and legacy/localized editions exposing `ModConfigMenu`.
+Without MCM, saved or default settings still work normally.
 
 <a id="installation"></a>
 ## Installation

@@ -1,9 +1,10 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.6.14"
+local VERSION = "1.6.15"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
+    taintedBlueBabyDevilDeals = true,
     bethanySoulCharge = true,
     bethanyDamageShield = true,
     familiarCapacity = true,
@@ -135,6 +136,7 @@ function Context:SetSetting(settingKey, value)
 end
 
 local TaintedLostModule = include("scripts/tainted_lost")
+local TaintedBlueBabyDealsModule = include("scripts/tainted_bluebaby_deals")
 local RerollHealthModule = include("scripts/reroll_health")
 local BethanyChargeModule = include("scripts/bethany_charge")
 local BethanyShieldModule = include("scripts/bethany_shield")
@@ -150,6 +152,10 @@ Context:RegisterModule(
     TaintedLostModule.New(Context)
 )
 Context:RegisterModule(
+    "taintedBlueBabyDevilDeals",
+    TaintedBlueBabyDealsModule.New(Context)
+)
+Context:RegisterModule(
     "bethanySoulCharge",
     BethanyChargeModule.New(Context)
 )
@@ -163,6 +169,32 @@ Context:RegisterModule(
 )
 
 ModConfigMenuModule.New(Context)
+
+-- MC_POST_GAME_STARTED is not replayed when the debug console reloads a mod.
+-- Re-establish run-local baselines without granting new-run-only rewards.
+if Game():GetFrameCount() > 0 then
+    for _, moduleKey in ipairs({
+        "rerollHealthProtection",
+        "taintedLostWoodenCross",
+        "bethanySoulCharge",
+        "familiarCapacity",
+    }) do
+        local module = Context.Modules[moduleKey]
+
+        if module and module.OnGameStarted then
+            module:OnGameStarted(true)
+        end
+    end
+end
+
+-- Persist module state immediately before `luamod` unloads this instance.
+-- The newly loaded instance then treats that state as its continuation baseline.
+CharacterEnhance:AddCallback(
+    ModCallbacks.MC_PRE_MOD_UNLOAD,
+    function()
+        Context:Save()
+    end
+)
 
 local function SaveBeforeGameExit(_, shouldSave)
     for _, module in pairs(Context.Modules) do

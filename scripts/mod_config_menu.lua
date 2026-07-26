@@ -8,12 +8,14 @@ local LANGUAGE_EN = 2
 local SUBCATEGORY = {
     general = 1,
     taintedLost = 2,
-    taintedEden = 3,
-    bethany = 4,
+    taintedBlueBaby = 3,
+    taintedEden = 4,
+    bethany = 5,
 }
 local SUBCATEGORY_ORDER = {
     "general",
     "taintedLost",
+    "taintedBlueBaby",
     "taintedEden",
     "bethany",
 }
@@ -29,6 +31,7 @@ local TEXT = {
         subcategories = {
             general = "通用",
             taintedLost = "里游魂",
+            taintedBlueBaby = "里蓝人",
             taintedEden = "里伊甸",
             bethany = "伯大尼",
         },
@@ -46,6 +49,7 @@ local TEXT = {
         subcategories = {
             general = "General",
             taintedLost = "T-Lost",
+            taintedBlueBaby = "T-???",
             taintedEden = "T-Eden",
             bethany = "Bethany",
         },
@@ -73,6 +77,22 @@ local MENU_SETTINGS = {
             "Trinket ID: 121.",
             "Turning this off does not remove an owned trinket.",
             "The character-select image is static.",
+        },
+    },
+    {
+        key = "taintedBlueBabyDevilDeals",
+        group = "taintedBlueBaby",
+        zhName = "等价魂心交易",
+        enName = "Equivalent Soul Deals",
+        zhInfo = {
+            "里蓝人的恶魔交易采用小蓝人的等价魂心价格。",
+            "1/2 个心之容器分别对应 1/2 颗魂心。",
+            "联机时只对实际购买的里蓝人生效。",
+        },
+        enInfo = {
+            "Tainted ??? uses ???'s equivalent Soul Heart deal prices.",
+            "One/two containers cost one/two Soul Hearts respectively.",
+            "In co-op, only the purchasing Tainted ??? receives the price.",
         },
     },
     {
