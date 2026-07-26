@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.6.18"
+local VERSION = "1.6.19"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -194,15 +194,6 @@ if Game():GetFrameCount() > 0 then
         end
     end
 end
-
--- Persist module state immediately before `luamod` unloads this instance.
--- The newly loaded instance then treats that state as its continuation baseline.
-CharacterEnhance:AddCallback(
-    ModCallbacks.MC_PRE_MOD_UNLOAD,
-    function()
-        Context:Save()
-    end
-)
 
 local function SaveBeforeGameExit(_, shouldSave)
     for _, module in pairs(Context.Modules) do
