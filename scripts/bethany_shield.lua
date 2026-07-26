@@ -13,15 +13,8 @@ local BLIND_RAGE_COOLDOWN_BONUS = 120
 function BethanyShieldModule.New(context)
     local self = setmetatable({
         Context = context,
-        ApplyingAbsorbedDamage = {},
     }, BethanyShieldModule)
 
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_GAME_STARTED,
-        function()
-            self.ApplyingAbsorbedDamage = {}
-        end
-    )
     context.Mod:AddCallback(
         ModCallbacks.MC_ENTITY_TAKE_DMG,
         function(_, entity, damageAmount, damageFlags, source, countdown)
@@ -76,12 +69,6 @@ function BethanyShieldModule:OnPlayerDamage(
         return
     end
 
-    local playerHash = GetPtrHash(player)
-
-    if self.ApplyingAbsorbedDamage[playerHash] then
-        return
-    end
-
     -- The charge module is optional. If enabled, synchronize same-frame gains;
     -- if disabled, the shield continues to use the player's vanilla charge.
     local chargeModule = self.Context.Modules.bethanySoulCharge
@@ -106,12 +93,10 @@ function BethanyShieldModule:OnPlayerDamage(
     local feedbackModule = self.Context.Modules.bethanyShieldFeedback
 
     if feedbackModule and feedbackModule:IsEnabled() then
-        -- The one guarded zero-damage fake hit supplies stationary flash,
-        -- damage-reactive effects, and controller feedback without replaying
-        -- the original hurt animation, voice, source, or damage flags.
-        self.ApplyingAbsorbedDamage[playerHash] = true
+        -- Feedback is visual/audio only. A second TakeDamage call would enter
+        -- the engine's normal hurt voice and full hit-animation path even with
+        -- zero damage and DAMAGE_FAKE.
         feedbackModule:OnAbsorbedHit(player)
-        self.ApplyingAbsorbedDamage[playerHash] = nil
     end
 
     player:SetMinDamageCooldown(
@@ -125,14 +110,6 @@ function BethanyShieldModule:OnPlayerDamage(
     end
 
     return false
-end
-
-function BethanyShieldModule:OnSettingChanged()
-    self.ApplyingAbsorbedDamage = {}
-end
-
-function BethanyShieldModule:OnPreGameExit()
-    self.ApplyingAbsorbedDamage = {}
 end
 
 return BethanyShieldModule

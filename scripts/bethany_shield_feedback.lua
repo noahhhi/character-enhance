@@ -116,18 +116,10 @@ function BethanyShieldFeedbackModule:OnAbsorbedHit(player)
     local playerHash = GetPtrHash(player)
     local frame = Game():GetFrameCount()
 
-    -- Match Dull Razor/Holy Mantle-style feedback instead of replaying the
-    -- original hit. A zero-value fake hit triggers damage-reactive effects and
-    -- controller feedback without starting the normal hurt animation or voice.
-    -- Do not inherit the original source or flags: those can select a full hurt
-    -- presentation even when DAMAGE_FAKE is present.
-    player:TakeDamage(
-        0,
-        DamageFlag.DAMAGE_FAKE | DamageFlag.DAMAGE_NO_PENALTIES,
-        EntityRef(player),
-        0
-    )
-
+    -- Never call TakeDamage for feedback. Repentance+ 1.9.7.15 routes even a
+    -- zero-value DAMAGE_FAKE hit through Bethany's hurt voice and full hit
+    -- animation. The shield module's real cancelled hit plus explicit damage
+    -- cooldown already provides the desired stationary invulnerability flash.
     self:PlayShieldSound(player:GetSoulCharge())
 
     self.HitUntilFrame[playerHash] = frame + HIT_FLASH_FRAMES

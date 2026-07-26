@@ -83,8 +83,8 @@
 - Absorbed penalty damage still destroys Perfection and affects its progress;
   only red health and room-deal probability are protected.
 - An independent shield-feedback option adds a Soul Charge-scaled blue halo,
-  charge-scaled ice impacts, and vanilla controller rumble when damage is
-  absorbed.
+  charge-scaled ice impacts, and a stationary invulnerability flash when
+  damage is absorbed, without Bethany's hurt voice or hit animation.
 
 <a id="familiar-capacity"></a>
 ## Familiar capacity protection
