@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="#tainted-lost">Tainted Lost</a> •
-  <a href="#tainted-blue-baby">Tainted ???</a> •
+  <a href="#tainted-blue-baby">Tainted Blue Baby</a> •
   <a href="#tainted-eden">Tainted Eden</a> •
   <a href="#bethany">Bethany</a> •
   <a href="#familiar-capacity">Familiar Capacity</a> •
@@ -40,11 +40,13 @@
   run does not grant another copy.
 
 <a id="tainted-blue-baby"></a>
-## Tainted ???
+## Tainted Blue Baby
 
-- Devil Deals use ???'s equivalent Soul Heart prices: items worth one or two
+- Devil Deals use Blue Baby's equivalent Soul Heart prices: items worth one or two
   Red Heart containers cost one or two Soul Hearts instead of always costing
-  three. In multiplayer, the adjusted payment applies only to Tainted ???.
+  three. In multiplayer, the adjusted payment applies only to Tainted Blue Baby.
+- At full poop capacity, both small and large poop pickups stay on the ground
+  for later. Below capacity, they retain vanilla behavior.
 
 <a id="tainted-eden"></a>
 ## Tainted Eden and full-inventory rerolls
@@ -100,18 +102,19 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All eight gameplay settings remain independently configurable:
+All nine gameplay settings remain independently configurable:
 
 1. Familiar Capacity
 2. Starting Wooden Cross
 3. Equivalent Soul Deals
-4. Reroll Health Protection
-5. Esau Jr. First Pickup
-6. TMTRAINER Reroll Chance
-7. Soul Charge Bonus
-8. Charge Damage Shield
+4. Full Poop Protection
+5. Reroll Health Protection
+6. Esau Jr. First Pickup
+7. TMTRAINER Reroll Chance
+8. Soul Charge Bonus
+9. Charge Damage Shield
 
-Options are grouped under the compact tabs `General`, `T-Lost`, `T-???`,
+Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
 global `MCM` API and legacy/localized editions exposing `ModConfigMenu`.
 Without MCM, saved or default settings still work normally.

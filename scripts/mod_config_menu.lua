@@ -49,7 +49,7 @@ local TEXT = {
         subcategories = {
             general = "General",
             taintedLost = "T-Lost",
-            taintedBlueBaby = "T-???",
+            taintedBlueBaby = "T-Blue Baby",
             taintedEden = "T-Eden",
             bethany = "Bethany",
         },
@@ -90,9 +90,27 @@ local MENU_SETTINGS = {
             "联机时只对实际购买的里蓝人生效。",
         },
         enInfo = {
-            "Tainted ??? uses ???'s equivalent Soul Heart deal prices.",
+            "Tainted Blue Baby uses Blue Baby's equivalent Soul Heart prices.",
             "One/two containers cost one/two Soul Hearts respectively.",
-            "In co-op, only the purchasing Tainted ??? receives the price.",
+            "In co-op, only the purchasing Tainted Blue Baby gets the price.",
+        },
+    },
+    {
+        key = "taintedBlueBabyPoopCapacity",
+        group = "taintedBlueBaby",
+        zhName = "大便满容量保护",
+        enName = "Full Poop Protection",
+        zhInfo = {
+            "里蓝人的大便队列满容量时不会继续拾取大便。",
+            "小型与大型大便都会留在地上以便之后使用。",
+            "未满容量时保持原版拾取行为。",
+            "与等价魂心交易开关相互独立。",
+        },
+        enInfo = {
+            "Tainted Blue Baby leaves poop pickups when his queue is full.",
+            "Both small and large pickups stay available for later.",
+            "Below capacity, pickup behavior remains vanilla.",
+            "Independent from the equivalent Soul Deal option.",
         },
     },
     {

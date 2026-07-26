@@ -153,7 +153,7 @@ function TaintedBlueBabyDealsModule:OnPrePickupCollision(pickup, collider)
         self:ApplyPrice(pickup)
     else
         -- Pedestal prices are shared in co-op. Restore the exact prior price
-        -- before another character buys so only Tainted ??? receives the deal.
+        -- before another character buys so only Tainted Blue Baby gets it.
         self:RestorePrice(pickup)
     end
 end
