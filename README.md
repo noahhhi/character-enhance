@@ -5,7 +5,7 @@
 <h1 align="center">Character Enhance</h1>
 
 <p align="center">
-  <strong>Independently configurable character enhancements for The Binding of Isaac: Repentance.</strong>
+  <strong>Independently configurable character enhancements for The Binding of Isaac: Repentance+.</strong>
 </p>
 
 <p align="center">
@@ -26,7 +26,9 @@
 
 ## Requirements
 
-- *The Binding of Isaac: Repentance*
+- *The Binding of Isaac: Repentance+*, version `1.9.7.15`
+- This mod is tested only on game version `1.9.7.15`; other versions are
+  unverified.
 - Standard Lua Mod API; REPENTOGON is not required
 - [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951) is optional
 
@@ -46,8 +48,8 @@
   D4/D100 invoked through Void or Metronome, Missing No., one-pip and six-pip
   Dice Rooms, the reversed Wheel of Fortune card, and comparable passive-item
   replacement.
-- Voluntary damage such as blood donation, IV Bag, Curse Room doors, and
-  Sacrifice Room spikes retains vanilla behavior.
+- Voluntary damage such as Blood Donation Machines, Devil Beggars, Hell Games,
+  IV Bag, Curse Room doors, and Sacrifice Room spikes retains vanilla behavior.
 - An independent TMTRAINER slider controls whether TMTRAINER is included in
   each full-reroll Secret Room pool. `0%` always excludes it, `50%` includes it
   for half of rerolls on average, and `100%` preserves vanilla behavior. Normal
@@ -63,8 +65,9 @@
 - Soul Charge absorbs penalty damage that would lower Devil/Angel Room chance,
   protecting both red health and deal chance. Half-heart damage costs 2 and
   full-heart damage costs 4; any positive charge can absorb one qualifying hit.
-- Safe damage, including Sacrifice Room spikes, Curse Room entry/exit, and blood
-  donation, removes red health normally and never consumes Soul Charge.
+- Safe damage, including Devil Beggars, Hell Games, blood donation, Sacrifice
+  Room spikes, and Curse Room entry/exit, removes red health normally and never
+  consumes Soul Charge.
 - Absorbed penalty damage still destroys Perfection and affects its progress;
   only red health and room-deal probability are protected.
 

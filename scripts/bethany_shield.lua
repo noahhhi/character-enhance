@@ -6,11 +6,6 @@ local BETHANY = PlayerType.PLAYER_BETHANY
 local PERFECTION = TrinketType.TRINKET_PERFECTION
 local FLOOR_DAMAGED = LevelStateFlag.STATE_DAMAGED
 
-local SAFE_DAMAGE_FLAGS = DamageFlag.DAMAGE_NO_PENALTIES
-    | DamageFlag.DAMAGE_FAKE
-    | DamageFlag.DAMAGE_CURSED_DOOR
-    | DamageFlag.DAMAGE_IV_BAG
-
 function BethanyShieldModule.New(context)
     local self = setmetatable({
         Context = context,
@@ -41,21 +36,10 @@ function BethanyShieldModule.New(context)
 end
 
 function BethanyShieldModule:IsExcludedDamage(damageFlags, source)
-    if damageFlags & SAFE_DAMAGE_FLAGS ~= 0 then
-        return true
-    end
-
-    if damageFlags & DamageFlag.DAMAGE_SPIKES ~= 0
-        and Game():GetRoom():GetType() == RoomType.ROOM_SACRIFICE
-    then
-        return true
-    end
-
-    local sourceEntity = source and source.Entity
-
-    return sourceEntity
-        and sourceEntity.Type == EntityType.ENTITY_SLOT
-        and sourceEntity.Variant == 2
+    return self.Context.DamagePolicy:IsNonPenaltyDamage(
+        damageFlags,
+        source
+    )
 end
 
 function BethanyShieldModule:OnPlayerDamage(
