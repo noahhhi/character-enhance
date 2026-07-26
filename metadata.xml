@@ -4,7 +4,7 @@
     <directory>character-enhance</directory>
     <id>character-enhance</id>
     <description>[h1]Character Enhance[/h1]
-Independently configurable enhancements for Tainted Lost, Tainted ???, Tainted Eden, Bethany, Esau Jr., and familiar-capacity protection. Requires Repentance+ 1.9.7.15; this is the only tested game version. Other versions are unverified. REPENTOGON is not required.
+Independently configurable enhancements for Tainted Lost, Tainted Blue Baby, Tainted Eden, Bethany, Esau Jr., and familiar-capacity protection. Requires Repentance+ 1.9.7.15; this is the only tested game version. Other versions are unverified. REPENTOGON is not required.
 
 [h1]角色增强[/h1]
 为里游魂、里蓝人、里伊甸、伯大尼、小以扫及跟班容量保护提供可独立开关的增强功能。需要《忏悔+》1.9.7.15，且仅测试该游戏版本；其他版本尚未验证。不需要 REPENTOGON。
@@ -12,7 +12,7 @@ Independently configurable enhancements for Tainted Lost, Tainted ???, Tainted E
 Supports English and Simplified Chinese Mod Config Menu labels. / 支持英文与简体中文 Mod Config Menu。
 
 [url=https://github.com/noahhhi/character-enhance]Source code / 源码[/url]</description>
-    <version>1.6.15</version>
+    <version>1.6.19</version>
     <visibility>Public</visibility>
     <tag id="Lua"/>
     <tag id="Tweaks"/>

@@ -9,6 +9,7 @@ local FAMILIAR_HARD_LIMIT = 64
 local BANK_RELEASE_INTERVAL = 3
 local BANK_RELEASE_BATCH_SIZE = 2
 local BANK_ANIMATION_INTERVAL = 5
+local BANK_SAVE_DELAY = 30
 local MAX_BANKED_PER_TYPE = 2147483647
 
 function FamiliarCapacityModule.New(context)
@@ -26,9 +27,16 @@ function FamiliarCapacityModule.New(context)
         NextReleaseFrame = 0,
         ReleasePlayerCursor = 0,
         ReleaseSpiderNext = false,
+        BankDirty = false,
+        BankSaveDueFrame = nil,
         RunActive = false,
         NeedsRebalance = false,
+        UpdateCallbackRegistered = false,
     }, FamiliarCapacityModule)
+
+    self.UpdateCallback = function()
+        self:OnUpdate()
+    end
 
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
@@ -40,12 +48,6 @@ function FamiliarCapacityModule.New(context)
         ModCallbacks.MC_FAMILIAR_INIT,
         function(_, familiar)
             self:OnFamiliarInit(familiar)
-        end
-    )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_UPDATE,
-        function()
-            self:OnUpdate()
         end
     )
     context.Mod:AddCallback(
@@ -61,6 +63,47 @@ function FamiliarCapacityModule.New(context)
     self:LoadBank(true)
 
     return self
+end
+
+function FamiliarCapacityModule:RefreshUpdateCallback()
+    local enabled = self:IsEnabled()
+        and (self.NeedsRebalance or self.BankedCount > 0 or self.BankDirty)
+
+    if enabled and not self.UpdateCallbackRegistered then
+        self.Context.Mod:AddCallback(
+            ModCallbacks.MC_POST_UPDATE,
+            self.UpdateCallback
+        )
+        self.UpdateCallbackRegistered = true
+    elseif not enabled and self.UpdateCallbackRegistered then
+        self.Context.Mod:RemoveCallback(
+            ModCallbacks.MC_POST_UPDATE,
+            self.UpdateCallback
+        )
+        self.UpdateCallbackRegistered = false
+    end
+end
+
+function FamiliarCapacityModule:MarkBankDirty()
+    self.BankDirty = true
+
+    if not self.BankSaveDueFrame then
+        self.BankSaveDueFrame = Game():GetFrameCount() + BANK_SAVE_DELAY
+    end
+end
+
+function FamiliarCapacityModule:SaveBankIfDue()
+    if not self.BankDirty
+        or Game():GetFrameCount() < self.BankSaveDueFrame
+    then
+        return
+    end
+
+    -- SaveData is unsafe during MC_PRE_MOD_UNLOAD on Repentance+ 1.9.7.15.
+    -- Persist the mutable overflow bank from this normal update callback instead.
+    self.Context:Save()
+    self.BankDirty = false
+    self.BankSaveDueFrame = nil
 end
 
 function FamiliarCapacityModule:IsEnabled()
@@ -159,6 +202,8 @@ function FamiliarCapacityModule:AddToBank(playerIndex, variant, amount)
     local newCount = math.min(MAX_BANKED_PER_TYPE, previousCount + amount)
     bank[field] = newCount
     self.BankedCount = self.BankedCount + newCount - previousCount
+    self:MarkBankDirty()
+    self:RefreshUpdateCallback()
 
     return true
 end
@@ -329,6 +374,7 @@ function FamiliarCapacityModule:TryRelease(playerIndex, player, variant)
 
     bank[field] = bank[field] - 1
     self.BankedCount = math.max(0, self.BankedCount - 1)
+    self:MarkBankDirty()
 
     if variant == BLUE_FLY then
         player:AddBlueFlies(1, player.Position, nil)
@@ -422,6 +468,8 @@ end
 function FamiliarCapacityModule:LoadBank(isContinued)
     self.TemporaryBank = {}
     self.BankedCount = 0
+    self.BankDirty = false
+    self.BankSaveDueFrame = nil
 
     if not isContinued then
         return
@@ -447,6 +495,14 @@ function FamiliarCapacityModule:LoadBank(isContinued)
 end
 
 function FamiliarCapacityModule:OnGameStarted(isContinued)
+    if self.UpdateCallbackRegistered then
+        self.Context.Mod:RemoveCallback(
+            ModCallbacks.MC_POST_UPDATE,
+            self.UpdateCallback
+        )
+        self.UpdateCallbackRegistered = false
+    end
+
     self.RunActive = true
     self.NeedsRebalance = false
     self.NextReleaseFrame = 0
@@ -459,12 +515,17 @@ function FamiliarCapacityModule:OnGameStarted(isContinued)
     if self.Context:IsEnabled(SETTING_KEY) then
         self.NeedsRebalance = true
     end
+
+    self:RefreshUpdateCallback()
 end
 
 function FamiliarCapacityModule:OnUpdate()
     if self:IsEnabled() then
         self:ReleaseBankedFamiliars()
+        self:SaveBankIfDue()
     end
+
+    self:RefreshUpdateCallback()
 end
 
 function FamiliarCapacityModule:OnNewRoom()
@@ -475,6 +536,7 @@ function FamiliarCapacityModule:OnNewRoom()
     self:ResetSnapshot()
     self.AnimationFrames = {}
     self.NeedsRebalance = self.Context:IsEnabled(SETTING_KEY)
+    self:RefreshUpdateCallback()
 end
 
 function FamiliarCapacityModule:OnSettingChanged(enabled)
@@ -485,6 +547,8 @@ function FamiliarCapacityModule:OnSettingChanged(enabled)
     if enabled and self.RunActive then
         self.NextReleaseFrame = Game():GetFrameCount()
     end
+
+    self:RefreshUpdateCallback()
 end
 
 function FamiliarCapacityModule:GetSaveData()
@@ -494,6 +558,14 @@ function FamiliarCapacityModule:GetSaveData()
 end
 
 function FamiliarCapacityModule:OnPreGameExit()
+    if self.UpdateCallbackRegistered then
+        self.Context.Mod:RemoveCallback(
+            ModCallbacks.MC_POST_UPDATE,
+            self.UpdateCallback
+        )
+        self.UpdateCallbackRegistered = false
+    end
+
     self.RunActive = false
     self.NeedsRebalance = false
     self:ResetSnapshot()

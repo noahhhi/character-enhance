@@ -131,6 +131,15 @@ function TaintedBlueBabyDealsModule:ApplyPrice(pickup)
 end
 
 function TaintedBlueBabyDealsModule:OnPickupUpdate(pickup)
+    local state = pickup:GetData()[STATE_KEY]
+
+    -- Vanilla Tainted Blue Baby deals are the only unowned pedestals that can
+    -- need adjustment. Avoid a co-op player scan for ordinary room, shop and
+    -- already adjusted collectible pedestals on every pickup-update frame.
+    if not state and pickup.Price ~= THREE_SOUL_HEARTS then
+        return
+    end
+
     if self.Context:IsEnabled(SETTING_KEY)
         and self:HasOnlyTaintedBlueBabies()
     then
@@ -153,7 +162,7 @@ function TaintedBlueBabyDealsModule:OnPrePickupCollision(pickup, collider)
         self:ApplyPrice(pickup)
     else
         -- Pedestal prices are shared in co-op. Restore the exact prior price
-        -- before another character buys so only Tainted ??? receives the deal.
+        -- before another character buys so only Tainted Blue Baby gets it.
         self:RestorePrice(pickup)
     end
 end

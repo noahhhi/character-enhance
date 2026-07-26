@@ -1,10 +1,11 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.6.15"
+local VERSION = "1.6.19"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
     taintedBlueBabyDevilDeals = true,
+    taintedBlueBabyPoopCapacity = true,
     bethanySoulCharge = true,
     bethanyDamageShield = true,
     familiarCapacity = true,
@@ -137,6 +138,9 @@ end
 
 local TaintedLostModule = include("scripts/tainted_lost")
 local TaintedBlueBabyDealsModule = include("scripts/tainted_bluebaby_deals")
+local TaintedBlueBabyPoopCapacityModule = include(
+    "scripts/tainted_bluebaby_poop_capacity"
+)
 local RerollHealthModule = include("scripts/reroll_health")
 local BethanyChargeModule = include("scripts/bethany_charge")
 local BethanyShieldModule = include("scripts/bethany_shield")
@@ -154,6 +158,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "taintedBlueBabyDevilDeals",
     TaintedBlueBabyDealsModule.New(Context)
+)
+Context:RegisterModule(
+    "taintedBlueBabyPoopCapacity",
+    TaintedBlueBabyPoopCapacityModule.New(Context)
 )
 Context:RegisterModule(
     "bethanySoulCharge",
@@ -186,15 +194,6 @@ if Game():GetFrameCount() > 0 then
         end
     end
 end
-
--- Persist module state immediately before `luamod` unloads this instance.
--- The newly loaded instance then treats that state as its continuation baseline.
-CharacterEnhance:AddCallback(
-    ModCallbacks.MC_PRE_MOD_UNLOAD,
-    function()
-        Context:Save()
-    end
-)
 
 local function SaveBeforeGameExit(_, shouldSave)
     for _, module in pairs(Context.Modules) do

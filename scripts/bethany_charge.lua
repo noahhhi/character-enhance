@@ -3,6 +3,7 @@ BethanyChargeModule.__index = BethanyChargeModule
 
 local SETTING_KEY = "bethanySoulCharge"
 local BETHANY = PlayerType.PLAYER_BETHANY
+local CLICKER = CollectibleType.COLLECTIBLE_CLICKER
 local MAX_SOUL_CHARGE = 99
 
 -- Only pure Soul Charge heart pickups are blocked at the cap. Blended Hearts
@@ -36,8 +37,14 @@ function BethanyChargeModule.New(context)
         TrackedCharge = {},
         PendingActiveBonus = {},
         PendingBaselineReset = {},
+        PendingCharacterRefresh = false,
         RunActive = false,
+        UpdateCallbackRegistered = false,
     }, BethanyChargeModule)
+
+    self.UpdateCallback = function()
+        self:OnUpdate()
+    end
 
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
@@ -64,14 +71,23 @@ function BethanyChargeModule.New(context)
         end,
         PickupVariant.PICKUP_HEART
     )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_UPDATE,
-        function()
-            self:OnUpdate()
-        end
-    )
-
     return self
+end
+
+function BethanyChargeModule:SetUpdateCallbackEnabled(enabled)
+    if enabled and not self.UpdateCallbackRegistered then
+        self.Context.Mod:AddCallback(
+            ModCallbacks.MC_POST_UPDATE,
+            self.UpdateCallback
+        )
+        self.UpdateCallbackRegistered = true
+    elseif not enabled and self.UpdateCallbackRegistered then
+        self.Context.Mod:RemoveCallback(
+            ModCallbacks.MC_POST_UPDATE,
+            self.UpdateCallback
+        )
+        self.UpdateCallbackRegistered = false
+    end
 end
 
 function BethanyChargeModule:IsBethany(player)
@@ -82,6 +98,7 @@ function BethanyChargeModule:ResetTracking()
     self.TrackedCharge = {}
     self.PendingActiveBonus = {}
     self.PendingBaselineReset = {}
+    self.PendingCharacterRefresh = false
 end
 
 function BethanyChargeModule:EstablishCurrentBaselines()
@@ -101,22 +118,36 @@ function BethanyChargeModule:EstablishCurrentBaselines()
 end
 
 function BethanyChargeModule:OnGameStarted()
+    self:SetUpdateCallbackEnabled(false)
     self.RunActive = true
     self:ResetTracking()
 
     if self.Context:IsEnabled(SETTING_KEY) then
         self:EstablishCurrentBaselines()
+        self:SetUpdateCallbackEnabled(next(self.TrackedCharge) ~= nil)
     end
 end
 
 function BethanyChargeModule:OnPlayerInit(player)
     if self.Context:IsEnabled(SETTING_KEY) and self:IsBethany(player) then
         self.TrackedCharge[GetPtrHash(player)] = player:GetSoulCharge()
+        self:SetUpdateCallbackEnabled(true)
     end
 end
 
 function BethanyChargeModule:OnUseItem(collectibleType, player)
-    if not self.Context:IsEnabled(SETTING_KEY) or not self:IsBethany(player) then
+    if not self.Context:IsEnabled(SETTING_KEY) then
+        return
+    end
+
+    if collectibleType == CLICKER then
+        -- Clicker can create or remove a normal Bethany without a player-init
+        -- callback. Keep one update active to adopt the resulting character.
+        self.PendingCharacterRefresh = true
+        self:SetUpdateCallbackEnabled(true)
+    end
+
+    if not self:IsBethany(player) then
         return
     end
 
@@ -198,20 +229,24 @@ end
 function BethanyChargeModule:AdoptCurrentCharge(player)
     if self.Context:IsEnabled(SETTING_KEY) and self:IsBethany(player) then
         self.TrackedCharge[GetPtrHash(player)] = player:GetSoulCharge()
+        self:SetUpdateCallbackEnabled(true)
     end
 end
 
 function BethanyChargeModule:OnUpdate()
     if not self.Context:IsEnabled(SETTING_KEY) then
+        self:SetUpdateCallbackEnabled(false)
         return
     end
 
     local game = Game()
+    local foundBethany = false
 
     for playerIndex = 0, game:GetNumPlayers() - 1 do
         local player = Isaac.GetPlayer(playerIndex)
 
         if self:IsBethany(player) then
+            foundBethany = true
             self:SyncPlayer(player)
         else
             local playerHash = GetPtrHash(player)
@@ -220,17 +255,23 @@ function BethanyChargeModule:OnUpdate()
             self.PendingBaselineReset[playerHash] = nil
         end
     end
+
+    self.PendingCharacterRefresh = false
+    self:SetUpdateCallbackEnabled(foundBethany)
 end
 
 function BethanyChargeModule:OnSettingChanged(enabled)
+    self:SetUpdateCallbackEnabled(false)
     self:ResetTracking()
 
     if enabled then
         self:EstablishCurrentBaselines()
+        self:SetUpdateCallbackEnabled(next(self.TrackedCharge) ~= nil)
     end
 end
 
 function BethanyChargeModule:OnPreGameExit()
+    self:SetUpdateCallbackEnabled(false)
     self.RunActive = false
     self:ResetTracking()
 end

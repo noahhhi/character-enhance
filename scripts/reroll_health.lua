@@ -26,6 +26,7 @@ function RerollHealthModule.New(context)
     local self = setmetatable({
         Context = context,
         Players = {},
+        PendingSyncPlayers = {},
         MaxCollectibleId = 733,
         RunActive = false,
         PendingEsauJr = {},
@@ -35,7 +36,16 @@ function RerollHealthModule.New(context)
         DiceRoomFace = nil,
         DiceRoomFloor = nil,
         DiceRoomTriggered = false,
+        UpdateCallbackRegistered = false,
+        DiceUpdateCallbackRegistered = false,
     }, RerollHealthModule)
+
+    self.UpdateCallback = function()
+        self:OnUpdate()
+    end
+    self.DiceUpdateCallback = function(_, player)
+        self:OnPlayerEffectUpdate(player)
+    end
 
     -- Register before the Bethany module. A restored Soul Heart must already be
     -- present when Bethany's charge tracker runs, otherwise restoration could
@@ -49,13 +59,7 @@ function RerollHealthModule.New(context)
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_PLAYER_INIT,
         function(_, player)
-            self:TrackPlayer(player)
-        end
-    )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_PEFFECT_UPDATE,
-        function(_, player)
-            self:OnPlayerEffectUpdate(player)
+            self:OnPlayerInit(player)
         end
     )
     context.Mod:AddCallback(
@@ -68,12 +72,6 @@ function RerollHealthModule.New(context)
         ModCallbacks.MC_ENTITY_TAKE_DMG,
         function(_, entity, amount, flags, source)
             self:OnEntityTakeDamage(entity, amount, flags, source)
-        end
-    )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_UPDATE,
-        function()
-            self:OnUpdate()
         end
     )
     context.Mod:AddCallback(
@@ -102,6 +100,47 @@ function RerollHealthModule.New(context)
     )
 
     return self
+end
+
+function RerollHealthModule:SetUpdateCallbackEnabled(enabled)
+    if enabled and not self.UpdateCallbackRegistered then
+        self.Context.Mod:AddCallback(
+            ModCallbacks.MC_POST_UPDATE,
+            self.UpdateCallback
+        )
+        self.UpdateCallbackRegistered = true
+    elseif not enabled and self.UpdateCallbackRegistered then
+        self.Context.Mod:RemoveCallback(
+            ModCallbacks.MC_POST_UPDATE,
+            self.UpdateCallback
+        )
+        self.UpdateCallbackRegistered = false
+    end
+end
+
+function RerollHealthModule:SetDiceUpdateCallbackEnabled(enabled)
+    if enabled and not self.DiceUpdateCallbackRegistered then
+        self.Context.Mod:AddCallback(
+            ModCallbacks.MC_POST_PEFFECT_UPDATE,
+            self.DiceUpdateCallback
+        )
+        self.DiceUpdateCallbackRegistered = true
+    elseif not enabled and self.DiceUpdateCallbackRegistered then
+        self.Context.Mod:RemoveCallback(
+            ModCallbacks.MC_POST_PEFFECT_UPDATE,
+            self.DiceUpdateCallback
+        )
+        self.DiceUpdateCallbackRegistered = false
+    end
+end
+
+function RerollHealthModule:RefreshUpdateCallback()
+    self:SetUpdateCallbackEnabled(
+        self.RunActive
+        and (#self.PendingEsauJr > 0
+            or next(self.PendingSyncPlayers) ~= nil
+            or self.TmtrainerBlacklistMode == "transient")
+    )
 end
 
 function RerollHealthModule:GetPlayerKey(player)
@@ -281,37 +320,25 @@ function RerollHealthModule:RestoreHealth(player, target)
     end
 end
 
-function RerollHealthModule:InventoryWasRerolled(previous, current)
-    local removed = false
-    local added = false
-
-    for collectibleType, oldCount in pairs(previous) do
-        if (current[collectibleType] or 0) < oldCount then
-            removed = true
-            break
-        end
-    end
-
-    for collectibleType, newCount in pairs(current) do
-        if (previous[collectibleType] or 0) < newCount then
-            added = true
-            break
-        end
-    end
-
-    return removed and added
-end
-
 function RerollHealthModule:TrackPlayer(player)
     if not player then
         return
     end
 
     self.Players[self:GetPlayerKey(player)] = {
-        inventory = self:CaptureInventory(player),
-        health = self:CaptureHealth(player),
         pending = nil,
     }
+end
+
+function RerollHealthModule:OnPlayerInit(player)
+    self:TrackPlayer(player)
+
+    -- A normal co-op join or rewind reconstruction is already an established
+    -- body. During Esau Jr. creation the pre-use callback has queued a scan,
+    -- so leave that new body unmarked until its first-pickup replay completes.
+    if player and #self.PendingEsauJr == 0 then
+        self.KnownEsauJrBodies[self:GetPlayerKey(player)] = true
+    end
 end
 
 function RerollHealthModule:QueueRestore(
@@ -354,6 +381,9 @@ function RerollHealthModule:QueueRestore(
     elseif damageAmount then
         state.pending.damageAmount = damageAmount
     end
+
+    self.PendingSyncPlayers[key] = player
+    self:RefreshUpdateCallback()
 end
 
 function RerollHealthModule:GetInventoryDiceFloor()
@@ -440,6 +470,7 @@ function RerollHealthModule:OnPlayerEffectUpdate(player)
     end
 
     self.DiceRoomTriggered = true
+    self:SetDiceUpdateCallbackEnabled(false)
 
     if self.DiceRoomFace == 1 then
         local key = self:GetPlayerKey(player)
@@ -536,6 +567,7 @@ function RerollHealthModule:OnNewLevel()
 end
 
 function RerollHealthModule:OnNewRoom()
+    self:SetDiceUpdateCallbackEnabled(false)
     self:ClearTmtrainerBlacklist()
     self.TmtrainerPreparedDecisions = {}
     self.DiceRoomFace = nil
@@ -553,6 +585,7 @@ function RerollHealthModule:OnNewRoom()
         -- single Dice Room event. If any co-op player already owns TMTRAINER,
         -- preserve vanilla behavior instead of restricting that player's roll.
         self:PrepareDiceRoomDecision()
+        self:SetDiceUpdateCallbackEnabled(true)
     end
 end
 
@@ -679,6 +712,7 @@ function RerollHealthModule:QueueEsauJrScan(player)
         controllerIndex = player.ControllerIndex,
         framesLeft = 3,
     }
+    self:RefreshUpdateCallback()
 end
 
 function RerollHealthModule:RegisterEsauJrInventory(player)
@@ -780,36 +814,34 @@ function RerollHealthModule:SyncPlayer(player)
         return
     end
 
+    -- Full inventory scans are expensive standard-API calls. Every supported
+    -- reroll path queues its pre-reroll snapshot before vanilla changes the
+    -- inventory, so idle frames and player reconstruction (including rewind)
+    -- have nothing to reconcile.
+    if not state.pending then
+        return
+    end
+
     local currentInventory = self:CaptureInventory(player)
-    local detectedReroll = self:InventoryWasRerolled(
-        state.inventory,
-        currentInventory
-    )
-    local fullInventoryReroll = detectedReroll or state.pending ~= nil
-    local previousInventory = state.pending and state.pending.inventory
-        or state.inventory
+    local previousInventory = state.pending.inventory
     local preRollAllowed = self.TmtrainerPreparedDecisions[key]
 
-    if state.pending and state.pending.tmtrainerAllowed ~= nil then
+    if state.pending.tmtrainerAllowed ~= nil then
         preRollAllowed = state.pending.tmtrainerAllowed
     end
 
-    if self:ReplaceUnexpectedTmtrainer(
+    self:ReplaceUnexpectedTmtrainer(
         player,
         previousInventory,
         currentInventory,
-        fullInventoryReroll,
+        true,
         preRollAllowed
-    ) then
-        currentInventory = self:CaptureInventory(player)
-    end
+    )
 
-    if self.Context:IsEnabled(REROLL_SETTING_KEY)
-        and fullInventoryReroll
-    then
-        local baseline = state.pending and state.pending.health or state.health
+    if self.Context:IsEnabled(REROLL_SETTING_KEY) then
+        local baseline = state.pending.health
 
-        if state.pending and state.pending.damageAmount then
+        if state.pending.damageAmount then
             baseline = self:ApplyDamageToSnapshot(
                 baseline,
                 state.pending.damageAmount
@@ -819,37 +851,21 @@ function RerollHealthModule:SyncPlayer(player)
         self:RestoreHealth(player, baseline)
     end
 
-    state.inventory = currentInventory
-    state.health = self:CaptureHealth(player)
     state.pending = nil
-
-    if detectedReroll then
-        self.TmtrainerPreparedDecisions[key] = nil
-    end
+    self.TmtrainerPreparedDecisions[key] = nil
 end
 
 function RerollHealthModule:OnUpdate()
     if not self.RunActive then
+        self:SetUpdateCallbackEnabled(false)
         return
     end
 
     self:ProcessPendingEsauJr()
 
-    local game = Game()
-    local present = {}
-
-    for playerIndex = 0, game:GetNumPlayers() - 1 do
-        local player = Isaac.GetPlayer(playerIndex)
-        local key = self:GetPlayerKey(player)
-        present[key] = true
+    for key, player in pairs(self.PendingSyncPlayers) do
         self:SyncPlayer(player)
-        self.KnownEsauJrBodies[key] = true
-    end
-
-    for key in pairs(self.Players) do
-        if not present[key] then
-            self.Players[key] = nil
-        end
+        self.PendingSyncPlayers[key] = nil
     end
 
 
@@ -859,12 +875,17 @@ function RerollHealthModule:OnUpdate()
     if self.TmtrainerBlacklistMode == "transient" then
         self:ClearTmtrainerBlacklist()
     end
+
+    self:RefreshUpdateCallback()
 end
 
 function RerollHealthModule:OnGameStarted()
+    self:SetUpdateCallbackEnabled(false)
+    self:SetDiceUpdateCallbackEnabled(false)
     self:ClearTmtrainerBlacklist()
     self.RunActive = true
     self.Players = {}
+    self.PendingSyncPlayers = {}
     self.PendingEsauJr = {}
     self.KnownEsauJrBodies = {}
     self.TmtrainerPreparedDecisions = {}
@@ -880,6 +901,8 @@ function RerollHealthModule:OnGameStarted()
         self:TrackPlayer(player)
         self.KnownEsauJrBodies[self:GetPlayerKey(player)] = true
     end
+
+    self:OnNewRoom()
 end
 
 function RerollHealthModule:OnSettingChanged(_, settingKey)
@@ -887,6 +910,7 @@ function RerollHealthModule:OnSettingChanged(_, settingKey)
         -- Disabling pauses future first-use registration. Keep known bodies so
         -- toggling the option cannot replay one-time pickup effects.
         self.PendingEsauJr = {}
+        self:RefreshUpdateCallback()
         return
     end
 
@@ -902,6 +926,7 @@ function RerollHealthModule:OnSettingChanged(_, settingKey)
     end
 
     self.Players = {}
+    self.PendingSyncPlayers = {}
 
     if self.RunActive then
         local game = Game()
@@ -911,12 +936,17 @@ function RerollHealthModule:OnSettingChanged(_, settingKey)
             self:TrackPlayer(player)
         end
     end
+
+    self:RefreshUpdateCallback()
 end
 
 function RerollHealthModule:OnPreGameExit()
+    self:SetUpdateCallbackEnabled(false)
+    self:SetDiceUpdateCallbackEnabled(false)
     self:ClearTmtrainerBlacklist()
     self.RunActive = false
     self.Players = {}
+    self.PendingSyncPlayers = {}
     self.PendingEsauJr = {}
     self.KnownEsauJrBodies = {}
     self.TmtrainerPreparedDecisions = {}
