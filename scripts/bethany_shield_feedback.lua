@@ -6,17 +6,10 @@ local SHIELD_SETTING_KEY = "bethanyDamageShield"
 local BETHANY = PlayerType.PLAYER_BETHANY
 local MAX_SOUL_CHARGE = 99
 local HIT_FLASH_FRAMES = 10
-local HURT_SOUND_SUPPRESSION_FRAMES = 4
 local SHIELD_SPRITE_PATH = "gfx/1000.160_bishop shield.anm2"
 local PARTICLE_SPRITE_PATH = "gfx/1000.085_diamond particle.anm2"
 local MIN_PARTICLES = 3
 local EXTRA_PARTICLES = 7
-
-local HURT_SOUNDS = {
-    SoundEffect.SOUND_ISAAC_HURT_GRUNT,
-    SoundEffect.SOUND_CUTE_GRUNT,
-    SoundEffect.SOUND_BABY_HURT,
-}
 
 local function Clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
@@ -28,19 +21,12 @@ function BethanyShieldFeedbackModule.New(context)
         Sfx = SFXManager(),
         PlayerVisuals = {},
         HitUntilFrame = {},
-        HurtSoundSuppressions = {},
     }, BethanyShieldFeedbackModule)
 
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
         function()
             self:Reset()
-        end
-    )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_UPDATE,
-        function()
-            self:OnPostUpdate()
         end
     )
     context.Mod:AddCallback(
@@ -61,7 +47,6 @@ end
 function BethanyShieldFeedbackModule:Reset()
     self.PlayerVisuals = {}
     self.HitUntilFrame = {}
-    self.HurtSoundSuppressions = {}
 end
 
 function BethanyShieldFeedbackModule:GetPlayerVisuals(playerHash)
@@ -86,41 +71,6 @@ function BethanyShieldFeedbackModule:GetPlayerVisuals(playerHash)
     }
     self.PlayerVisuals[playerHash] = visuals
     return visuals
-end
-
-function BethanyShieldFeedbackModule:SnapshotHurtSounds()
-    local wasPlaying = {}
-
-    for _, soundId in ipairs(HURT_SOUNDS) do
-        wasPlaying[soundId] = self.Sfx:IsPlaying(soundId)
-    end
-
-    return wasPlaying
-end
-
-function BethanyShieldFeedbackModule:StopNewHurtSounds(wasPlaying)
-    for _, soundId in ipairs(HURT_SOUNDS) do
-        if not wasPlaying[soundId] and self.Sfx:IsPlaying(soundId) then
-            self.Sfx:Stop(soundId)
-        end
-    end
-end
-
-function BethanyShieldFeedbackModule:OnPostUpdate()
-    if not self:IsEnabled() then
-        self.HurtSoundSuppressions = {}
-        return
-    end
-
-    local frame = Game():GetFrameCount()
-
-    for playerHash, suppression in pairs(self.HurtSoundSuppressions) do
-        if frame > suppression.UntilFrame then
-            self.HurtSoundSuppressions[playerHash] = nil
-        else
-            self:StopNewHurtSounds(suppression.WasPlaying)
-        end
-    end
 end
 
 function BethanyShieldFeedbackModule:PlayShieldSound(soulCharge)
@@ -158,34 +108,26 @@ function BethanyShieldFeedbackModule:PlayShieldSound(soulCharge)
     end
 end
 
-function BethanyShieldFeedbackModule:OnAbsorbedHit(
-    player,
-    damageAmount,
-    damageFlags,
-    source,
-    damageCountdownFrames
-)
+function BethanyShieldFeedbackModule:OnAbsorbedHit(player)
     if not self:IsEnabled() then
         return false
     end
 
-    local wasPlaying = self:SnapshotHurtSounds()
     local playerHash = GetPtrHash(player)
     local frame = Game():GetFrameCount()
 
+    -- Match Dull Razor/Holy Mantle-style feedback instead of replaying the
+    -- original hit. A zero-value fake hit triggers damage-reactive effects and
+    -- controller feedback without starting the normal hurt animation or voice.
+    -- Do not inherit the original source or flags: those can select a full hurt
+    -- presentation even when DAMAGE_FAKE is present.
     player:TakeDamage(
-        damageAmount,
-        damageFlags | DamageFlag.DAMAGE_FAKE
-            | DamageFlag.DAMAGE_NO_PENALTIES,
-        source,
-        damageCountdownFrames
+        0,
+        DamageFlag.DAMAGE_FAKE | DamageFlag.DAMAGE_NO_PENALTIES,
+        EntityRef(player),
+        0
     )
 
-    self:StopNewHurtSounds(wasPlaying)
-    self.HurtSoundSuppressions[playerHash] = {
-        WasPlaying = wasPlaying,
-        UntilFrame = frame + HURT_SOUND_SUPPRESSION_FRAMES,
-    }
     self:PlayShieldSound(player:GetSoulCharge())
 
     self.HitUntilFrame[playerHash] = frame + HIT_FLASH_FRAMES

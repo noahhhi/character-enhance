@@ -106,17 +106,11 @@ function BethanyShieldModule:OnPlayerDamage(
     local feedbackModule = self.Context.Modules.bethanyShieldFeedback
 
     if feedbackModule and feedbackModule:IsEnabled() then
-        -- The one guarded fake hit restores vanilla controller rumble and
-        -- animation. The feedback module replaces only the newly started hurt
-        -- voice, then supplies the charge-scaled shield sound and visual pulse.
+        -- The one guarded zero-damage fake hit supplies stationary flash,
+        -- damage-reactive effects, and controller feedback without replaying
+        -- the original hurt animation, voice, source, or damage flags.
         self.ApplyingAbsorbedDamage[playerHash] = true
-        feedbackModule:OnAbsorbedHit(
-            player,
-            damageAmount,
-            damageFlags,
-            source,
-            damageCountdownFrames
-        )
+        feedbackModule:OnAbsorbedHit(player)
         self.ApplyingAbsorbedDamage[playerHash] = nil
     end
 
