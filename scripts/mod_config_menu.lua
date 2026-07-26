@@ -70,13 +70,15 @@ local MENU_SETTINGS = {
             "堕化游魂新开局时携带木十字架。",
             "饰品编号：121。",
             "关闭后不会删除本局已获得的饰品。",
-            "角色选择图片不会随开关变化。",
+            "角色选择页的图标与文字会同步显示或隐藏。",
+            "返回角色选择页后生效；若页面已缓存，请重启游戏。",
         },
         enInfo = {
             "Tainted Lost starts new runs with Wooden Cross.",
             "Trinket ID: 121.",
             "Turning this off does not remove an owned trinket.",
-            "The character-select image is static.",
+            "The character-select icon and label follow this setting.",
+            "Reopen character select; restart only if the page was cached.",
         },
     },
     {
