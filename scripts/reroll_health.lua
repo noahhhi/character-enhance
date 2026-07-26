@@ -281,35 +281,12 @@ function RerollHealthModule:RestoreHealth(player, target)
     end
 end
 
-function RerollHealthModule:InventoryWasRerolled(previous, current)
-    local removed = false
-    local added = false
-
-    for collectibleType, oldCount in pairs(previous) do
-        if (current[collectibleType] or 0) < oldCount then
-            removed = true
-            break
-        end
-    end
-
-    for collectibleType, newCount in pairs(current) do
-        if (previous[collectibleType] or 0) < newCount then
-            added = true
-            break
-        end
-    end
-
-    return removed and added
-end
-
 function RerollHealthModule:TrackPlayer(player)
     if not player then
         return
     end
 
     self.Players[self:GetPlayerKey(player)] = {
-        inventory = self:CaptureInventory(player),
-        health = self:CaptureHealth(player),
         pending = nil,
     }
 end
@@ -780,36 +757,34 @@ function RerollHealthModule:SyncPlayer(player)
         return
     end
 
+    -- Full inventory scans are expensive standard-API calls. Every supported
+    -- reroll path queues its pre-reroll snapshot before vanilla changes the
+    -- inventory, so idle frames and player reconstruction (including rewind)
+    -- have nothing to reconcile.
+    if not state.pending then
+        return
+    end
+
     local currentInventory = self:CaptureInventory(player)
-    local detectedReroll = self:InventoryWasRerolled(
-        state.inventory,
-        currentInventory
-    )
-    local fullInventoryReroll = detectedReroll or state.pending ~= nil
-    local previousInventory = state.pending and state.pending.inventory
-        or state.inventory
+    local previousInventory = state.pending.inventory
     local preRollAllowed = self.TmtrainerPreparedDecisions[key]
 
-    if state.pending and state.pending.tmtrainerAllowed ~= nil then
+    if state.pending.tmtrainerAllowed ~= nil then
         preRollAllowed = state.pending.tmtrainerAllowed
     end
 
-    if self:ReplaceUnexpectedTmtrainer(
+    self:ReplaceUnexpectedTmtrainer(
         player,
         previousInventory,
         currentInventory,
-        fullInventoryReroll,
+        true,
         preRollAllowed
-    ) then
-        currentInventory = self:CaptureInventory(player)
-    end
+    )
 
-    if self.Context:IsEnabled(REROLL_SETTING_KEY)
-        and fullInventoryReroll
-    then
-        local baseline = state.pending and state.pending.health or state.health
+    if self.Context:IsEnabled(REROLL_SETTING_KEY) then
+        local baseline = state.pending.health
 
-        if state.pending and state.pending.damageAmount then
+        if state.pending.damageAmount then
             baseline = self:ApplyDamageToSnapshot(
                 baseline,
                 state.pending.damageAmount
@@ -819,13 +794,8 @@ function RerollHealthModule:SyncPlayer(player)
         self:RestoreHealth(player, baseline)
     end
 
-    state.inventory = currentInventory
-    state.health = self:CaptureHealth(player)
     state.pending = nil
-
-    if detectedReroll then
-        self.TmtrainerPreparedDecisions[key] = nil
-    end
+    self.TmtrainerPreparedDecisions[key] = nil
 end
 
 function RerollHealthModule:OnUpdate()
