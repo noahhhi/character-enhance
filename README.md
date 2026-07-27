@@ -82,9 +82,12 @@
   consumes Soul Charge.
 - Absorbed penalty damage still destroys Perfection and affects its progress;
   only red health and room-deal probability are protected.
-- An independent shield-feedback option adds a Soul Charge-scaled blue halo,
-  charge-scaled ice impacts, and a stationary invulnerability flash when
-  damage is absorbed, without Bethany's hurt voice or hit animation.
+- Independent shield feedback offers three selectable full-body translucent
+  animations and three sound sets, including Book of Shadows-inspired and Holy
+  Mantle options. Every Soul Charge point continuously scales the selected
+  shield; MCM preview controls test it without damage. Absorbed hits keep
+  Bethany's pose and never play her hurt voice. Turning feedback off fades the
+  shield away with its selected disappearance sound.
 
 <a id="familiar-capacity"></a>
 ## Familiar capacity protection

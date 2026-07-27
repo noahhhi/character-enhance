@@ -20,6 +20,18 @@ local SUBCATEGORY_ORDER = {
     "bethany",
 }
 local TMTRAINER_CHANCE_KEY = "rerollTmtrainerChance"
+local SHIELD_VISUAL_STYLE_KEY = "bethanyShieldVisualStyle"
+local SHIELD_SOUND_STYLE_KEY = "bethanyShieldSoundStyle"
+local SHIELD_STYLES = {
+    visual = {
+        en = { "Soul Veil", "Shadow Sigil", "Crystal Heart" },
+        zh = { "魂心薄幕", "影之书符印", "晶蓝魂心" },
+    },
+    sound = {
+        en = { "Soul Ice", "Book of Shadows", "Holy Mantle" },
+        zh = { "魂心冰层", "影之书", "神圣屏障" },
+    },
+}
 
 local TEXT = {
     zh = {
@@ -199,17 +211,21 @@ local MENU_SETTINGS = {
         zhName = "护盾反馈",
         enName = "Shield Feedback",
         zhInfo = {
-            "显示随魂心充能增强的淡蓝色护罩。",
+            "每一点充能都会细微改变护罩与冰盾声。",
+            "透明护罩包围全身，不是前方半球。",
             "移动和时间会使护罩渐隐渐现。",
             "格挡时只播放冰盾声，不触发角色受伤表现。",
             "角色保持动作，并在受伤保护期间原地闪烁。",
+            "关闭时护罩伴随轻微冰裂声渐隐消失。",
             "关闭后不影响充能伤害护盾本身。",
         },
         enInfo = {
-            "Shows a pale-blue shield that strengthens with Soul Charge.",
+            "Every charge point subtly changes the shield and sound.",
+            "The translucent shield surrounds the full body.",
             "Movement and time make the shield gently fade and pulse.",
             "Blocks play only the shield sound, with no hurt response.",
             "Bethany keeps her pose and flashes during the cooldown.",
+            "Turning it off fades the shield with a soft ice crack.",
             "Turning this off does not disable the damage shield itself.",
         },
     },
@@ -452,6 +468,137 @@ function ModConfigMenuModule:AddTmtrainerChance(menu)
     self:RememberSubcategory(menu, "taintedEden")
 end
 
+function ModConfigMenuModule:AddShieldStyle(menu, kind)
+    self.CreatedGroups.bethany = true
+    local settingKey = kind == "visual"
+        and SHIELD_VISUAL_STYLE_KEY
+        or SHIELD_SOUND_STYLE_KEY
+    local labels = SHIELD_STYLES[kind]
+
+    menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "bethany"), {
+        Type = menu.OptionType.NUMBER,
+        Minimum = 1,
+        Maximum = 3,
+        ModifyBy = 1,
+        Default = 1,
+        CurrentSetting = function()
+            return self.Context.Settings[settingKey] or 1
+        end,
+        Display = function()
+            local language = self:GetLanguage()
+            local style = self.Context.Settings[settingKey] or 1
+            local name
+
+            if kind == "visual" then
+                name = language == "en" and "Animation" or "动画"
+            else
+                name = language == "en" and "Sound" or "音效"
+            end
+
+            return name .. ": " .. labels[language][style]
+        end,
+        OnChange = function(style)
+            self.Context:SetSetting(settingKey, style)
+            local feedback = self.Context.Modules
+                and self.Context.Modules.bethanyShieldFeedback
+
+            if not feedback then
+                return
+            end
+
+            if kind == "visual" and feedback.PreviewAnimation then
+                feedback:PreviewAnimation()
+            elseif kind == "sound" and feedback.PreviewSound then
+                feedback:PreviewSound()
+            end
+        end,
+        Info = function()
+            if self:GetLanguage() == "en" then
+                return kind == "visual" and {
+                    "Choose one of three live shield animations.",
+                    "Changing it immediately previews the selected style.",
+                } or {
+                    "Choose Soul Ice, Book of Shadows, or Holy Mantle sound.",
+                    "Changing it immediately plays a safe preview.",
+                }
+            end
+
+            return kind == "visual" and {
+                "选择三种实时护盾动画之一。",
+                "切换后会立即预览所选样式。",
+            } or {
+                "选择魂心冰层、影之书或神圣屏障音效。",
+                "切换后会立即安全试听。",
+            }
+        end,
+    })
+    self:RememberSubcategory(menu, "bethany")
+end
+
+function ModConfigMenuModule:AddShieldPreview(menu, kind)
+    self.CreatedGroups.bethany = true
+
+    menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "bethany"), {
+        Type = menu.OptionType.NUMBER,
+        Minimum = 0,
+        Maximum = 1,
+        ModifyBy = 1,
+        Default = 0,
+        CurrentSetting = function()
+            return 0
+        end,
+        Display = function()
+            if self:GetLanguage() == "en" then
+                return kind == "visual"
+                    and "Test Animation: Press right"
+                    or "Test Sound: Press right"
+            end
+
+            return kind == "visual"
+                and "测试动画: 按右键"
+                or "测试音效: 按右键"
+        end,
+        OnChange = function(value)
+            if value <= 0 then
+                return
+            end
+
+            local feedback = self.Context.Modules
+                and self.Context.Modules.bethanyShieldFeedback
+
+            if kind == "visual" and feedback
+                and feedback.PreviewAnimation
+            then
+                feedback:PreviewAnimation()
+            elseif kind == "sound" and feedback
+                and feedback.PreviewSound
+            then
+                feedback:PreviewSound()
+            end
+        end,
+        Info = function()
+            if self:GetLanguage() == "en" then
+                return kind == "visual" and {
+                    "Replays the current shield animation without taking damage.",
+                    "Requires Bethany and Shield Feedback to be enabled.",
+                } or {
+                    "Replays the selected shield impact without taking damage.",
+                    "No hurt voice, damage, or charge is produced.",
+                }
+            end
+
+            return kind == "visual" and {
+                "无需受伤即可重播当前护盾动画。",
+                "需要使用伯大尼并开启护盾反馈。",
+            } or {
+                "无需受伤即可重播所选护盾受击声。",
+                "不会产生语音、伤害或消耗充能。",
+            }
+        end,
+    })
+    self:RememberSubcategory(menu, "bethany")
+end
+
 function ModConfigMenuModule:TrySetup()
     local menu = self:GetMenuApi()
 
@@ -493,6 +640,11 @@ function ModConfigMenuModule:TrySetup()
     for _, setting in ipairs(MENU_SETTINGS) do
         self:AddBoolean(menu, setting)
     end
+
+    self:AddShieldStyle(menu, "visual")
+    self:AddShieldStyle(menu, "sound")
+    self:AddShieldPreview(menu, "visual")
+    self:AddShieldPreview(menu, "sound")
 
     self:AddTmtrainerChance(menu)
 

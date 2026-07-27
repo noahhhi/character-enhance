@@ -52,6 +52,14 @@ function BethanyShieldModule:GetDamageCooldown(player, damageAmount)
         + blindRageMultiplier * BLIND_RAGE_COOLDOWN_BONUS
 end
 
+function BethanyShieldModule:OnSettingChanged(enabled)
+    local feedbackModule = self.Context.Modules.bethanyShieldFeedback
+
+    if feedbackModule and feedbackModule.OnShieldSettingChanged then
+        feedbackModule:OnShieldSettingChanged(enabled)
+    end
+end
+
 function BethanyShieldModule:OnPlayerDamage(
     entity,
     damageAmount,
