@@ -5,9 +5,10 @@ local SETTING_KEY = "bethanyShieldFeedback"
 local SHIELD_SETTING_KEY = "bethanyDamageShield"
 local VISUAL_STYLE_KEY = "bethanyShieldVisualStyle"
 local SOUND_STYLE_KEY = "bethanyShieldSoundStyle"
+local HIT_STYLE_KEY = "bethanyShieldHitStyle"
 local BETHANY = PlayerType.PLAYER_BETHANY
 local MAX_SOUL_CHARGE = 99
-local HIT_FLASH_FRAMES = 10
+local HIT_FLASH_FRAMES = 18
 local PREVIEW_FRAMES = 45
 local DISABLE_FADE_FRAMES = 15
 local SHIELD_SPRITE_PATH = "gfx/1000.160_bishop shield.anm2"
@@ -16,6 +17,7 @@ local PARTICLE_COUNT = 10
 local STYLE_SOUL_VEIL = 1
 local STYLE_SHADOW_SIGIL = 2
 local STYLE_CRYSTAL_HEART = 3
+local HIT_STYLE_COUNT = 5
 
 local function Clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
@@ -34,6 +36,49 @@ local function GetChargeStrength(soulCharge)
     return math.sqrt(
         Clamp(soulCharge, 0, MAX_SOUL_CHARGE) / MAX_SOUL_CHARGE
     )
+end
+
+local function GetHitProfile(hitStyle, hitFrames)
+    if hitFrames <= 0 then
+        return 0, 0, 0, 0
+    end
+
+    local elapsed = HIT_FLASH_FRAMES - hitFrames
+    local progress = Clamp(elapsed / HIT_FLASH_FRAMES, 0, 1)
+    local tail = 1 - progress
+    local peak = elapsed < 4 and 1 or 0
+    local afterglow = peak > 0 and 0
+        or 0.56 * Clamp((hitFrames - 1) / 13, 0, 1)
+
+    if hitStyle == 2 then
+        local pulse = tail * tail
+        return math.max(peak * 0.92, pulse * 0.72), 0,
+            pulse * 0.55, progress
+    end
+
+    if hitStyle == 3 then
+        return math.max(peak, afterglow * 0.75),
+            tail * (0.30 + progress * 0.34),
+            tail * 0.72,
+            progress
+    end
+
+    if hitStyle == 4 then
+        return peak > 0 and 1.16 or afterglow * 1.08,
+            tail * 0.18,
+            peak > 0 and 1.20 or tail * 0.82,
+            progress
+    end
+
+    if hitStyle == 5 then
+        local oscillation = 0.78 + math.sin(elapsed * 1.9) * 0.22
+        return peak > 0 and 1.02 or afterglow * oscillation,
+            tail * 0.38,
+            tail * 0.48,
+            progress
+    end
+
+    return math.max(peak, afterglow), 0, tail * 0.46, progress
 end
 
 function BethanyShieldFeedbackModule.New(context)
@@ -74,11 +119,11 @@ function BethanyShieldFeedbackModule:Reset()
     self.PreviewUntilFrame = {}
 end
 
-function BethanyShieldFeedbackModule:GetStyle(settingKey)
+function BethanyShieldFeedbackModule:GetStyle(settingKey, maximum)
     local style = self.Context.Settings[settingKey]
 
     if type(style) ~= "number" or style < STYLE_SOUL_VEIL
-        or style > STYLE_CRYSTAL_HEART
+        or style > maximum
     then
         return STYLE_SOUL_VEIL
     end
@@ -113,7 +158,7 @@ end
 
 function BethanyShieldFeedbackModule:PlayShieldSound(soulCharge)
     local strength = GetChargeStrength(soulCharge)
-    local soundStyle = self:GetStyle(SOUND_STYLE_KEY)
+    local soundStyle = self:GetStyle(SOUND_STYLE_KEY, STYLE_CRYSTAL_HEART)
 
     if soundStyle == STYLE_SHADOW_SIGIL then
         self.Sfx:Play(
@@ -199,7 +244,7 @@ function BethanyShieldFeedbackModule:PlayShieldSound(soulCharge)
 end
 
 function BethanyShieldFeedbackModule:PlayDisappearanceSound()
-    local soundStyle = self:GetStyle(SOUND_STYLE_KEY)
+    local soundStyle = self:GetStyle(SOUND_STYLE_KEY, STYLE_CRYSTAL_HEART)
 
     if soundStyle == STYLE_SHADOW_SIGIL then
         self.Sfx:Play(
@@ -254,6 +299,21 @@ function BethanyShieldFeedbackModule:ForEachBethany(callback)
 end
 
 function BethanyShieldFeedbackModule:PreviewAnimation()
+    if not self:IsEnabled() then
+        return false
+    end
+
+    local frame = Game():GetFrameCount()
+
+    return self:ForEachBethany(function(player)
+        local playerHash = GetPtrHash(player)
+        self:GetPlayerVisuals(playerHash)
+        self.PreviewUntilFrame[playerHash] = frame + PREVIEW_FRAMES
+        self.HitUntilFrame[playerHash] = nil
+    end)
+end
+
+function BethanyShieldFeedbackModule:PreviewHit()
     if not self:IsEnabled() then
         return false
     end
@@ -348,7 +408,10 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
         )
     end
 
-    local visualStyle = self:GetStyle(VISUAL_STYLE_KEY)
+    local visualStyle = self:GetStyle(
+        VISUAL_STYLE_KEY,
+        STYLE_CRYSTAL_HEART
+    )
     local phaseSpeed = visualStyle == STYLE_SHADOW_SIGIL and 0.052
         or visualStyle == STYLE_CRYSTAL_HEART and 0.095
         or 0.075
@@ -359,7 +422,11 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
         0,
         hitUntilFrame - frame
     )
-    local hitStrength = Clamp(hitFrames / HIT_FLASH_FRAMES, 0, 1)
+    local hitStyle = self:GetStyle(HIT_STYLE_KEY, HIT_STYLE_COUNT)
+    local hitStrength, hitRing, particleBurst, hitProgress = GetHitProfile(
+        hitStyle,
+        hitFrames
+    )
     local alpha = (0.05 + strength * 0.20)
         * (0.72 + timePulse * 0.28)
         + movement * 0.018
@@ -390,10 +457,8 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
         visuals.LastUpdateFrame = frame
     end
 
-    visuals.Shield.Scale = Vector(
-        baseScale + squash,
-        baseScale * 1.04 - squash
-    )
+    local shieldScaleX = baseScale + squash
+    local shieldScaleY = baseScale * 1.04 - squash
     local shieldRed = 0.30 + hitStrength * 0.20
     local shieldGreen = 0.72 + hitStrength * 0.16
 
@@ -405,7 +470,15 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
         shieldGreen = 0.82 + hitStrength * 0.10
     end
 
-    visuals.Shield.Color = Color(
+    if hitStyle == 4 then
+        shieldRed = shieldRed + hitStrength * 0.14
+        shieldGreen = shieldGreen + hitStrength * 0.12
+    elseif hitStyle == 5 then
+        shieldRed = shieldRed + hitStrength * 0.22
+        shieldGreen = shieldGreen + hitStrength * 0.08
+    end
+
+    local shieldColor = Color(
         shieldRed,
         shieldGreen,
         1,
@@ -414,14 +487,41 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
         0,
         0
     )
+    local shieldRotation
+
     if visualStyle == STYLE_SHADOW_SIGIL then
-        visuals.Shield.Rotation = frame * 0.24
+        shieldRotation = frame * 0.24
             + math.sin(phase * 0.67) * 4.5
     elseif visualStyle == STYLE_CRYSTAL_HEART then
-        visuals.Shield.Rotation = math.sin(phase * 1.4) * 0.8
+        shieldRotation = math.sin(phase * 1.4) * 0.8
     else
-        visuals.Shield.Rotation = math.sin(phase * 0.43) * 1.5
+        shieldRotation = math.sin(phase * 0.43) * 1.5
     end
+
+    if hitRing > 0 then
+        local ringExpansion = 1.04 + hitProgress * 0.24
+        local ringRed = hitStyle == 5 and 0.54 or 0.52
+        local ringGreen = hitStyle == 5 and 0.56 or 0.90
+
+        visuals.Shield.Scale = Vector(
+            shieldScaleX * ringExpansion,
+            shieldScaleY * ringExpansion
+        )
+        visuals.Shield.Color = Color(
+            ringRed,
+            ringGreen,
+            1,
+            Clamp(hitRing * 0.42 * fadeFactor, 0, 0.46),
+            0,
+            0,
+            0
+        )
+        visuals.Shield.Rotation = shieldRotation - hitProgress * 12
+        visuals.Shield:Render(screenPosition)
+    end
+    visuals.Shield.Scale = Vector(shieldScaleX, shieldScaleY)
+    visuals.Shield.Color = shieldColor
+    visuals.Shield.Rotation = shieldRotation
     visuals.Shield:Render(screenPosition)
 
     for particleIndex = 1, PARTICLE_COUNT do
@@ -431,7 +531,7 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
             particleRank + 0.02,
             strength
         )
-        local impactVisibility = hitStrength
+        local impactVisibility = math.max(hitStrength, particleBurst)
             * (1 - particleRank * 0.35)
         local visibility = math.max(
             chargeVisibility,
@@ -463,6 +563,8 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
                 phase * 3.1 + particleIndex * 1.7
             ) * 1.8
         end
+        radius = radius + particleBurst
+            * (3 + hitProgress * (8 + particleRank * 5))
         local x = math.cos(particlePhase) * radius
         local y = math.sin(particlePhase) * radius * 0.88
             + math.sin(phase * 1.39 + particleIndex) * 2.2
@@ -470,7 +572,7 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
             + math.sin(phase * 1.67 + particleIndex * 0.91) * 0.5
         local particleScale = 0.16 + strength * 0.08
             + particlePulse * 0.035
-            + hitStrength * 0.055
+            + particleBurst * 0.075
         particleScale = particleScale * (0.72 + visibility * 0.28)
 
         visuals.Particle.Scale = Vector(particleScale, particleScale)
@@ -485,6 +587,14 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
             particleGreen = 0.88
         end
 
+        if hitStyle == 4 then
+            particleRed = particleRed + particleBurst * 0.16
+            particleGreen = particleGreen + particleBurst * 0.10
+        elseif hitStyle == 5 then
+            particleRed = particleRed + particleBurst * 0.20
+            particleGreen = particleGreen - particleBurst * 0.08
+        end
+
         visuals.Particle.Color = Color(
             particleRed,
             particleGreen,
@@ -493,7 +603,7 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
                 (0.06 + strength * 0.16)
                     * (0.45 + particlePulse * 0.55)
                     * visibility
-                    + hitStrength * 0.13 * impactVisibility,
+                    + particleBurst * 0.16 * impactVisibility,
                 0,
                 0.52
             ),
@@ -527,7 +637,9 @@ function BethanyShieldFeedbackModule:StartFadeOut()
 end
 
 function BethanyShieldFeedbackModule:OnSettingChanged(_, settingKey)
-    if settingKey == VISUAL_STYLE_KEY or settingKey == SOUND_STYLE_KEY then
+    if settingKey == VISUAL_STYLE_KEY or settingKey == SOUND_STYLE_KEY
+        or settingKey == HIT_STYLE_KEY
+    then
         self.PlayerVisuals = {}
         self.FadeOutUntilFrame = {}
         return

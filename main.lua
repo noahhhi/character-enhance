@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.8.4"
+local VERSION = "1.8.5"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -11,6 +11,7 @@ local DEFAULT_SETTINGS = {
     bethanyShieldFeedback = true,
     bethanyShieldVisualStyle = 1,
     bethanyShieldSoundStyle = 1,
+    bethanyShieldHitStyle = 1,
     familiarCapacity = true,
     clogGroundDamage = true,
     rerollHealthProtection = true,
@@ -133,6 +134,14 @@ function Context:SetSetting(settingKey, value)
         end
 
         value = math.floor(value + 0.5)
+    elseif settingKey == "bethanyShieldHitStyle" then
+        if value ~= value or value == math.huge or value == -math.huge
+            or value < 1 or value > 5
+        then
+            return
+        end
+
+        value = math.floor(value + 0.5)
     end
 
     if self.Settings[settingKey] == value then
@@ -196,6 +205,10 @@ Context:RegisterSettingHandler(
 )
 Context:RegisterSettingHandler(
     "bethanyShieldSoundStyle",
+    bethanyShieldFeedbackModule
+)
+Context:RegisterSettingHandler(
+    "bethanyShieldHitStyle",
     bethanyShieldFeedbackModule
 )
 Context:RegisterModule(

@@ -22,6 +22,7 @@ local SUBCATEGORY_ORDER = {
 local TMTRAINER_CHANCE_KEY = "rerollTmtrainerChance"
 local SHIELD_VISUAL_STYLE_KEY = "bethanyShieldVisualStyle"
 local SHIELD_SOUND_STYLE_KEY = "bethanyShieldSoundStyle"
+local SHIELD_HIT_STYLE_KEY = "bethanyShieldHitStyle"
 local SHIELD_STYLES = {
     visual = {
         en = { "Soul Veil", "Shadow Sigil", "Crystal Heart" },
@@ -30,6 +31,22 @@ local SHIELD_STYLES = {
     sound = {
         en = { "Soul Ice", "Book of Shadows", "Holy Mantle" },
         zh = { "魂心冰层", "影之书", "神圣屏障" },
+    },
+    hit = {
+        en = {
+            "Bright Step",
+            "Soft Pulse",
+            "Echo Ring",
+            "Crystal Burst",
+            "Shadow Shock",
+        },
+        zh = {
+            "亮度阶降",
+            "柔和脉冲",
+            "扩散回响",
+            "冰晶爆闪",
+            "暗影震荡",
+        },
     },
 }
 
@@ -214,6 +231,7 @@ local MENU_SETTINGS = {
             "每一点充能都会细微改变护罩与冰盾声。",
             "透明护罩包围全身，不是前方半球。",
             "移动和时间会使护罩渐隐渐现。",
+            "受击时先明显增亮，再减弱为余辉。",
             "格挡时只播放冰盾声，不触发角色受伤表现。",
             "角色保持动作，并在受伤保护期间原地闪烁。",
             "关闭时护罩伴随轻微冰裂声渐隐消失。",
@@ -223,6 +241,7 @@ local MENU_SETTINGS = {
             "Every charge point subtly changes the shield and sound.",
             "The translucent shield surrounds the full body.",
             "Movement and time make the shield gently fade and pulse.",
+            "Hits flash brightly, then fall back to an afterglow.",
             "Blocks play only the shield sound, with no hurt response.",
             "Bethany keeps her pose and flashes during the cooldown.",
             "Turning it off fades the shield with a soft ice crack.",
@@ -470,15 +489,16 @@ end
 
 function ModConfigMenuModule:AddShieldStyle(menu, kind)
     self.CreatedGroups.bethany = true
-    local settingKey = kind == "visual"
-        and SHIELD_VISUAL_STYLE_KEY
-        or SHIELD_SOUND_STYLE_KEY
+    local settingKey = kind == "visual" and SHIELD_VISUAL_STYLE_KEY
+        or kind == "sound" and SHIELD_SOUND_STYLE_KEY
+        or SHIELD_HIT_STYLE_KEY
     local labels = SHIELD_STYLES[kind]
+    local maximum = kind == "hit" and 5 or 3
 
     menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "bethany"), {
         Type = menu.OptionType.NUMBER,
         Minimum = 1,
-        Maximum = 3,
+        Maximum = maximum,
         ModifyBy = 1,
         Default = 1,
         CurrentSetting = function()
@@ -491,6 +511,8 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
 
             if kind == "visual" then
                 name = language == "en" and "Animation" or "动画"
+            elseif kind == "hit" then
+                name = language == "en" and "Hit FX" or "受击效果"
             else
                 name = language == "en" and "Sound" or "音效"
             end
@@ -508,25 +530,49 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
 
             if kind == "visual" and feedback.PreviewAnimation then
                 feedback:PreviewAnimation()
+            elseif kind == "hit" and feedback.PreviewHit then
+                feedback:PreviewHit()
             elseif kind == "sound" and feedback.PreviewSound then
                 feedback:PreviewSound()
             end
         end,
         Info = function()
             if self:GetLanguage() == "en" then
-                return kind == "visual" and {
-                    "Choose one of three live shield animations.",
-                    "Changing it immediately previews the selected style.",
-                } or {
+                if kind == "visual" then
+                    return {
+                        "Choose one of three live shield animations.",
+                        "Changing it immediately previews the selected style.",
+                    }
+                end
+
+                if kind == "hit" then
+                    return {
+                        "Choose one of five absorbed-hit animations.",
+                        "Each flashes brightly, then drops to an afterglow.",
+                    }
+                end
+
+                return {
                     "Choose Soul Ice, Book of Shadows, or Holy Mantle sound.",
                     "Changing it immediately plays a safe preview.",
                 }
             end
 
-            return kind == "visual" and {
-                "选择三种实时护盾动画之一。",
-                "切换后会立即预览所选样式。",
-            } or {
+            if kind == "visual" then
+                return {
+                    "选择三种实时护盾动画之一。",
+                    "切换后会立即预览所选样式。",
+                }
+            end
+
+            if kind == "hit" then
+                return {
+                    "选择五种魂心护盾受击动画之一。",
+                    "每种都会先明显增亮，再降为余辉。",
+                }
+            end
+
+            return {
                 "选择魂心冰层、影之书或神圣屏障音效。",
                 "切换后会立即安全试听。",
             }
@@ -549,13 +595,21 @@ function ModConfigMenuModule:AddShieldPreview(menu, kind)
         end,
         Display = function()
             if self:GetLanguage() == "en" then
-                return kind == "visual"
-                    and "Test Animation: Press right"
+                if kind == "visual" then
+                    return "Test Idle: Press right"
+                end
+
+                return kind == "hit"
+                    and "Test Hit FX: Press right"
                     or "Test Sound: Press right"
             end
 
-            return kind == "visual"
-                and "测试动画: 按右键"
+            if kind == "visual" then
+                return "测试待机: 按右键"
+            end
+
+            return kind == "hit"
+                and "测试受击: 按右键"
                 or "测试音效: 按右键"
         end,
         OnChange = function(value)
@@ -570,6 +624,10 @@ function ModConfigMenuModule:AddShieldPreview(menu, kind)
                 and feedback.PreviewAnimation
             then
                 feedback:PreviewAnimation()
+            elseif kind == "hit" and feedback
+                and feedback.PreviewHit
+            then
+                feedback:PreviewHit()
             elseif kind == "sound" and feedback
                 and feedback.PreviewSound
             then
@@ -578,19 +636,41 @@ function ModConfigMenuModule:AddShieldPreview(menu, kind)
         end,
         Info = function()
             if self:GetLanguage() == "en" then
-                return kind == "visual" and {
-                    "Replays the current shield animation without taking damage.",
-                    "Requires Bethany and Shield Feedback to be enabled.",
-                } or {
+                if kind == "visual" then
+                    return {
+                        "Replays the idle shield without taking damage.",
+                        "Requires Bethany and Shield Feedback to be enabled.",
+                    }
+                end
+
+                if kind == "hit" then
+                    return {
+                        "Replays the selected hit flash without taking damage.",
+                        "No sound, charge cost, hurt voice, or hit animation.",
+                    }
+                end
+
+                return {
                     "Replays the selected shield impact without taking damage.",
                     "No hurt voice, damage, or charge is produced.",
                 }
             end
 
-            return kind == "visual" and {
-                "无需受伤即可重播当前护盾动画。",
-                "需要使用伯大尼并开启护盾反馈。",
-            } or {
+            if kind == "visual" then
+                return {
+                    "无需受伤即可重播当前护盾待机动画。",
+                    "需要使用伯大尼并开启护盾反馈。",
+                }
+            end
+
+            if kind == "hit" then
+                return {
+                    "无需受伤即可重播所选受击闪光。",
+                    "不会播放音效、扣充能、语音或受击动画。",
+                }
+            end
+
+            return {
                 "无需受伤即可重播所选护盾受击声。",
                 "不会产生语音、伤害或消耗充能。",
             }
@@ -642,8 +722,10 @@ function ModConfigMenuModule:TrySetup()
     end
 
     self:AddShieldStyle(menu, "visual")
+    self:AddShieldStyle(menu, "hit")
     self:AddShieldStyle(menu, "sound")
     self:AddShieldPreview(menu, "visual")
+    self:AddShieldPreview(menu, "hit")
     self:AddShieldPreview(menu, "sound")
 
     self:AddTmtrainerChance(menu)
