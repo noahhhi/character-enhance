@@ -25,8 +25,8 @@ local SHIELD_SOUND_STYLE_KEY = "bethanyShieldSoundStyle"
 local SHIELD_HIT_STYLE_KEY = "bethanyShieldHitStyle"
 local SHIELD_STYLES = {
     visual = {
-        en = { "Soul Veil", "Shadow Sigil", "Crystal Heart" },
-        zh = { "魂心薄幕", "影之书符印", "晶蓝魂心" },
+        en = { "Soul Veil", "Particle Wall", "Frosted Soul" },
+        zh = { "魂心薄幕", "粒子墙", "磨砂魂盾" },
     },
     sound = {
         en = { "Soul Glass", "Aether Veil", "Wraith Prism" },
@@ -540,8 +540,9 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
             if self:GetLanguage() == "en" then
                 if kind == "visual" then
                     return {
-                        "Choose one of three live shield animations.",
+                        "Choose one of three live shield appearances.",
                         "Changing it immediately previews the selected style.",
+                        "Includes Particle Wall and a dense frosted shell.",
                         "High charge adds a dark rim and a wider glow.",
                         "Low charge stays thin and slightly brittle.",
                     }
@@ -563,8 +564,9 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
 
             if kind == "visual" then
                 return {
-                    "选择三种实时护盾动画之一。",
+                    "选择三种实时护盾外观之一。",
                     "切换后会立即预览所选样式。",
+                    "包含粒子墙和厚实的蓝色磨砂外壳。",
                     "高充能增加暗边、光晕范围和粒子厚度。",
                     "低充能护罩更薄，并带轻微脆弱抖动。",
                 }
