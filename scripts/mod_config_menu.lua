@@ -542,6 +542,8 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
                     return {
                         "Choose one of three live shield animations.",
                         "Changing it immediately previews the selected style.",
+                        "High charge adds a dark rim and a wider glow.",
+                        "Low charge stays thin and slightly brittle.",
                     }
                 end
 
@@ -562,6 +564,8 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
                 return {
                     "选择三种实时护盾动画之一。",
                     "切换后会立即预览所选样式。",
+                    "高充能增加暗边、光晕范围和粒子厚度。",
+                    "低充能护罩更薄，并带轻微脆弱抖动。",
                 }
             end
 
