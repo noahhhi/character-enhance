@@ -115,8 +115,8 @@ function BethanyShieldFeedbackModule.New(context)
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_PLAYER_RENDER,
-        function(_, player, renderOffset)
-            self:OnPlayerRender(player, renderOffset)
+        function(_, player)
+            self:OnPlayerRender(player)
         end
     )
 
@@ -374,7 +374,7 @@ function BethanyShieldFeedbackModule:OnAbsorbedHit(player)
     return true
 end
 
-function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
+function BethanyShieldFeedbackModule:OnPlayerRender(player)
     if player:GetPlayerType() ~= BETHANY then
         return
     end
@@ -467,9 +467,12 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
     end
 
     local squash = movement * math.sin(phase * 1.37) * 0.009
-    local worldPosition = player.Position + player.PositionOffset
-    local screenPosition = Isaac.WorldToScreen(worldPosition)
-        + (renderOffset or Vector.Zero)
+    -- WorldToScreen already includes room-camera scrolling. PositionOffset is
+    -- a render-space player offset, so apply it once after conversion. Adding
+    -- MC_POST_PLAYER_RENDER's RenderOffset here makes the shell drift away in
+    -- large rooms as the camera moves.
+    local screenPosition = Isaac.WorldToScreen(player.Position)
+        + player.PositionOffset
         + Vector(0, -14)
 
     if visuals.LastUpdateFrame ~= frame then
@@ -571,10 +574,7 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
         )
         visuals.Shield.Rotation = shieldRotation
         visuals.Shield:SetFrame(SHIELD_ANIMATION, 0)
-        visuals.Shield:RenderLayer(
-            SHIELD_BODY_LAYER,
-            screenPosition + Vector(0, 0.5 + thickness * 1.5)
-        )
+        visuals.Shield:RenderLayer(SHIELD_BODY_LAYER, screenPosition)
     end
 
     visuals.Shield.Scale = Vector(shieldScaleX, shieldScaleY)
