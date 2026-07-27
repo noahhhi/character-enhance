@@ -13,6 +13,10 @@ local PREVIEW_FRAMES = 45
 local DISABLE_FADE_FRAMES = 15
 local SHIELD_SPRITE_PATH = "gfx/1000.160_bishop shield.anm2"
 local PARTICLE_SPRITE_PATH = "gfx/1000.085_diamond particle.anm2"
+local SHIELD_ANIMATION = "Hit"
+local SHIELD_BODY_LAYER = 1
+local SHIELD_GLOW_LAYER = 2
+local PARTICLE_ANIMATION_COUNT = 8
 local PARTICLE_COUNT = 10
 local STYLE_SOUL_VEIL = 1
 local STYLE_SHADOW_SIGIL = 2
@@ -140,11 +144,13 @@ function BethanyShieldFeedbackModule:GetPlayerVisuals(playerHash)
 
     local shield = Sprite()
     shield:Load(SHIELD_SPRITE_PATH, true)
-    shield:Play("Idle", true)
+    shield:Play(SHIELD_ANIMATION, true)
+    shield:SetFrame(SHIELD_ANIMATION, 0)
 
     local particle = Sprite()
     particle:Load(PARTICLE_SPRITE_PATH, true)
-    particle:Play("Idle", true)
+    particle:Play("Gib01", true)
+    particle:SetFrame("Gib01", 0)
 
     visuals = {
         Shield = shield,
@@ -427,7 +433,7 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
         hitStyle,
         hitFrames
     )
-    local alpha = (0.05 + strength * 0.20)
+    local alpha = (0.13 + strength * 0.32)
         * (0.72 + timePulse * 0.28)
         + movement * 0.018
         + hitStrength * 0.20
@@ -517,12 +523,33 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
             0
         )
         visuals.Shield.Rotation = shieldRotation - hitProgress * 12
-        visuals.Shield:Render(screenPosition)
+        visuals.Shield:SetFrame(SHIELD_ANIMATION, 0)
+        visuals.Shield:RenderLayer(SHIELD_BODY_LAYER, screenPosition)
     end
     visuals.Shield.Scale = Vector(shieldScaleX, shieldScaleY)
     visuals.Shield.Color = shieldColor
     visuals.Shield.Rotation = shieldRotation
-    visuals.Shield:Render(screenPosition)
+    visuals.Shield:SetFrame(SHIELD_ANIMATION, 0)
+    visuals.Shield:RenderLayer(SHIELD_BODY_LAYER, screenPosition)
+
+    if hitStrength > 0 then
+        local glowScale = 1.02 + hitStrength * 0.08
+        visuals.Shield.Scale = Vector(
+            shieldScaleX * glowScale,
+            shieldScaleY * glowScale
+        )
+        visuals.Shield.Color = Color(
+            0.64 + hitStrength * 0.20,
+            0.88 + hitStrength * 0.10,
+            1,
+            Clamp((0.12 + hitStrength * 0.34) * fadeFactor, 0, 0.52),
+            0,
+            0,
+            0
+        )
+        visuals.Shield.Rotation = shieldRotation + hitProgress * 8
+        visuals.Shield:RenderLayer(SHIELD_GLOW_LAYER, screenPosition)
+    end
 
     for particleIndex = 1, PARTICLE_COUNT do
         local particleRank = (particleIndex - 1) / (PARTICLE_COUNT - 1)
@@ -600,7 +627,7 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
             particleGreen,
             1,
             Clamp(
-                (0.06 + strength * 0.16)
+                (0.10 + strength * 0.24)
                     * (0.45 + particlePulse * 0.55)
                     * visibility
                     + particleBurst * 0.16 * impactVisibility,
@@ -612,6 +639,14 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player, renderOffset)
             0
         )
         visuals.Particle.Rotation = frame * 1.2 + particleIndex * 37
+        local particleAnimation = string.format(
+            "Gib%02d",
+            (particleIndex - 1) % PARTICLE_ANIMATION_COUNT + 1
+        )
+        local particleFrame = math.floor(
+            (frame * 0.55 + particleIndex * 1.7) % 9
+        )
+        visuals.Particle:SetFrame(particleAnimation, particleFrame)
         visuals.Particle:Render(screenPosition + Vector(x, y))
     end
 end
