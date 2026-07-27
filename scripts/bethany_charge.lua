@@ -259,9 +259,10 @@ function BethanyChargeModule:OnPrePickupCollision(pickup, collider)
     local enabled = self.Context:IsEnabled(SETTING_KEY)
 
     if enabled and player:GetSoulCharge() >= MAX_SOUL_CHARGE then
-        -- MC_PRE_PICKUP_COLLISION returns true to ignore the collision, leaving
-        -- the pickup available until Bethany has room for more Soul Charge.
-        return true
+        -- Returning false preserves physical collision and pushing while
+        -- skipping internal collection, so the heart remains available until
+        -- Bethany has room for more Soul Charge.
+        return false
     end
 
     return nil
