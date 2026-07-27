@@ -111,6 +111,19 @@ local function GetLowChargePresence(strength)
     return SmoothStep(0, GetChargeStrength(4), strength)
 end
 
+local function GetPlayerSpriteScale(player)
+    local spriteScale = player.SpriteScale
+
+    if not spriteScale or type(spriteScale.X) ~= "number"
+        or type(spriteScale.Y) ~= "number"
+    then
+        return 1, 1
+    end
+
+    return math.max(math.abs(spriteScale.X), 0.01),
+        math.max(math.abs(spriteScale.Y), 0.01)
+end
+
 local function GetHitProfile(hitStyle, hitFrames)
     if hitFrames <= 0 then
         return 0, 0, 0, 0
@@ -462,13 +475,14 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player)
     end
 
     local squash = movement * math.sin(phase * 1.37) * 0.009
+    local playerScaleX, playerScaleY = GetPlayerSpriteScale(player)
     -- WorldToScreen already includes room-camera scrolling. PositionOffset is
     -- a render-space player offset, so apply it once after conversion. Adding
     -- MC_POST_PLAYER_RENDER's RenderOffset here makes the shell drift away in
     -- large rooms as the camera moves.
     local screenPosition = Isaac.WorldToScreen(player.Position)
         + player.PositionOffset
-        + Vector(0, -14)
+        + Vector(0, -14 * playerScaleY)
 
     if visuals.LastUpdateFrame ~= frame then
         visuals.Shield:Update()
@@ -483,6 +497,8 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player)
         * brittleness
     shieldScaleX = shieldScaleX + brittleJitter
     shieldScaleY = shieldScaleY - brittleJitter * 0.7
+    shieldScaleX = shieldScaleX * playerScaleX
+    shieldScaleY = shieldScaleY * playerScaleY
     local shieldRed = 0.30 + hitStrength * 0.20
     local shieldGreen = 0.72 + hitStrength * 0.16
 
@@ -646,9 +662,10 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player)
         end
         radius = radius + particleBurst
             * (3 + hitProgress * (8 + particleRank * 5))
-        local x = math.cos(particlePhase) * radius
+        local x = math.cos(particlePhase) * radius * playerScaleX
         local y = math.sin(particlePhase) * radius * 0.88
             + math.sin(phase * 1.39 + particleIndex) * 2.2
+        y = y * playerScaleY
         local particlePulse = 0.5
             + math.sin(phase * 1.67 + particleIndex * 0.91) * 0.5
         local particleScale = 0.11 + strength * 0.07
@@ -657,7 +674,10 @@ function BethanyShieldFeedbackModule:OnPlayerRender(player)
             + particleBurst * 0.075
         particleScale = particleScale * (0.72 + visibility * 0.28)
 
-        visuals.Particle.Scale = Vector(particleScale, particleScale)
+        visuals.Particle.Scale = Vector(
+            particleScale * playerScaleX,
+            particleScale * playerScaleY
+        )
         local particleRed = 0.38 + thickness * 0.12
             + hitStrength * 0.18
         local particleGreen = 0.80 + thickness * 0.12
