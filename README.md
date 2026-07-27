@@ -83,12 +83,13 @@
 - Absorbed penalty damage still destroys Perfection and affects its progress;
   only red health and room-deal probability are protected.
 - Independent shield feedback offers three selectable full-body translucent
-  animations, five bright-to-afterglow hit effects, and three sound sets,
-  including Book of Shadows-inspired and Holy Mantle options. Every Soul Charge
-  point continuously scales the selected shield; separate MCM previews test
-  idle, hit, and sound feedback without damage. Absorbed hits keep Bethany's
-  pose and never play her hurt voice. Turning feedback off fades the shield
-  away with its selected disappearance sound.
+  animations, five bright-to-afterglow hit effects, and three original Soul
+  Shield sound sets. Each sound continuously blends custom thin, middle, and
+  thick recordings; most visual and audio change occurs from 0–30 charge and
+  then eases toward 99. Separate MCM previews test idle, hit, and 4/30/99-charge
+  sound feedback without damage. Absorbed hits keep Bethany's pose and never
+  play her hurt voice. Turning feedback off fades the shield away with its
+  selected disappearance sound.
 
 <a id="familiar-capacity"></a>
 ## Familiar capacity protection

@@ -22,6 +22,34 @@ local STYLE_SOUL_VEIL = 1
 local STYLE_SHADOW_SIGIL = 2
 local STYLE_CRYSTAL_HEART = 3
 local HIT_STYLE_COUNT = 5
+local CHARGE_RESPONSE_RATE = 4
+local CHARGE_RESPONSE_DENOMINATOR = 1 - math.exp(-CHARGE_RESPONSE_RATE)
+local SOUND_PROFILES = {
+    [1] = {
+        Gain = 1.00,
+        PitchStart = 1.08,
+        PitchEnd = 0.92,
+        Thin = "Character Enhance Soul Glass Thin",
+        Mid = "Character Enhance Soul Glass Mid",
+        Thick = "Character Enhance Soul Glass Thick",
+    },
+    [2] = {
+        Gain = 0.92,
+        PitchStart = 1.05,
+        PitchEnd = 0.94,
+        Thin = "Character Enhance Aether Membrane Thin",
+        Mid = "Character Enhance Aether Membrane Mid",
+        Thick = "Character Enhance Aether Membrane Thick",
+    },
+    [3] = {
+        Gain = 0.96,
+        PitchStart = 1.07,
+        PitchEnd = 0.91,
+        Thin = "Character Enhance Wraith Prism Thin",
+        Mid = "Character Enhance Wraith Prism Mid",
+        Thick = "Character Enhance Wraith Prism Thick",
+    },
+}
 
 local function Clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
@@ -37,9 +65,38 @@ local function SmoothStep(edgeStart, edgeEnd, value)
 end
 
 local function GetChargeStrength(soulCharge)
-    return math.sqrt(
-        Clamp(soulCharge, 0, MAX_SOUL_CHARGE) / MAX_SOUL_CHARGE
+    local normalized = Clamp(soulCharge, 0, MAX_SOUL_CHARGE)
+        / MAX_SOUL_CHARGE
+
+    return (1 - math.exp(-CHARGE_RESPONSE_RATE * normalized))
+        / CHARGE_RESPONSE_DENOMINATOR
+end
+
+local SOUND_MID_STRENGTH = GetChargeStrength(30)
+
+local function GetSoundWeights(strength)
+    local progress
+
+    if strength <= SOUND_MID_STRENGTH then
+        progress = SmoothStep(
+            0,
+            1,
+            strength / SOUND_MID_STRENGTH
+        )
+        return math.cos(progress * math.pi * 0.5),
+            math.sin(progress * math.pi * 0.5),
+            0
+    end
+
+    progress = SmoothStep(
+        0,
+        1,
+        (strength - SOUND_MID_STRENGTH)
+            / (1 - SOUND_MID_STRENGTH)
     )
+    return 0,
+        math.cos(progress * math.pi * 0.5),
+        math.sin(progress * math.pi * 0.5)
 end
 
 local function GetShieldThickness(strength)
@@ -105,7 +162,16 @@ function BethanyShieldFeedbackModule.New(context)
         HitUntilFrame = {},
         FadeOutUntilFrame = {},
         PreviewUntilFrame = {},
+        SoundIds = {},
     }, BethanyShieldFeedbackModule)
+
+    for style, profile in pairs(SOUND_PROFILES) do
+        self.SoundIds[style] = {
+            Thin = Isaac.GetSoundIdByName(profile.Thin),
+            Mid = Isaac.GetSoundIdByName(profile.Mid),
+            Thick = Isaac.GetSoundIdByName(profile.Thick),
+        }
+    end
 
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
@@ -177,122 +243,50 @@ end
 function BethanyShieldFeedbackModule:PlayShieldSound(soulCharge)
     local strength = GetChargeStrength(soulCharge)
     local soundStyle = self:GetStyle(SOUND_STYLE_KEY, STYLE_CRYSTAL_HEART)
+    local profile = SOUND_PROFILES[soundStyle]
+    local ids = self.SoundIds[soundStyle]
+    local thinWeight, midWeight, thickWeight = GetSoundWeights(strength)
+    local masterVolume = profile.Gain * (0.62 + strength * 0.16)
+    local pitch = profile.PitchStart
+        + (profile.PitchEnd - profile.PitchStart) * strength
+    local played = false
 
-    if soundStyle == STYLE_SHADOW_SIGIL then
-        self.Sfx:Play(
-            SoundEffect.SOUND_BOOK_SHADOWS_SIGIL,
-            0.34 + strength * 0.34,
-            0,
-            false,
-            1.10 - strength * 0.24
-        )
-        self.Sfx:Play(
-            SoundEffect.SOUND_BOOK_PAGE_TURN_12,
-            0.08 + strength * 0.10,
-            0,
-            false,
-            1.12 - strength * 0.12
-        )
-
-        if soulCharge <= 0 then
+    local function PlayLayer(soundId, weight)
+        if soundId and soundId >= 0 and weight > 0.001 then
             self.Sfx:Play(
-                SoundEffect.SOUND_BOOK_SHADOWS_END,
-                0.38,
+                soundId,
+                masterVolume * weight,
                 0,
                 false,
-                1.08
+                pitch,
+                0
             )
+            played = true
         end
-
-        return
     end
 
-    if soundStyle == STYLE_CRYSTAL_HEART then
-        self.Sfx:Play(
-            SoundEffect.SOUND_HOLY_MANTLE,
-            0.30 + strength * 0.36,
-            0,
-            false,
-            1.14 - strength * 0.20
-        )
-        self.Sfx:Play(
-            SoundEffect.SOUND_HOLY,
-            0.06 + strength * 0.13,
-            0,
-            false,
-            1.22 - strength * 0.10
-        )
+    PlayLayer(ids.Thin, thinWeight)
+    PlayLayer(ids.Mid, midWeight)
+    PlayLayer(ids.Thick, thickWeight)
 
-        return
-    end
-
-    local icePitch = 1.20 - strength * 0.38
-    local iceVolume = 0.48 + strength * 0.34
-    local stoneMix = SmoothStep(0.08, 0.92, strength)
-    local stoneVolume = stoneMix * (0.10 + strength * 0.20)
-    local stonePitch = 0.95 - strength * 0.17
-
-    self.Sfx:Play(
-        SoundEffect.SOUND_FREEZE,
-        iceVolume,
-        0,
-        false,
-        icePitch
-    )
-
-    if soulCharge > 0 then
-        self.Sfx:Play(
-            SoundEffect.SOUND_STONE_IMPACT,
-            stoneVolume,
-            0,
-            false,
-            stonePitch
-        )
-    end
-
-    if soulCharge <= 0 then
-        self.Sfx:Play(
-            SoundEffect.SOUND_FREEZE_SHATTER,
-            0.42,
-            0,
-            false,
-            1.12
-        )
-    end
+    return played
 end
 
 function BethanyShieldFeedbackModule:PlayDisappearanceSound()
     local soundStyle = self:GetStyle(SOUND_STYLE_KEY, STYLE_CRYSTAL_HEART)
+    local profile = SOUND_PROFILES[soundStyle]
+    local soundId = self.SoundIds[soundStyle].Thin
 
-    if soundStyle == STYLE_SHADOW_SIGIL then
+    if soundId and soundId >= 0 then
         self.Sfx:Play(
-            SoundEffect.SOUND_BOOK_SHADOWS_END,
-            0.32,
+            soundId,
+            0.20 * profile.Gain,
             0,
             false,
-            1.10
+            profile.PitchStart + 0.10,
+            0
         )
-        return
     end
-
-    if soundStyle == STYLE_CRYSTAL_HEART then
-        self.Sfx:Play(
-            SoundEffect.SOUND_HOLY_MANTLE,
-            0.24,
-            0,
-            false,
-            1.20
-        )
-        return
-    end
-
-    self.Sfx:Play(
-        SoundEffect.SOUND_FREEZE_SHATTER,
-        0.30,
-        0,
-        false,
-        1.18
-    )
 end
 
 function BethanyShieldFeedbackModule:ForEachBethany(callback)
@@ -346,12 +340,13 @@ function BethanyShieldFeedbackModule:PreviewHit()
     end)
 end
 
-function BethanyShieldFeedbackModule:PreviewSound()
+function BethanyShieldFeedbackModule:PreviewSound(soulCharge)
     if not self:IsEnabled() then
         return false
     end
 
-    self:PlayShieldSound(50)
+    local previewCharge = type(soulCharge) == "number" and soulCharge or 30
+    self:PlayShieldSound(Clamp(previewCharge, 0, MAX_SOUL_CHARGE))
     return true
 end
 

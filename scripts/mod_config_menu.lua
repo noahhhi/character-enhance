@@ -29,8 +29,8 @@ local SHIELD_STYLES = {
         zh = { "魂心薄幕", "影之书符印", "晶蓝魂心" },
     },
     sound = {
-        en = { "Soul Ice", "Book of Shadows", "Holy Mantle" },
-        zh = { "魂心冰层", "影之书", "神圣屏障" },
+        en = { "Soul Glass", "Aether Veil", "Wraith Prism" },
+        zh = { "魂晶冰盾", "以太灵幕", "幽魂棱晶" },
     },
     hit = {
         en = {
@@ -555,8 +555,9 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
                 end
 
                 return {
-                    "Choose Soul Ice, Book of Shadows, or Holy Mantle sound.",
-                    "Changing it immediately plays a safe preview.",
+                    "Choose one of three original Soul Shield sounds.",
+                    "Each blends thin, middle and thick recordings.",
+                    "Changing it previews the 30-charge anchor.",
                 }
             end
 
@@ -577,15 +578,16 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
             end
 
             return {
-                "选择魂心冰层、影之书或神圣屏障音效。",
-                "切换后会立即安全试听。",
+                "选择三种原创魂心护盾音效之一。",
+                "每种都会混合薄、中、厚三段录音。",
+                "切换后会试听 30 充能锚点。",
             }
         end,
     })
     self:RememberSubcategory(menu, "bethany")
 end
 
-function ModConfigMenuModule:AddShieldPreview(menu, kind)
+function ModConfigMenuModule:AddShieldPreview(menu, kind, previewCharge)
     self.CreatedGroups.bethany = true
 
     menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "bethany"), {
@@ -603,18 +605,22 @@ function ModConfigMenuModule:AddShieldPreview(menu, kind)
                     return "Test Idle: Press right"
                 end
 
-                return kind == "hit"
-                    and "Test Hit FX: Press right"
-                    or "Test Sound: Press right"
+                if kind == "hit" then
+                    return "Test Hit FX: Press right"
+                end
+
+                return "Test Sound " .. previewCharge .. ": Press right"
             end
 
             if kind == "visual" then
                 return "测试待机: 按右键"
             end
 
-            return kind == "hit"
-                and "测试受击: 按右键"
-                or "测试音效: 按右键"
+            if kind == "hit" then
+                return "测试受击: 按右键"
+            end
+
+            return "测试音效 " .. previewCharge .. ": 按右键"
         end,
         OnChange = function(value)
             if value <= 0 then
@@ -635,7 +641,7 @@ function ModConfigMenuModule:AddShieldPreview(menu, kind)
             elseif kind == "sound" and feedback
                 and feedback.PreviewSound
             then
-                feedback:PreviewSound()
+                feedback:PreviewSound(previewCharge)
             end
         end,
         Info = function()
@@ -655,7 +661,8 @@ function ModConfigMenuModule:AddShieldPreview(menu, kind)
                 end
 
                 return {
-                    "Replays the selected shield impact without taking damage.",
+                    "Plays the selected shield at "
+                        .. previewCharge .. " simulated charge.",
                     "No hurt voice, damage, or charge is produced.",
                 }
             end
@@ -675,7 +682,7 @@ function ModConfigMenuModule:AddShieldPreview(menu, kind)
             end
 
             return {
-                "无需受伤即可重播所选护盾受击声。",
+                "按模拟 " .. previewCharge .. " 充能试听所选护盾音效。",
                 "不会产生语音、伤害或消耗充能。",
             }
         end,
@@ -730,7 +737,9 @@ function ModConfigMenuModule:TrySetup()
     self:AddShieldStyle(menu, "sound")
     self:AddShieldPreview(menu, "visual")
     self:AddShieldPreview(menu, "hit")
-    self:AddShieldPreview(menu, "sound")
+    self:AddShieldPreview(menu, "sound", 4)
+    self:AddShieldPreview(menu, "sound", 30)
+    self:AddShieldPreview(menu, "sound", 99)
 
     self:AddTmtrainerChance(menu)
 
