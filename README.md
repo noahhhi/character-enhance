@@ -67,6 +67,9 @@
   each full-reroll Secret Room pool. `0%` always excludes it, `50%` includes it
   for half of rerolls on average, and `100%` preserves vanilla behavior. Normal
   pedestal pickups and rerolls started while TMTRAINER is owned are unrestricted.
+  Rejected TMTRAINER results are replaced by a passive/familiar result before
+  entering the inventory, so they cannot create extra glitched items, collide
+  with an active-item slot, or change the rerolled item count.
 - Items generated on Esau Jr.'s first use are registered once with vanilla
   transformation progress. Later body swaps do not replay first-pickup effects.
 

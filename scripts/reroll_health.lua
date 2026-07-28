@@ -31,8 +31,10 @@ function RerollHealthModule.New(context)
         RunActive = false,
         PendingEsauJr = {},
         KnownEsauJrBodies = {},
-        TmtrainerBlacklistMode = nil,
         TmtrainerPreparedDecisions = {},
+        TmtrainerRoomPoolGuard = false,
+        PoolGuardCallbackRegistered = false,
+        PoolOverrideInProgress = false,
         DiceRoomFace = nil,
         DiceRoomFloor = nil,
         DiceRoomTriggered = false,
@@ -45,6 +47,20 @@ function RerollHealthModule.New(context)
     end
     self.DiceUpdateCallback = function(_, player)
         self:OnPlayerEffectUpdate(player)
+    end
+    self.PoolGuardCallback = function(
+        _,
+        selectedCollectible,
+        poolType,
+        decrease,
+        seed
+    )
+        return self:OnPostGetCollectible(
+            selectedCollectible,
+            poolType,
+            decrease,
+            seed
+        )
     end
 
     -- Register before the Bethany module. A restored Soul Heart must already be
@@ -140,8 +156,40 @@ function RerollHealthModule:RefreshUpdateCallback()
     self:SetUpdateCallbackEnabled(
         self.RunActive
         and (#self.PendingEsauJr > 0
-            or next(self.PendingSyncPlayers) ~= nil
-            or self.TmtrainerBlacklistMode == "transient")
+            or next(self.PendingSyncPlayers) ~= nil)
+    )
+end
+
+function RerollHealthModule:SetPoolGuardCallbackEnabled(enabled)
+    if enabled and not self.PoolGuardCallbackRegistered then
+        self.Context.Mod:AddCallback(
+            ModCallbacks.MC_POST_GET_COLLECTIBLE,
+            self.PoolGuardCallback
+        )
+        self.PoolGuardCallbackRegistered = true
+    elseif not enabled and self.PoolGuardCallbackRegistered then
+        self.Context.Mod:RemoveCallback(
+            ModCallbacks.MC_POST_GET_COLLECTIBLE,
+            self.PoolGuardCallback
+        )
+        self.PoolGuardCallbackRegistered = false
+    end
+end
+
+function RerollHealthModule:HasPendingPoolGuard()
+    for _, state in pairs(self.Players) do
+        if state.pending and state.pending.tmtrainerAllowed == false then
+            return true
+        end
+    end
+
+    return false
+end
+
+function RerollHealthModule:RefreshPoolGuardCallback()
+    self:SetPoolGuardCallbackEnabled(
+        self.RunActive
+        and (self.TmtrainerRoomPoolGuard or self:HasPendingPoolGuard())
     )
 end
 
@@ -383,6 +431,7 @@ function RerollHealthModule:QueueRestore(
 
     self.PendingSyncPlayers[key] = player
     self:RefreshUpdateCallback()
+    self:RefreshPoolGuardCallback()
 end
 
 function RerollHealthModule:GetInventoryDiceFloor()
@@ -446,17 +495,16 @@ function RerollHealthModule:PrepareDiceRoomDecision()
 
     if not allowed and eventPlayer then
         allowed = self:RollTmtrainerAllowed(eventPlayer)
-
-        if not allowed then
-            Game():GetItemPool():AddRoomBlacklist(TMTRAINER)
-            self.TmtrainerBlacklistMode = "room"
-        end
     end
+
+    self.TmtrainerRoomPoolGuard = allowed == false
 
     for playerIndex = 0, game:GetNumPlayers() - 1 do
         local player = Isaac.GetPlayer(playerIndex)
         self.TmtrainerPreparedDecisions[self:GetPlayerKey(player)] = allowed
     end
+
+    self:RefreshPoolGuardCallback()
 end
 
 function RerollHealthModule:OnPlayerEffectUpdate(player)
@@ -521,8 +569,7 @@ end
 
 function RerollHealthModule:PrepareTmtrainerReroll(
     player,
-    tmtrainerCount,
-    blacklistMode
+    tmtrainerCount
 )
     if (tmtrainerCount or 0) > 0
         or self:GetTmtrainerChance() >= 100
@@ -530,23 +577,7 @@ function RerollHealthModule:PrepareTmtrainerReroll(
         return true
     end
 
-    local allowed = self:RollTmtrainerAllowed(player)
-
-    if not allowed then
-        Game():GetItemPool():AddRoomBlacklist(TMTRAINER)
-        if blacklistMode == "room" or self.TmtrainerBlacklistMode == nil then
-            self.TmtrainerBlacklistMode = blacklistMode or "transient"
-        end
-    end
-
-    return allowed
-end
-
-function RerollHealthModule:ClearTmtrainerBlacklist()
-    if self.TmtrainerBlacklistMode then
-        Game():GetItemPool():ResetRoomBlacklist()
-        self.TmtrainerBlacklistMode = nil
-    end
+    return self:RollTmtrainerAllowed(player)
 end
 
 function RerollHealthModule:OnNewLevel()
@@ -567,13 +598,14 @@ end
 
 function RerollHealthModule:OnNewRoom()
     self:SetDiceUpdateCallbackEnabled(false)
-    self:ClearTmtrainerBlacklist()
+    self.TmtrainerRoomPoolGuard = false
     self.TmtrainerPreparedDecisions = {}
     self.DiceRoomFace = nil
     self.DiceRoomFloor = nil
     self.DiceRoomTriggered = false
 
     if not self.RunActive or self:IsDiceRoomAlreadyTriggered() then
+        self:RefreshPoolGuardCallback()
         return
     end
 
@@ -585,6 +617,8 @@ function RerollHealthModule:OnNewRoom()
         -- preserve vanilla behavior instead of restricting that player's roll.
         self:PrepareDiceRoomDecision()
         self:SetDiceUpdateCallbackEnabled(true)
+    else
+        self:RefreshPoolGuardCallback()
     end
 end
 
@@ -609,24 +643,73 @@ function RerollHealthModule:OnInputAction(entity, inputHook, buttonAction)
     end
 end
 
-function RerollHealthModule:GetSecretRoomReplacement(player)
+function RerollHealthModule:GetPoolReplacement(poolType, seed)
     local itemPool = Game():GetItemPool()
-    local rng = player:GetCollectibleRNG(TMTRAINER)
+    local itemConfig = Isaac.GetItemConfig and Isaac.GetItemConfig()
+    local baseSeed = math.abs(tonumber(seed) or 1) % 2147483647
 
-    for _ = 1, 20 do
+    for attempt = 1, 20 do
+        local replacementSeed = (
+            baseSeed + attempt * 1103515245
+        ) % 2147483647
+
+        if replacementSeed == 0 then
+            replacementSeed = attempt
+        end
+
         local collectibleType = itemPool:GetCollectible(
-            SECRET_POOL,
+            poolType,
             false,
-            rng:Next(),
+            replacementSeed,
             NULL_COLLECTIBLE
         )
+        local collectibleConfig = itemConfig
+            and itemConfig:GetCollectible(collectibleType)
+        local itemType = collectibleConfig and collectibleConfig.Type
 
-        if collectibleType ~= TMTRAINER and collectibleType > 0 then
+        -- TMTRAINER is a passive result in the inventory-reroll stream. Its
+        -- replacement must remain passive/familiar as well: returning an
+        -- active item can collide with another active result later in the
+        -- same roll, making one collectible disappear from the player.
+        if collectibleType ~= TMTRAINER
+            and collectibleType > 0
+            and (itemType == PASSIVE or itemType == FAMILIAR)
+        then
             return collectibleType
         end
     end
 
     return BREAKFAST
+end
+
+function RerollHealthModule:GetSecretRoomReplacement(player)
+    return self:GetPoolReplacement(
+        SECRET_POOL,
+        player:GetCollectibleRNG(TMTRAINER):Next()
+    )
+end
+
+function RerollHealthModule:OnPostGetCollectible(
+    selectedCollectible,
+    poolType,
+    _,
+    seed
+)
+    if self.PoolOverrideInProgress
+        or selectedCollectible ~= TMTRAINER
+        or not self.PoolGuardCallbackRegistered
+    then
+        return nil
+    end
+
+    -- Full-inventory rerolls can ignore ItemPool:AddRoomBlacklist. Override
+    -- TMTRAINER at the actual pool-result callback so it never enters the
+    -- player inventory and therefore cannot generate extra negative-ID items.
+    self.PoolOverrideInProgress = true
+    local replacement = self:GetPoolReplacement(poolType, seed)
+    self.PoolOverrideInProgress = false
+
+    return replacement
 end
 
 function RerollHealthModule:ReplaceUnexpectedTmtrainer(
@@ -869,26 +952,22 @@ function RerollHealthModule:OnUpdate()
     end
 
 
-    -- MC_PRE_USE_ITEM and the damage callback run before vanilla's inventory
-    -- reroll. Keep the temporary blacklist through that effect, then restore
-    -- normal room-pool behavior once this update has completed.
-    if self.TmtrainerBlacklistMode == "transient" then
-        self:ClearTmtrainerBlacklist()
-    end
-
     self:RefreshUpdateCallback()
+    self:RefreshPoolGuardCallback()
 end
 
 function RerollHealthModule:OnGameStarted()
     self:SetUpdateCallbackEnabled(false)
     self:SetDiceUpdateCallbackEnabled(false)
-    self:ClearTmtrainerBlacklist()
+    self:SetPoolGuardCallbackEnabled(false)
     self.RunActive = true
     self.Players = {}
     self.PendingSyncPlayers = {}
     self.PendingEsauJr = {}
     self.KnownEsauJrBodies = {}
     self.TmtrainerPreparedDecisions = {}
+    self.TmtrainerRoomPoolGuard = false
+    self.PoolOverrideInProgress = false
     self.DiceRoomFace = nil
     self.DiceRoomFloor = nil
     self.DiceRoomTriggered = false
@@ -915,11 +994,13 @@ function RerollHealthModule:OnSettingChanged(_, settingKey)
     end
 
     if settingKey == TMTRAINER_SETTING_KEY then
-        self:ClearTmtrainerBlacklist()
         self.TmtrainerPreparedDecisions = {}
+        self.TmtrainerRoomPoolGuard = false
 
         if self.RunActive and Game():GetRoom():GetType() == RoomType.ROOM_DICE then
             self:OnNewRoom()
+        else
+            self:RefreshPoolGuardCallback()
         end
 
         return
@@ -943,13 +1024,15 @@ end
 function RerollHealthModule:OnPreGameExit()
     self:SetUpdateCallbackEnabled(false)
     self:SetDiceUpdateCallbackEnabled(false)
-    self:ClearTmtrainerBlacklist()
+    self:SetPoolGuardCallbackEnabled(false)
     self.RunActive = false
     self.Players = {}
     self.PendingSyncPlayers = {}
     self.PendingEsauJr = {}
     self.KnownEsauJrBodies = {}
     self.TmtrainerPreparedDecisions = {}
+    self.TmtrainerRoomPoolGuard = false
+    self.PoolOverrideInProgress = false
     self.DiceRoomFace = nil
     self.DiceRoomFloor = nil
     self.DiceRoomTriggered = false
