@@ -6,7 +6,6 @@ local BETHANY = PlayerType.PLAYER_BETHANY
 local GELLO = CollectibleType.COLLECTIBLE_GELLO
 local ITEM_WISP = FamiliarVariant.ITEM_WISP
 local GELLO_FAMILIAR = FamiliarVariant.UMBILICAL_BABY
-local MAX_CHASE_SPEED = 8
 
 local function SameEntity(left, right)
     return left ~= nil
@@ -33,14 +32,13 @@ end
 function BethanyGelloWispsModule.New(context)
     local self = setmetatable({ Context = context }, BethanyGelloWispsModule)
 
-    self.WispUpdateCallback = function(_, familiar)
-        self:OnWispUpdate(familiar)
+    self.PostUpdateCallback = function()
+        self:OnPostUpdate()
     end
 
     context.Mod:AddCallback(
-        ModCallbacks.MC_FAMILIAR_UPDATE,
-        self.WispUpdateCallback,
-        ITEM_WISP
+        ModCallbacks.MC_POST_UPDATE,
+        self.PostUpdateCallback
     )
 
     return self
@@ -53,7 +51,6 @@ function BethanyGelloWispsModule:ShouldKeepPlayerOrbit(familiar, player)
         or player == nil
         or player:GetPlayerType() ~= BETHANY
         or not player:HasCollectible(GELLO)
-        or not HasActiveGello()
     then
         return false
     end
@@ -68,28 +65,35 @@ function BethanyGelloWispsModule:ShouldKeepPlayerOrbit(familiar, player)
         or IsGelloFamiliar(parent)
 end
 
-function BethanyGelloWispsModule:OnWispUpdate(familiar)
-    local player = familiar.Player
-
-    if not self:ShouldKeepPlayerOrbit(familiar, player) then
+function BethanyGelloWispsModule:OnPostUpdate()
+    if not self.Context:IsEnabled(SETTING_KEY) or not HasActiveGello() then
         return
     end
 
-    -- Vanilla ITEM_WISP target selection ignores Parent. Drive the same orbit
-    -- geometry around Bethany explicitly, retaining the wisp's own orbit layer,
-    -- distance, angle, health, damage, subtype, and lifetime.
-    local orbitPosition = familiar:GetOrbitPosition(player.Position)
-    local correction = (orbitPosition - familiar.Position) * 0.5
+    local itemWisps = Isaac.FindByType(
+        EntityType.ENTITY_FAMILIAR,
+        ITEM_WISP,
+        -1,
+        false,
+        false
+    )
 
-    if correction:Length() > MAX_CHASE_SPEED then
-        correction = correction:Resized(MAX_CHASE_SPEED)
+    for _, entity in ipairs(itemWisps) do
+        local familiar = entity:ToFamiliar()
+        local player = familiar and familiar.Player or nil
+
+        if familiar ~= nil and self:ShouldKeepPlayerOrbit(familiar, player) then
+            -- A familiar-update velocity override is not late enough to win
+            -- against ITEM_WISP's native Gello movement. Constrain the fully
+            -- updated entity to its own orbit geometry around its Bethany.
+            familiar.Position = familiar:GetOrbitPosition(player.Position)
+            familiar.Velocity = player.Velocity
+        end
     end
-
-    familiar.Velocity = correction + player.Velocity * 0.5
 end
 
 function BethanyGelloWispsModule:OnSettingChanged()
-    -- Movement ownership returns to vanilla on the next familiar update.
+    -- The next completed game update reads the new setting directly.
 end
 
 function BethanyGelloWispsModule:OnPreGameExit()
