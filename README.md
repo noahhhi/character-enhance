@@ -82,9 +82,9 @@
   consumes Soul Charge.
 - Absorbed penalty damage still destroys Perfection and affects its progress;
   only red health and room-deal probability are protected.
-- While Gello is active, Bethany's wisps keep orbiting her instead of moving
-  their orbit center to Gello. Wisp and Gello stats, count, and lifetime remain
-  unchanged.
+- While Gello is active, Book of Virtues wisps keep orbiting their owning
+  player instead of moving their orbit center to Gello. Wisp and Gello stats,
+  count, and lifetime remain unchanged.
 - Independent shield feedback offers a legacy translucent Soul Veil, a blue
   energy-pane Particle Wall, and a dense Frosted Soul shell, plus five
   bright-to-afterglow hit effects and three original Soul Shield sound sets.

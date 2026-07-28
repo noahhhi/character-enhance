@@ -2,8 +2,8 @@ local BethanyGelloWispsModule = {}
 BethanyGelloWispsModule.__index = BethanyGelloWispsModule
 
 local SETTING_KEY = "bethanyGelloWispOrbit"
-local BETHANY = PlayerType.PLAYER_BETHANY
 local GELLO = CollectibleType.COLLECTIBLE_GELLO
+local BOOK_OF_VIRTUES = CollectibleType.COLLECTIBLE_BOOK_OF_VIRTUES
 local ITEM_WISP = FamiliarVariant.ITEM_WISP
 local GELLO_FAMILIAR = FamiliarVariant.UMBILICAL_BABY
 
@@ -19,26 +19,17 @@ local function IsGelloFamiliar(entity)
         and entity.Variant == GELLO_FAMILIAR
 end
 
-local function HasActiveGello()
-    return #Isaac.FindByType(
-        EntityType.ENTITY_FAMILIAR,
-        GELLO_FAMILIAR,
-        -1,
-        false,
-        false
-    ) > 0
-end
-
 function BethanyGelloWispsModule.New(context)
     local self = setmetatable({ Context = context }, BethanyGelloWispsModule)
 
-    self.PostUpdateCallback = function()
-        self:OnPostUpdate()
+    self.WispUpdateCallback = function(_, familiar)
+        self:OnWispUpdate(familiar)
     end
 
     context.Mod:AddCallback(
-        ModCallbacks.MC_POST_UPDATE,
-        self.PostUpdateCallback
+        ModCallbacks.MC_FAMILIAR_UPDATE,
+        self.WispUpdateCallback,
+        ITEM_WISP
     )
 
     return self
@@ -49,7 +40,7 @@ function BethanyGelloWispsModule:ShouldKeepPlayerOrbit(familiar, player)
     if not self.Context:IsEnabled(SETTING_KEY)
         or familiar.Variant ~= ITEM_WISP
         or player == nil
-        or player:GetPlayerType() ~= BETHANY
+        or not player:HasCollectible(BOOK_OF_VIRTUES)
         or not player:HasCollectible(GELLO)
     then
         return false
@@ -65,35 +56,22 @@ function BethanyGelloWispsModule:ShouldKeepPlayerOrbit(familiar, player)
         or IsGelloFamiliar(parent)
 end
 
-function BethanyGelloWispsModule:OnPostUpdate()
-    if not self.Context:IsEnabled(SETTING_KEY) or not HasActiveGello() then
+function BethanyGelloWispsModule:OnWispUpdate(familiar)
+    local player = familiar.Player
+
+    if not self:ShouldKeepPlayerOrbit(familiar, player) then
         return
     end
 
-    local itemWisps = Isaac.FindByType(
-        EntityType.ENTITY_FAMILIAR,
-        ITEM_WISP,
-        -1,
-        false,
-        false
-    )
-
-    for _, entity in ipairs(itemWisps) do
-        local familiar = entity:ToFamiliar()
-        local player = familiar and familiar.Player or nil
-
-        if familiar ~= nil and self:ShouldKeepPlayerOrbit(familiar, player) then
-            -- A familiar-update velocity override is not late enough to win
-            -- against ITEM_WISP's native Gello movement. Constrain the fully
-            -- updated entity to its own orbit geometry around its Bethany.
-            familiar.Position = familiar:GetOrbitPosition(player.Position)
-            familiar.Velocity = player.Velocity
-        end
-    end
+    -- A velocity override is replaced before it can affect the next frame.
+    -- Set the completed familiar-update position directly, using this wisp's
+    -- existing orbit geometry and its owning player as the center.
+    familiar.Position = familiar:GetOrbitPosition(player.Position)
+    familiar.Velocity = player.Velocity
 end
 
 function BethanyGelloWispsModule:OnSettingChanged()
-    -- The next completed game update reads the new setting directly.
+    -- The next item-wisp update reads the new setting directly.
 end
 
 function BethanyGelloWispsModule:OnPreGameExit()

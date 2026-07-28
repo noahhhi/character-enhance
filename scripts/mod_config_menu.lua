@@ -254,16 +254,16 @@ local MENU_SETTINGS = {
         zhName = "格罗魂火跟随",
         enName = "Gello Wisp Orbit",
         zhInfo = {
-            "伯大尼激活格罗时，自己的魂火继续围绕自身。",
+            "持有美德书并激活格罗时，自己的魂火继续围绕自身。",
             "魂火不会把环绕中心转移到格罗。",
             "只改变跟随中心，不改变伤害、血量、数量或持续时间。",
-            "多人游戏按魂火归属处理，其他角色保持原版行为。",
+            "多人游戏按每个魂火的玩家归属分别处理。",
         },
         enInfo = {
-            "Bethany's wisps keep orbiting her while Gello is active.",
+            "Book of Virtues wisps orbit their owner while Gello is active.",
             "Their orbit center does not transfer to Gello.",
             "Damage, health, count, and lifetime remain unchanged.",
-            "Co-op ownership is respected; other characters stay vanilla.",
+            "Each wisp is handled by its player ownership in co-op.",
         },
     },
     {
