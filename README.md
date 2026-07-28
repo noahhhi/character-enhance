@@ -82,6 +82,9 @@
   consumes Soul Charge.
 - Absorbed penalty damage still destroys Perfection and affects its progress;
   only red health and room-deal probability are protected.
+- While Gello is active, Bethany's wisps keep orbiting her instead of moving
+  their orbit center to Gello. Wisp and Gello stats, count, and lifetime remain
+  unchanged.
 - Independent shield feedback offers a legacy translucent Soul Veil, a blue
   energy-pane Particle Wall, and a dense Frosted Soul shell, plus five
   bright-to-afterglow hit effects and three original Soul Shield sound sets.
@@ -120,7 +123,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All eleven gameplay settings remain independently configurable:
+All twelve gameplay settings remain independently configurable:
 
 1. Familiar Capacity
 2. Clog Ground Damage
@@ -133,6 +136,7 @@ All eleven gameplay settings remain independently configurable:
 9. Soul Charge Bonus
 10. Charge Damage Shield
 11. Shield Feedback
+12. Gello Wisp Orbit
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's

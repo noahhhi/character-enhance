@@ -12,6 +12,7 @@ local DEFAULT_SETTINGS = {
     bethanyShieldVisualStyle = 1,
     bethanyShieldSoundStyle = 1,
     bethanyShieldHitStyle = 1,
+    bethanyGelloWispOrbit = true,
     familiarCapacity = true,
     clogGroundDamage = true,
     rerollHealthProtection = true,
@@ -170,6 +171,7 @@ local BethanyShieldModule = include("scripts/bethany_shield")
 local BethanyShieldFeedbackModule = include(
     "scripts/bethany_shield_feedback"
 )
+local BethanyGelloWispsModule = include("scripts/bethany_gello_wisps")
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local ModConfigMenuModule = include("scripts/mod_config_menu")
@@ -214,6 +216,10 @@ Context:RegisterSettingHandler(
 Context:RegisterModule(
     "bethanyDamageShield",
     BethanyShieldModule.New(Context)
+)
+Context:RegisterModule(
+    "bethanyGelloWispOrbit",
+    BethanyGelloWispsModule.New(Context)
 )
 Context:RegisterModule(
     "familiarCapacity",
