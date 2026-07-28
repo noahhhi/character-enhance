@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.8.1"
+local VERSION = "1.9.5"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -9,8 +9,13 @@ local DEFAULT_SETTINGS = {
     bethanySoulCharge = true,
     bethanyDamageShield = true,
     bethanyShieldFeedback = true,
+    bethanyShieldVisualStyle = 1,
+    bethanyShieldSoundStyle = 1,
+    bethanyShieldHitStyle = 1,
+    bethanyGelloWispOrbit = true,
     familiarCapacity = true,
     clogGroundDamage = true,
+    heldItemProtection = true,
     rerollHealthProtection = true,
     esauJrFirstPickup = true,
     rerollTmtrainerChance = 0,
@@ -121,6 +126,24 @@ function Context:SetSetting(settingKey, value)
         end
 
         value = math.floor(value + 0.5)
+    elseif settingKey == "bethanyShieldVisualStyle"
+        or settingKey == "bethanyShieldSoundStyle"
+    then
+        if value ~= value or value == math.huge or value == -math.huge
+            or value < 1 or value > 3
+        then
+            return
+        end
+
+        value = math.floor(value + 0.5)
+    elseif settingKey == "bethanyShieldHitStyle" then
+        if value ~= value or value == math.huge or value == -math.huge
+            or value < 1 or value > 5
+        then
+            return
+        end
+
+        value = math.floor(value + 0.5)
     end
 
     if self.Settings[settingKey] == value then
@@ -149,8 +172,10 @@ local BethanyShieldModule = include("scripts/bethany_shield")
 local BethanyShieldFeedbackModule = include(
     "scripts/bethany_shield_feedback"
 )
+local BethanyGelloWispsModule = include("scripts/bethany_gello_wisps")
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
+local HeldItemProtectionModule = include("scripts/held_item_protection")
 local ModConfigMenuModule = include("scripts/mod_config_menu")
 
 local rerollHealthModule = RerollHealthModule.New(Context)
@@ -173,13 +198,30 @@ Context:RegisterModule(
     "bethanySoulCharge",
     BethanyChargeModule.New(Context)
 )
+local bethanyShieldFeedbackModule = BethanyShieldFeedbackModule.New(Context)
 Context:RegisterModule(
     "bethanyShieldFeedback",
-    BethanyShieldFeedbackModule.New(Context)
+    bethanyShieldFeedbackModule
+)
+Context:RegisterSettingHandler(
+    "bethanyShieldVisualStyle",
+    bethanyShieldFeedbackModule
+)
+Context:RegisterSettingHandler(
+    "bethanyShieldSoundStyle",
+    bethanyShieldFeedbackModule
+)
+Context:RegisterSettingHandler(
+    "bethanyShieldHitStyle",
+    bethanyShieldFeedbackModule
 )
 Context:RegisterModule(
     "bethanyDamageShield",
     BethanyShieldModule.New(Context)
+)
+Context:RegisterModule(
+    "bethanyGelloWispOrbit",
+    BethanyGelloWispsModule.New(Context)
 )
 Context:RegisterModule(
     "familiarCapacity",
@@ -188,6 +230,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "clogGroundDamage",
     ClogGroundDamageModule.New(Context)
+)
+Context:RegisterModule(
+    "heldItemProtection",
+    HeldItemProtectionModule.New(Context)
 )
 
 ModConfigMenuModule.New(Context)

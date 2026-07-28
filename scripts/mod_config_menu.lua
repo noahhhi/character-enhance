@@ -20,6 +20,35 @@ local SUBCATEGORY_ORDER = {
     "bethany",
 }
 local TMTRAINER_CHANCE_KEY = "rerollTmtrainerChance"
+local SHIELD_VISUAL_STYLE_KEY = "bethanyShieldVisualStyle"
+local SHIELD_SOUND_STYLE_KEY = "bethanyShieldSoundStyle"
+local SHIELD_HIT_STYLE_KEY = "bethanyShieldHitStyle"
+local SHIELD_STYLES = {
+    visual = {
+        en = { "Soul Veil", "Particle Wall", "Frosted Soul" },
+        zh = { "魂心薄幕", "粒子墙", "磨砂魂盾" },
+    },
+    sound = {
+        en = { "Soul Glass", "Aether Veil", "Wraith Prism" },
+        zh = { "魂晶冰盾", "以太灵幕", "幽魂棱晶" },
+    },
+    hit = {
+        en = {
+            "Bright Step",
+            "Soft Pulse",
+            "Echo Ring",
+            "Crystal Burst",
+            "Shadow Shock",
+        },
+        zh = {
+            "亮度阶降",
+            "柔和脉冲",
+            "扩散回响",
+            "冰晶爆闪",
+            "暗影震荡",
+        },
+    },
+}
 
 local TEXT = {
     zh = {
@@ -199,18 +228,42 @@ local MENU_SETTINGS = {
         zhName = "护盾反馈",
         enName = "Shield Feedback",
         zhInfo = {
-            "显示随魂心充能增强的淡蓝色护罩。",
+            "每一点充能都会细微改变护罩与冰盾声。",
+            "透明护罩包围全身，不是前方半球。",
             "移动和时间会使护罩渐隐渐现。",
-            "格挡时冰盾声会替代伯大尼的受伤声。",
-            "同时保留原版手柄震动和受伤保护时间。",
+            "受击时先明显增亮，再减弱为余辉。",
+            "格挡时只播放冰盾声，不触发角色受伤表现。",
+            "角色保持动作，并在受伤保护期间原地闪烁。",
+            "关闭时护罩伴随轻微冰裂声渐隐消失。",
             "关闭后不影响充能伤害护盾本身。",
         },
         enInfo = {
-            "Shows a pale-blue shield that strengthens with Soul Charge.",
+            "Every charge point subtly changes the shield and sound.",
+            "The translucent shield surrounds the full body.",
             "Movement and time make the shield gently fade and pulse.",
-            "An ice impact replaces Bethany's hurt voice on a block.",
-            "Vanilla controller rumble and damage cooldown are retained.",
+            "Hits flash brightly, then fall back to an afterglow.",
+            "Blocks play only the shield sound, with no hurt response.",
+            "Bethany keeps her pose and flashes during the cooldown.",
+            "Turning it off fades the shield with a soft ice crack.",
             "Turning this off does not disable the damage shield itself.",
+        },
+    },
+    {
+        key = "bethanyGelloWispOrbit",
+        group = "bethany",
+        zhName = "格罗魂火跟随",
+        enName = "Gello Wisp Orbit",
+        zhInfo = {
+            "持有美德书并激活格罗时，自己的魂火继续围绕自身。",
+            "魂火不会把环绕中心转移到格罗。",
+            "只改变跟随中心，不改变伤害、血量、数量或持续时间。",
+            "多人游戏按每个魂火的玩家归属分别处理。",
+        },
+        enInfo = {
+            "Book of Virtues wisps orbit their owner while Gello is active.",
+            "Their orbit center does not transfer to Gello.",
+            "Damage, health, count, and lifetime remain unchanged.",
+            "Each wisp is handled by its player ownership in co-op.",
         },
     },
     {
@@ -245,6 +298,24 @@ local MENU_SETTINGS = {
             "Restores player-creep hits skipped by its internal flight state.",
             "Damage, radius and tick rate use the current creep's values.",
             "Only The Clog is affected; other enemies remain vanilla.",
+        },
+    },
+    {
+        key = "heldItemProtection",
+        group = "general",
+        zhName = "举起道具保护",
+        enName = "Held Item Protection",
+        zhInfo = {
+            "举起收藏品、尚未加入物品栏时提供保护。",
+            "使用 R 键或遗忘药前，先完成该次拾取。",
+            "多人游戏会分别保护每位玩家举起的道具。",
+            "关闭后保持原版行为。",
+        },
+        enInfo = {
+            "Protects a collectible still held above the player's head.",
+            "Finishes that pickup before R Key or Forget Me Now activates.",
+            "In co-op, each player's held collectible is protected.",
+            "Turning it off preserves vanilla behavior.",
         },
     },
 }
@@ -452,6 +523,211 @@ function ModConfigMenuModule:AddTmtrainerChance(menu)
     self:RememberSubcategory(menu, "taintedEden")
 end
 
+function ModConfigMenuModule:AddShieldStyle(menu, kind)
+    self.CreatedGroups.bethany = true
+    local settingKey = kind == "visual" and SHIELD_VISUAL_STYLE_KEY
+        or kind == "sound" and SHIELD_SOUND_STYLE_KEY
+        or SHIELD_HIT_STYLE_KEY
+    local labels = SHIELD_STYLES[kind]
+    local maximum = kind == "hit" and 5 or 3
+
+    menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "bethany"), {
+        Type = menu.OptionType.NUMBER,
+        Minimum = 1,
+        Maximum = maximum,
+        ModifyBy = 1,
+        Default = 1,
+        CurrentSetting = function()
+            return self.Context.Settings[settingKey] or 1
+        end,
+        Display = function()
+            local language = self:GetLanguage()
+            local style = self.Context.Settings[settingKey] or 1
+            local name
+
+            if kind == "visual" then
+                name = language == "en" and "Animation" or "动画"
+            elseif kind == "hit" then
+                name = language == "en" and "Hit FX" or "受击效果"
+            else
+                name = language == "en" and "Sound" or "音效"
+            end
+
+            return name .. ": " .. labels[language][style]
+        end,
+        OnChange = function(style)
+            self.Context:SetSetting(settingKey, style)
+            local feedback = self.Context.Modules
+                and self.Context.Modules.bethanyShieldFeedback
+
+            if not feedback then
+                return
+            end
+
+            if kind == "visual" and feedback.PreviewAnimation then
+                feedback:PreviewAnimation()
+            elseif kind == "hit" and feedback.PreviewHit then
+                feedback:PreviewHit()
+            elseif kind == "sound" and feedback.PreviewSound then
+                feedback:PreviewSound()
+            end
+        end,
+        Info = function()
+            if self:GetLanguage() == "en" then
+                if kind == "visual" then
+                    return {
+                        "Choose one of three live shield appearances.",
+                        "Changing it immediately previews the selected style.",
+                        "Includes Particle Wall and a dense frosted shell.",
+                        "High charge adds a dark rim and a wider glow.",
+                        "Low charge stays thin and slightly brittle.",
+                    }
+                end
+
+                if kind == "hit" then
+                    return {
+                        "Choose one of five absorbed-hit animations.",
+                        "Each flashes brightly, then drops to an afterglow.",
+                    }
+                end
+
+                return {
+                    "Choose one of three original Soul Shield sounds.",
+                    "Each blends thin, middle and thick recordings.",
+                    "Changing it previews the 30-charge anchor.",
+                }
+            end
+
+            if kind == "visual" then
+                return {
+                    "选择三种实时护盾外观之一。",
+                    "切换后会立即预览所选样式。",
+                    "包含粒子墙和厚实的蓝色磨砂外壳。",
+                    "高充能增加暗边、光晕范围和粒子厚度。",
+                    "低充能护罩更薄，并带轻微脆弱抖动。",
+                }
+            end
+
+            if kind == "hit" then
+                return {
+                    "选择五种魂心护盾受击动画之一。",
+                    "每种都会先明显增亮，再降为余辉。",
+                }
+            end
+
+            return {
+                "选择三种原创魂心护盾音效之一。",
+                "每种都会混合薄、中、厚三段录音。",
+                "切换后会试听 30 充能锚点。",
+            }
+        end,
+    })
+    self:RememberSubcategory(menu, "bethany")
+end
+
+function ModConfigMenuModule:AddShieldPreview(menu, kind, previewCharge)
+    self.CreatedGroups.bethany = true
+
+    menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "bethany"), {
+        Type = menu.OptionType.NUMBER,
+        Minimum = 0,
+        Maximum = 1,
+        ModifyBy = 1,
+        Default = 0,
+        CurrentSetting = function()
+            return 0
+        end,
+        Display = function()
+            if self:GetLanguage() == "en" then
+                if kind == "visual" then
+                    return "Test Idle: Press right"
+                end
+
+                if kind == "hit" then
+                    return "Test Hit FX: Press right"
+                end
+
+                return "Test Sound " .. previewCharge .. ": Press right"
+            end
+
+            if kind == "visual" then
+                return "测试待机: 按右键"
+            end
+
+            if kind == "hit" then
+                return "测试受击: 按右键"
+            end
+
+            return "测试音效 " .. previewCharge .. ": 按右键"
+        end,
+        OnChange = function(value)
+            if value <= 0 then
+                return
+            end
+
+            local feedback = self.Context.Modules
+                and self.Context.Modules.bethanyShieldFeedback
+
+            if kind == "visual" and feedback
+                and feedback.PreviewAnimation
+            then
+                feedback:PreviewAnimation()
+            elseif kind == "hit" and feedback
+                and feedback.PreviewHit
+            then
+                feedback:PreviewHit()
+            elseif kind == "sound" and feedback
+                and feedback.PreviewSound
+            then
+                feedback:PreviewSound(previewCharge)
+            end
+        end,
+        Info = function()
+            if self:GetLanguage() == "en" then
+                if kind == "visual" then
+                    return {
+                        "Replays the idle shield without taking damage.",
+                        "Requires Bethany and Shield Feedback to be enabled.",
+                    }
+                end
+
+                if kind == "hit" then
+                    return {
+                        "Replays the selected hit flash without taking damage.",
+                        "No sound, charge cost, hurt voice, or hit animation.",
+                    }
+                end
+
+                return {
+                    "Plays the selected shield at "
+                        .. previewCharge .. " simulated charge.",
+                    "No hurt voice, damage, or charge is produced.",
+                }
+            end
+
+            if kind == "visual" then
+                return {
+                    "无需受伤即可重播当前护盾待机动画。",
+                    "需要使用伯大尼并开启护盾反馈。",
+                }
+            end
+
+            if kind == "hit" then
+                return {
+                    "无需受伤即可重播所选受击闪光。",
+                    "不会播放音效、扣充能、语音或受击动画。",
+                }
+            end
+
+            return {
+                "按模拟 " .. previewCharge .. " 充能试听所选护盾音效。",
+                "不会产生语音、伤害或消耗充能。",
+            }
+        end,
+    })
+    self:RememberSubcategory(menu, "bethany")
+end
+
 function ModConfigMenuModule:TrySetup()
     local menu = self:GetMenuApi()
 
@@ -493,6 +769,15 @@ function ModConfigMenuModule:TrySetup()
     for _, setting in ipairs(MENU_SETTINGS) do
         self:AddBoolean(menu, setting)
     end
+
+    self:AddShieldStyle(menu, "visual")
+    self:AddShieldStyle(menu, "hit")
+    self:AddShieldStyle(menu, "sound")
+    self:AddShieldPreview(menu, "visual")
+    self:AddShieldPreview(menu, "hit")
+    self:AddShieldPreview(menu, "sound", 4)
+    self:AddShieldPreview(menu, "sound", 30)
+    self:AddShieldPreview(menu, "sound", 99)
 
     self:AddTmtrainerChance(menu)
 

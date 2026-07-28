@@ -20,6 +20,7 @@
   <a href="#bethany">Bethany</a> •
   <a href="#familiar-capacity">Familiar Capacity</a> •
   <a href="#clog-ground-damage">Clog Ground Damage</a> •
+  <a href="#held-item-protection">Held Item Protection</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
 </p>
@@ -66,6 +67,9 @@
   each full-reroll Secret Room pool. `0%` always excludes it, `50%` includes it
   for half of rerolls on average, and `100%` preserves vanilla behavior. Normal
   pedestal pickups and rerolls started while TMTRAINER is owned are unrestricted.
+  Rejected TMTRAINER results are replaced by a passive/familiar result before
+  entering the inventory, so they cannot create extra glitched items, collide
+  with an active-item slot, or change the rerolled item count.
 - Items generated on Esau Jr.'s first use are registered once with vanilla
   transformation progress. Later body swaps do not replay first-pickup effects.
 
@@ -82,9 +86,18 @@
   consumes Soul Charge.
 - Absorbed penalty damage still destroys Perfection and affects its progress;
   only red health and room-deal probability are protected.
-- An independent shield-feedback option adds a Soul Charge-scaled blue halo,
-  charge-scaled ice impacts, and vanilla controller rumble when damage is
-  absorbed.
+- While Gello is active, Book of Virtues wisps keep orbiting their owning
+  player instead of moving their orbit center to Gello. Wisp and Gello stats,
+  count, and lifetime remain unchanged.
+- Independent shield feedback offers a legacy translucent Soul Veil, a blue
+  energy-pane Particle Wall, and a dense Frosted Soul shell, plus five
+  bright-to-afterglow hit effects and three original Soul Shield sound sets.
+  Each sound continuously blends custom thin, middle, and
+  thick recordings; most visual and audio change occurs from 0–30 charge and
+  then eases toward 99. Separate MCM previews test idle, hit, and 4/30/99-charge
+  sound feedback without damage. Absorbed hits keep Bethany's pose and never
+  play her hurt voice. Turning feedback off fades the shield away with its
+  selected disappearance sound.
 
 <a id="familiar-capacity"></a>
 ## Familiar capacity protection
@@ -107,6 +120,13 @@
   Lemonade. Damage, radius, and tick rate follow the creep's current values;
   other enemies remain unchanged.
 
+<a id="held-item-protection"></a>
+## Held item protection
+
+- Using R Key or Forget Me Now while a collectible is still held above a
+  player's head finishes the pickup before the run or floor resets. In
+  multiplayer, each player's held collectible is protected independently.
+
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
 
@@ -114,19 +134,21 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All eleven gameplay settings remain independently configurable:
+All thirteen gameplay settings remain independently configurable:
 
 1. Familiar Capacity
 2. Clog Ground Damage
-3. Starting Wooden Cross
-4. Equivalent Soul Deals
-5. Full Poop Protection
-6. Reroll Health Protection
-7. Esau Jr. First Pickup
-8. TMTRAINER Reroll Chance
-9. Soul Charge Bonus
-10. Charge Damage Shield
-11. Shield Feedback
+3. Held Item Protection
+4. Starting Wooden Cross
+5. Equivalent Soul Deals
+6. Full Poop Protection
+7. Reroll Health Protection
+8. Esau Jr. First Pickup
+9. TMTRAINER Reroll Chance
+10. Soul Charge Bonus
+11. Charge Damage Shield
+12. Shield Feedback
+13. Gello Wisp Orbit
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sounds root="sfx/">
+    <sound name="Character Enhance Soul Glass Thin">
+        <sample weight="1" path="character-enhance/ce_soul_glass_thin.wav" />
+    </sound>
+    <sound name="Character Enhance Soul Glass Mid">
+        <sample weight="1" path="character-enhance/ce_soul_glass_mid.wav" />
+    </sound>
+    <sound name="Character Enhance Soul Glass Thick">
+        <sample weight="1" path="character-enhance/ce_soul_glass_thick.wav" />
+    </sound>
+    <sound name="Character Enhance Aether Membrane Thin">
+        <sample weight="1" path="character-enhance/ce_aether_membrane_thin.wav" />
+    </sound>
+    <sound name="Character Enhance Aether Membrane Mid">
+        <sample weight="1" path="character-enhance/ce_aether_membrane_mid.wav" />
+    </sound>
+    <sound name="Character Enhance Aether Membrane Thick">
+        <sample weight="1" path="character-enhance/ce_aether_membrane_thick.wav" />
+    </sound>
+    <sound name="Character Enhance Wraith Prism Thin">
+        <sample weight="1" path="character-enhance/ce_wraith_prism_thin.wav" />
+    </sound>
+    <sound name="Character Enhance Wraith Prism Mid">
+        <sample weight="1" path="character-enhance/ce_wraith_prism_mid.wav" />
+    </sound>
+    <sound name="Character Enhance Wraith Prism Thick">
+        <sample weight="1" path="character-enhance/ce_wraith_prism_thick.wav" />
+    </sound>
+</sounds>

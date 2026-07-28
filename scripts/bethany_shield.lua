@@ -13,15 +13,8 @@ local BLIND_RAGE_COOLDOWN_BONUS = 120
 function BethanyShieldModule.New(context)
     local self = setmetatable({
         Context = context,
-        ApplyingAbsorbedDamage = {},
     }, BethanyShieldModule)
 
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_GAME_STARTED,
-        function()
-            self.ApplyingAbsorbedDamage = {}
-        end
-    )
     context.Mod:AddCallback(
         ModCallbacks.MC_ENTITY_TAKE_DMG,
         function(_, entity, damageAmount, damageFlags, source, countdown)
@@ -59,6 +52,14 @@ function BethanyShieldModule:GetDamageCooldown(player, damageAmount)
         + blindRageMultiplier * BLIND_RAGE_COOLDOWN_BONUS
 end
 
+function BethanyShieldModule:OnSettingChanged(enabled)
+    local feedbackModule = self.Context.Modules.bethanyShieldFeedback
+
+    if feedbackModule and feedbackModule.OnShieldSettingChanged then
+        feedbackModule:OnShieldSettingChanged(enabled)
+    end
+end
+
 function BethanyShieldModule:OnPlayerDamage(
     entity,
     damageAmount,
@@ -73,12 +74,6 @@ function BethanyShieldModule:OnPlayerDamage(
     local player = entity:ToPlayer()
 
     if not player or player:GetPlayerType() ~= BETHANY then
-        return
-    end
-
-    local playerHash = GetPtrHash(player)
-
-    if self.ApplyingAbsorbedDamage[playerHash] then
         return
     end
 
@@ -106,18 +101,10 @@ function BethanyShieldModule:OnPlayerDamage(
     local feedbackModule = self.Context.Modules.bethanyShieldFeedback
 
     if feedbackModule and feedbackModule:IsEnabled() then
-        -- The one guarded fake hit restores vanilla controller rumble and
-        -- animation. The feedback module replaces only the newly started hurt
-        -- voice, then supplies the charge-scaled shield sound and visual pulse.
-        self.ApplyingAbsorbedDamage[playerHash] = true
-        feedbackModule:OnAbsorbedHit(
-            player,
-            damageAmount,
-            damageFlags,
-            source,
-            damageCountdownFrames
-        )
-        self.ApplyingAbsorbedDamage[playerHash] = nil
+        -- Feedback is visual/audio only. A second TakeDamage call would enter
+        -- the engine's normal hurt voice and full hit-animation path even with
+        -- zero damage and DAMAGE_FAKE.
+        feedbackModule:OnAbsorbedHit(player)
     end
 
     player:SetMinDamageCooldown(
@@ -131,14 +118,6 @@ function BethanyShieldModule:OnPlayerDamage(
     end
 
     return false
-end
-
-function BethanyShieldModule:OnSettingChanged()
-    self.ApplyingAbsorbedDamage = {}
-end
-
-function BethanyShieldModule:OnPreGameExit()
-    self.ApplyingAbsorbedDamage = {}
 end
 
 return BethanyShieldModule

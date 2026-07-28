@@ -1,5 +1,8 @@
 local Config = {}
 local NUMBER_RANGES = {
+    bethanyShieldVisualStyle = { minimum = 1, maximum = 3 },
+    bethanyShieldSoundStyle = { minimum = 1, maximum = 3 },
+    bethanyShieldHitStyle = { minimum = 1, maximum = 5 },
     rerollTmtrainerChance = { minimum = 0, maximum = 100 },
 }
 
