@@ -15,6 +15,7 @@ local DEFAULT_SETTINGS = {
     bethanyGelloWispOrbit = true,
     familiarCapacity = true,
     clogGroundDamage = true,
+    heldItemProtection = true,
     rerollHealthProtection = true,
     esauJrFirstPickup = true,
     rerollTmtrainerChance = 0,
@@ -174,6 +175,7 @@ local BethanyShieldFeedbackModule = include(
 local BethanyGelloWispsModule = include("scripts/bethany_gello_wisps")
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
+local HeldItemProtectionModule = include("scripts/held_item_protection")
 local ModConfigMenuModule = include("scripts/mod_config_menu")
 
 local rerollHealthModule = RerollHealthModule.New(Context)
@@ -228,6 +230,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "clogGroundDamage",
     ClogGroundDamageModule.New(Context)
+)
+Context:RegisterModule(
+    "heldItemProtection",
+    HeldItemProtectionModule.New(Context)
 )
 
 ModConfigMenuModule.New(Context)

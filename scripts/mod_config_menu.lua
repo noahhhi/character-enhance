@@ -300,6 +300,24 @@ local MENU_SETTINGS = {
             "Only The Clog is affected; other enemies remain vanilla.",
         },
     },
+    {
+        key = "heldItemProtection",
+        group = "general",
+        zhName = "举起道具保护",
+        enName = "Held Item Protection",
+        zhInfo = {
+            "举起收藏品、尚未加入物品栏时提供保护。",
+            "使用 R 键或遗忘药前，先完成该次拾取。",
+            "多人游戏会分别保护每位玩家举起的道具。",
+            "关闭后保持原版行为。",
+        },
+        enInfo = {
+            "Protects a collectible still held above the player's head.",
+            "Finishes that pickup before R Key or Forget Me Now activates.",
+            "In co-op, each player's held collectible is protected.",
+            "Turning it off preserves vanilla behavior.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)

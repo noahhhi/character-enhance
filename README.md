@@ -20,6 +20,7 @@
   <a href="#bethany">Bethany</a> •
   <a href="#familiar-capacity">Familiar Capacity</a> •
   <a href="#clog-ground-damage">Clog Ground Damage</a> •
+  <a href="#held-item-protection">Held Item Protection</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
 </p>
@@ -116,6 +117,13 @@
   Lemonade. Damage, radius, and tick rate follow the creep's current values;
   other enemies remain unchanged.
 
+<a id="held-item-protection"></a>
+## Held item protection
+
+- Using R Key or Forget Me Now while a collectible is still held above a
+  player's head finishes the pickup before the run or floor resets. In
+  multiplayer, each player's held collectible is protected independently.
+
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
 
@@ -123,20 +131,21 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All twelve gameplay settings remain independently configurable:
+All thirteen gameplay settings remain independently configurable:
 
 1. Familiar Capacity
 2. Clog Ground Damage
-3. Starting Wooden Cross
-4. Equivalent Soul Deals
-5. Full Poop Protection
-6. Reroll Health Protection
-7. Esau Jr. First Pickup
-8. TMTRAINER Reroll Chance
-9. Soul Charge Bonus
-10. Charge Damage Shield
-11. Shield Feedback
-12. Gello Wisp Orbit
+3. Held Item Protection
+4. Starting Wooden Cross
+5. Equivalent Soul Deals
+6. Full Poop Protection
+7. Reroll Health Protection
+8. Esau Jr. First Pickup
+9. TMTRAINER Reroll Chance
+10. Soul Charge Bonus
+11. Charge Damage Shield
+12. Shield Feedback
+13. Gello Wisp Orbit
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
