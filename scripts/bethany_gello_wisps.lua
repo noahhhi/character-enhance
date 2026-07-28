@@ -6,6 +6,7 @@ local BETHANY = PlayerType.PLAYER_BETHANY
 local GELLO = CollectibleType.COLLECTIBLE_GELLO
 local ITEM_WISP = FamiliarVariant.ITEM_WISP
 local GELLO_FAMILIAR = FamiliarVariant.UMBILICAL_BABY
+local MAX_CHASE_SPEED = 8
 
 local function SameEntity(left, right)
     return left ~= nil
@@ -19,29 +20,21 @@ local function IsGelloFamiliar(entity)
         and entity.Variant == GELLO_FAMILIAR
 end
 
-local function GetLiveEntity(entityPtr)
-    local entity = entityPtr and entityPtr.Ref
-
-    if entity and entity:Exists() then
-        return entity
-    end
-
-    return nil
+local function HasActiveGello()
+    return #Isaac.FindByType(
+        EntityType.ENTITY_FAMILIAR,
+        GELLO_FAMILIAR,
+        -1,
+        false,
+        false
+    ) > 0
 end
 
 function BethanyGelloWispsModule.New(context)
-    local self = setmetatable({
-        Context = context,
-        ManagedWisps = {},
-    }, BethanyGelloWispsModule)
+    local self = setmetatable({ Context = context }, BethanyGelloWispsModule)
 
     self.WispUpdateCallback = function(_, familiar)
         self:OnWispUpdate(familiar)
-    end
-    self.PreUnloadCallback = function(_, unloadingMod)
-        if unloadingMod == context.Mod then
-            self:RestoreAll()
-        end
     end
 
     context.Mod:AddCallback(
@@ -49,102 +42,58 @@ function BethanyGelloWispsModule.New(context)
         self.WispUpdateCallback,
         ITEM_WISP
     )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_PRE_MOD_UNLOAD,
-        self.PreUnloadCallback
-    )
 
     return self
 end
 
+
 function BethanyGelloWispsModule:ShouldKeepPlayerOrbit(familiar, player)
-    return self.Context:IsEnabled(SETTING_KEY)
-        and familiar.Variant == ITEM_WISP
-        and player ~= nil
-        and player:GetPlayerType() == BETHANY
-        and player:HasCollectible(GELLO)
-end
-
-function BethanyGelloWispsModule:RestoreWisp(wispHash, state)
-    local wisp = GetLiveEntity(state.Wisp)
-
-    if wisp and wisp.Parent
-        and GetPtrHash(wisp.Parent) == state.PlayerHash
+    if not self.Context:IsEnabled(SETTING_KEY)
+        or familiar.Variant ~= ITEM_WISP
+        or player == nil
+        or player:GetPlayerType() ~= BETHANY
+        or not player:HasCollectible(GELLO)
+        or not HasActiveGello()
     then
-        -- Restore the exact parent that existed before this module took
-        -- ownership. If it has disappeared, nil lets vanilla choose its
-        -- current player/Gello fallback again.
-        wisp.Parent = GetLiveEntity(state.OriginalParent)
-    end
-
-    self.ManagedWisps[wispHash] = nil
-end
-
-function BethanyGelloWispsModule:RestoreAll()
-    local pending = self.ManagedWisps
-    self.ManagedWisps = {}
-
-    for wispHash, state in pairs(pending) do
-        -- RestoreWisp writes to the fresh table, keeping iteration over the
-        -- prior table stable even if an entity callback runs during cleanup.
-        self:RestoreWisp(wispHash, state)
-    end
-end
-
-function BethanyGelloWispsModule:OnWispUpdate(familiar)
-    local wispHash = GetPtrHash(familiar)
-    local state = self.ManagedWisps[wispHash]
-    local player = familiar.Player
-
-    if not self:ShouldKeepPlayerOrbit(familiar, player) then
-        if state then
-            self:RestoreWisp(wispHash, state)
-        end
-
-        return
+        return false
     end
 
     local parent = familiar.Parent
 
-    if state then
-        if parent == nil or SameEntity(parent, player)
-            or IsGelloFamiliar(parent)
-        then
-            -- Repentance+ chooses an item wisp's explicit Parent before its
-            -- Book of Virtues + Gello fallback. Keep the owning Bethany as the
-            -- explicit orbit target even if vanilla reapplies Gello.
-            familiar.Parent = player
-        else
-            -- Another effect deliberately took this wisp. Preserve that
-            -- unambiguous parent instead of fighting it every frame.
-            self.ManagedWisps[wispHash] = nil
-        end
-
-        return
-    end
-
-    if SameEntity(parent, player) then
-        return
-    end
-
-    if parent == nil or IsGelloFamiliar(parent) then
-        self.ManagedWisps[wispHash] = {
-            Wisp = EntityPtr(familiar),
-            PlayerHash = GetPtrHash(player),
-            OriginalParent = parent and EntityPtr(parent) or nil,
-        }
-        familiar.Parent = player
-    end
+    -- ITEM_WISP ignores Parent when vanilla selects Gello as its orbit target,
+    -- but preserve unrelated explicit parents as a signal that another effect
+    -- owns this familiar's movement.
+    return parent == nil
+        or SameEntity(parent, player)
+        or IsGelloFamiliar(parent)
 end
 
-function BethanyGelloWispsModule:OnSettingChanged(enabled)
-    if not enabled then
-        self:RestoreAll()
+function BethanyGelloWispsModule:OnWispUpdate(familiar)
+    local player = familiar.Player
+
+    if not self:ShouldKeepPlayerOrbit(familiar, player) then
+        return
     end
+
+    -- Vanilla ITEM_WISP target selection ignores Parent. Drive the same orbit
+    -- geometry around Bethany explicitly, retaining the wisp's own orbit layer,
+    -- distance, angle, health, damage, subtype, and lifetime.
+    local orbitPosition = familiar:GetOrbitPosition(player.Position)
+    local correction = (orbitPosition - familiar.Position) * 0.5
+
+    if correction:Length() > MAX_CHASE_SPEED then
+        correction = correction:Resized(MAX_CHASE_SPEED)
+    end
+
+    familiar.Velocity = correction + player.Velocity * 0.5
+end
+
+function BethanyGelloWispsModule:OnSettingChanged()
+    -- Movement ownership returns to vanilla on the next familiar update.
 end
 
 function BethanyGelloWispsModule:OnPreGameExit()
-    self:RestoreAll()
+    -- No persistent entity state is changed by this module.
 end
 
 return BethanyGelloWispsModule
