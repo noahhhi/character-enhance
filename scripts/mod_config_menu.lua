@@ -258,6 +258,20 @@ local MENU_SETTINGS = {
             "Prevents the held item disappearing on reset.",
         },
     },
+    {
+        key = "kidsDrawingFormFix",
+        group = "general",
+        zhName = "儿童涂鸦套装修复",
+        enName = "Kid's Drawing Form Fix",
+        zhInfo = {
+            "妈妈的盒子会让儿童涂鸦额外计1件。",
+            "金色版本合计3件，可直接变身嗝屁猫。",
+        },
+        enInfo = {
+            "Mom's Box adds one Guppy count to Kid's Drawing.",
+            "Golden copies total three and trigger Guppy.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)

@@ -21,6 +21,7 @@
   <a href="#familiar-capacity">Familiar Limit Fix</a> •
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
   <a href="#held-item-protection">Pickup Animation Fix</a> •
+  <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
 </p>
@@ -128,6 +129,13 @@
   disappearing before it reaches the inventory. In multiplayer, each player's
   pending pickup is completed independently.
 
+<a id="kids-drawing-form-fix"></a>
+## Kid's Drawing Form Fix
+
+- Mom's Box adds one Guppy transformation count to Kid's Drawing, for two
+  counts with a normal copy and three with a golden copy. A golden Kid's
+  Drawing with Mom's Box therefore triggers the Guppy transformation directly.
+
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
 
@@ -135,21 +143,22 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirteen gameplay settings remain independently configurable:
+All fourteen gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. Clog Creep Damage Fix
 3. Pickup Animation Fix
-4. Starting Wooden Cross
-5. Blue Baby Deal Prices
-6. Poop Queue Overflow Fix
-7. Keep Health on Reroll
-8. Esau Jr. Pickup Effects
-9. TMTRAINER Reroll Chance
-10. Double Soul Charges
-11. Soul Charge Shield
-12. Shield Effects
-13. Gello Wisp Orbit Fix
+4. Kid's Drawing Form Fix
+5. Starting Wooden Cross
+6. Blue Baby Deal Prices
+7. Poop Queue Overflow Fix
+8. Keep Health on Reroll
+9. Esau Jr. Pickup Effects
+10. TMTRAINER Reroll Chance
+11. Double Soul Charges
+12. Soul Charge Shield
+13. Shield Effects
+14. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
