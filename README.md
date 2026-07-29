@@ -18,9 +18,10 @@
   <a href="#tainted-blue-baby">Tainted Blue Baby</a> •
   <a href="#tainted-eden">Tainted Eden</a> •
   <a href="#bethany">Bethany</a> •
-  <a href="#familiar-capacity">Familiar Capacity</a> •
-  <a href="#clog-ground-damage">Clog Ground Damage</a> •
-  <a href="#held-item-protection">Held Item Protection</a> •
+  <a href="#familiar-capacity">Familiar Limit Fix</a> •
+  <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
+  <a href="#held-item-protection">Pickup Animation Fix</a> •
+  <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
 </p>
@@ -89,18 +90,18 @@
 - While Gello is active, Book of Virtues wisps keep orbiting their owning
   player instead of moving their orbit center to Gello. Wisp and Gello stats,
   count, and lifetime remain unchanged.
-- Independent shield feedback offers a legacy translucent Soul Veil, a blue
+- Shield Effects offers a legacy translucent Soul Veil, a blue
   energy-pane Particle Wall, and a dense Frosted Soul shell, plus five
   bright-to-afterglow hit effects and three original Soul Shield sound sets.
   Each sound continuously blends custom thin, middle, and
   thick recordings; most visual and audio change occurs from 0–30 charge and
   then eases toward 99. Separate MCM previews test idle, hit, and 4/30/99-charge
   sound feedback without damage. Absorbed hits keep Bethany's pose and never
-  play her hurt voice. Turning feedback off fades the shield away with its
-  selected disappearance sound.
+  play her hurt voice. Turning Shield Effects off fades the shield away with
+  its selected disappearance sound.
 
 <a id="familiar-capacity"></a>
-## Familiar capacity protection
+## Familiar Limit Fix
 
 - Preserves the vanilla 64-real-familiar hard limit without REPENTOGON.
 - Blue Flies and Blue Spiders occupy real slots only up to a soft total of 60.
@@ -114,18 +115,26 @@
   resets them.
 
 <a id="clog-ground-damage"></a>
-## The Clog ground damage
+## The Clog Creep Damage Fix
 
 - The Clog (entity 914.0.0) can take damage from player creep, including Free
   Lemonade. Damage, radius, and tick rate follow the creep's current values;
   other enemies remain unchanged.
 
 <a id="held-item-protection"></a>
-## Held item protection
+## Pickup Animation Fix
 
-- Using R Key or Forget Me Now while a collectible is still held above a
-  player's head finishes the pickup before the run or floor resets. In
-  multiplayer, each player's held collectible is protected independently.
+- Using R Key or Forget Me Now during a collectible's pickup animation finishes
+  the pickup before the run or floor resets. This prevents the item from
+  disappearing before it reaches the inventory. In multiplayer, each player's
+  pending pickup is completed independently.
+
+<a id="kids-drawing-form-fix"></a>
+## Kid's Drawing Form Fix
+
+- Mom's Box adds one Guppy transformation count to Kid's Drawing, for two
+  counts with a normal copy and three with a golden copy. A golden Kid's
+  Drawing with Mom's Box therefore triggers the Guppy transformation directly.
 
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
@@ -134,21 +143,22 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirteen gameplay settings remain independently configurable:
+All fourteen gameplay settings remain independently configurable:
 
-1. Familiar Capacity
-2. Clog Ground Damage
-3. Held Item Protection
-4. Starting Wooden Cross
-5. Equivalent Soul Deals
-6. Full Poop Protection
-7. Reroll Health Protection
-8. Esau Jr. First Pickup
-9. TMTRAINER Reroll Chance
-10. Soul Charge Bonus
-11. Charge Damage Shield
-12. Shield Feedback
-13. Gello Wisp Orbit
+1. Familiar Limit Fix
+2. Clog Creep Damage Fix
+3. Pickup Animation Fix
+4. Kid's Drawing Form Fix
+5. Starting Wooden Cross
+6. Blue Baby Deal Prices
+7. Poop Queue Overflow Fix
+8. Keep Health on Reroll
+9. Esau Jr. Pickup Effects
+10. TMTRAINER Reroll Chance
+11. Double Soul Charges
+12. Soul Charge Shield
+13. Shield Effects
+14. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's

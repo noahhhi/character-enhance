@@ -34,18 +34,18 @@ local SHIELD_STYLES = {
     },
     hit = {
         en = {
-            "Bright Step",
+            "Stepped Flash",
             "Soft Pulse",
             "Echo Ring",
             "Crystal Burst",
             "Shadow Shock",
         },
         zh = {
-            "亮度阶降",
-            "柔和脉冲",
-            "扩散回响",
-            "冰晶爆闪",
-            "暗影震荡",
+            "阶梯闪光",
+            "柔光脉冲",
+            "回响光环",
+            "水晶爆闪",
+            "暗影震波",
         },
     },
 }
@@ -65,8 +65,8 @@ local TEXT = {
             bethany = "伯大尼",
         },
         languageInfo = {
-            "选择此 Mod 的菜单语言。",
-            "左右切换，设置会自动保存。",
+            "选择菜单语言。",
+            "左右切换，自动保存。",
         },
     },
     en = {
@@ -83,8 +83,8 @@ local TEXT = {
             bethany = "Bethany",
         },
         languageInfo = {
-            "Select the menu language for this mod.",
-            "Use left/right; the choice is saved automatically.",
+            "Choose the menu language.",
+            "Use left/right; saved automatically.",
         },
     },
 }
@@ -96,226 +96,180 @@ local MENU_SETTINGS = {
         zhName = "初始木十字架",
         enName = "Starting Wooden Cross",
         zhInfo = {
-            "堕化游魂新开局时携带木十字架。",
-            "饰品编号：121。",
-            "关闭后不会删除本局已获得的饰品。",
-            "角色选择页的图标与文字会同步显示或隐藏。",
-            "返回角色选择页后生效；若页面已缓存，请重启游戏。",
+            "里游魂新开局时自带木十字架。",
+            "角色页会同步显示；已有饰品不会被移除。",
         },
         enInfo = {
-            "Tainted Lost starts new runs with Wooden Cross.",
-            "Trinket ID: 121.",
-            "Turning this off does not remove an owned trinket.",
-            "The character-select icon and label follow this setting.",
-            "Reopen character select; restart only if the page was cached.",
+            "Tainted Lost starts each run with Wooden Cross.",
+            "Character page follows it; owned copies stay.",
         },
     },
     {
         key = "taintedBlueBabyDevilDeals",
         group = "taintedBlueBaby",
-        zhName = "等价魂心交易",
-        enName = "Equivalent Soul Deals",
+        zhName = "小蓝人交易价格",
+        enName = "Blue Baby Deal Prices",
         zhInfo = {
-            "里蓝人的恶魔交易采用小蓝人的等价魂心价格。",
-            "1/2 个心之容器分别对应 1/2 颗魂心。",
-            "联机时只对实际购买的里蓝人生效。",
+            "里蓝人的恶魔交易改用小蓝人的价格。",
+            "1或2个心之容器，改为消耗1或2颗魂心。",
         },
         enInfo = {
-            "Tainted Blue Baby uses Blue Baby's equivalent Soul Heart prices.",
-            "One/two containers cost one/two Soul Hearts respectively.",
-            "In co-op, only the purchasing Tainted Blue Baby gets the price.",
+            "Tainted Blue Baby uses Blue Baby's deal prices.",
+            "One/two containers cost one/two Soul Hearts.",
         },
     },
     {
         key = "taintedBlueBabyPoopCapacity",
         group = "taintedBlueBaby",
-        zhName = "大便满容量保护",
-        enName = "Full Poop Protection",
+        zhName = "大便队列溢出修复",
+        enName = "Poop Queue Overflow Fix",
         zhInfo = {
-            "里蓝人的大便队列满容量时不会继续拾取大便。",
-            "保留碰撞，但不会收进队列或消耗拾取物。",
-            "小型与大型大便都会留在地上以便之后使用。",
-            "未满容量时保持原版拾取行为。",
-            "与等价魂心交易开关相互独立。",
+            "大便队列已满时，拾取物会留在地上。",
+            "仍可推动；队列有空位后即可拾取。",
         },
         enInfo = {
-            "Tainted Blue Baby leaves poop pickups when his queue is full.",
-            "Collision remains active without collecting the pickup.",
-            "Both small and large pickups stay available for later.",
-            "Below capacity, pickup behavior remains vanilla.",
-            "Independent from the equivalent Soul Deal option.",
+            "Full queue: poop pickups stay on the ground.",
+            "Pushable; collectible again when space opens.",
         },
     },
     {
         key = "rerollHealthProtection",
         group = "taintedEden",
-        zhName = "重随血量保护",
-        enName = "Reroll Health Protection",
+        zhName = "重随后保留血量",
+        enName = "Keep Health on Reroll",
         zhInfo = {
-            "全身道具重随前后保持基础血量不变。",
-            "覆盖里伊甸、D4/D100、D 无限、编号丢失和 1/6 点骰子房。",
-            "里伊甸仍会正常承受触发重随的伤害。",
-            "套装状态仍由当前道具和原版一次性记录决定。",
+            "全身道具重随后，保留每位玩家的血量。",
+            "覆盖里伊甸、重随道具和骰子房。",
         },
         enInfo = {
-            "Keeps base health unchanged by inventory rerolls.",
-            "Covers T-Eden, D4/D100, D Infinity, Missing No. and Dice 1/6.",
-            "Tainted Eden still takes the hit that caused the reroll.",
-            "Forms still follow current items and vanilla one-time records.",
+            "Inventory rerolls keep each player's health.",
+            "Covers Tainted Eden, reroll items, and Dice Rooms.",
         },
     },
     {
         key = "esauJrFirstPickup",
         group = "taintedEden",
-        zhName = "小以扫首次拾取登记",
-        enName = "Esau Jr. First Pickup",
+        zhName = "小以扫拾取效果",
+        enName = "Esau Jr. Pickup Effects",
         zhInfo = {
-            "首次生成小以扫时登记身上道具的拾取效果与套装进度。",
-            "实验性疗法、妈妈的零钱包和弹珠袋等只触发一次。",
+            "首次生成小以扫时，正常触发道具拾取效果。",
             "之后切换身体不会重复触发。",
-            "与同栏的重随血量保护相互独立。",
         },
         enInfo = {
-            "Registers pickup effects/forms when Esau Jr. is first generated.",
-            "Experimental Treatment, Mom's Coin Purse and Marbles run once.",
-            "Later body swaps never replay them.",
-            "Independent from the reroll-health option in this tab.",
+            "Runs pickup effects when Esau Jr. is first created.",
+            "Later body swaps do not trigger them again.",
         },
     },
     {
         key = "bethanySoulCharge",
         group = "bethany",
-        zhName = "魂心充能增强",
-        enName = "Soul Charge Bonus",
+        zhName = "双倍魂心充能",
+        enName = "Double Soul Charges",
         zhInfo = {
-            "伯大尼一整颗魂心获得 4 点充能。",
-            "半颗魂心获得 2 点充能。",
-            "破损的口袋掉落半魂心时扣 2 点充能。",
-            "充能达到 99 时不会拾取魂心或黑心。",
-            "不控制充能伤害护盾。",
+            "伯大尼每颗魂心获得4点充能；半颗获得2点。",
+            "达到99点后，魂心和黑心会留在地上。",
         },
         enInfo = {
-            "Bethany gains 4 charge per full Soul Heart.",
-            "A half Soul Heart grants 2 charge.",
-            "Torn Pocket half Soul drops cost 2 charge.",
-            "Soul and Black Hearts stay uncollected at 99 charge.",
-            "This does not control the charge damage shield.",
+            "Bethany gains 4 charges per Soul Heart; 2 per half.",
+            "At 99, Soul and Black Hearts stay on the ground.",
         },
     },
     {
         key = "bethanyDamageShield",
         group = "bethany",
-        zhName = "充能伤害护盾",
-        enName = "Charge Damage Shield",
+        zhName = "魂心充能护盾",
+        enName = "Soul Charge Shield",
         zhInfo = {
-            "惩罚性伤害优先消耗魂心充能。",
-            "该次伤害不会扣除红心或交易房概率。",
-            "吸收后保留正常受伤保护时间。",
-            "乞丐、赌命和献血等自愿伤害不消耗充能。",
-            "不控制魂心充能增强。",
+            "消耗魂心充能，抵挡会降低交易房概率的伤害。",
+            "献血、乞丐等自愿伤害仍正常生效。",
         },
         enInfo = {
-            "Penalty damage spends Soul Charge first.",
-            "The hit does not remove red health or deal chance.",
-            "Absorbed hits keep normal damage invulnerability.",
-            "Beggar, Hell Game and blood payments spend no charge.",
-            "This does not control the Soul Charge bonus.",
+            "Spends charges to block hits that lower deal chance.",
+            "Voluntary damage still works and costs no charge.",
         },
     },
     {
         key = "bethanyShieldFeedback",
         group = "bethany",
-        zhName = "护盾反馈",
-        enName = "Shield Feedback",
+        zhName = "护盾视听效果",
+        enName = "Shield Effects",
         zhInfo = {
-            "每一点充能都会细微改变护罩与冰盾声。",
-            "透明护罩包围全身，不是前方半球。",
-            "移动和时间会使护罩渐隐渐现。",
-            "受击时先明显增亮，再减弱为余辉。",
-            "格挡时只播放冰盾声，不触发角色受伤表现。",
-            "角色保持动作，并在受伤保护期间原地闪烁。",
-            "关闭时护罩伴随轻微冰裂声渐隐消失。",
-            "关闭后不影响充能伤害护盾本身。",
+            "护罩外观和音效会随魂心充能增强。",
+            "只影响视听；关闭后护盾功能仍然生效。",
         },
         enInfo = {
-            "Every charge point subtly changes the shield and sound.",
-            "The translucent shield surrounds the full body.",
-            "Movement and time make the shield gently fade and pulse.",
-            "Hits flash brightly, then fall back to an afterglow.",
-            "Blocks play only the shield sound, with no hurt response.",
-            "Bethany keeps her pose and flashes during the cooldown.",
-            "Turning it off fades the shield with a soft ice crack.",
-            "Turning this off does not disable the damage shield itself.",
+            "Shield visuals and sound grow with soul charge.",
+            "Cosmetic only; Soul Charge Shield still works.",
         },
     },
     {
         key = "bethanyGelloWispOrbit",
         group = "bethany",
-        zhName = "格罗魂火跟随",
-        enName = "Gello Wisp Orbit",
+        zhName = "格罗魂火环绕修复",
+        enName = "Gello Wisp Orbit Fix",
         zhInfo = {
-            "持有美德书并激活格罗时，自己的魂火继续围绕自身。",
-            "魂火不会把环绕中心转移到格罗。",
-            "只改变跟随中心，不改变伤害、血量、数量或持续时间。",
-            "多人游戏按每个魂火的玩家归属分别处理。",
+            "格罗激活时，美德书魂火继续围绕玩家。",
+            "只修正环绕中心，不改变魂火属性。",
         },
         enInfo = {
-            "Book of Virtues wisps orbit their owner while Gello is active.",
-            "Their orbit center does not transfer to Gello.",
-            "Damage, health, count, and lifetime remain unchanged.",
-            "Each wisp is handled by its player ownership in co-op.",
+            "Virtues wisps orbit you while Gello is active.",
+            "Only their orbit center changes.",
         },
     },
     {
         key = "familiarCapacity",
         group = "general",
-        zhName = "跟班容量保护",
-        enName = "Familiar Capacity",
+        zhName = "跟班上限修复",
+        enName = "Familiar Limit Fix",
         zhInfo = {
-            "溢出的蓝苍蝇和蓝蜘蛛存入缓冲池。",
-            "为其他重要跟班保留真实位置。",
-            "关闭时暂停处理，但不会清空缓冲池。",
+            "接近64个跟班上限时，暂存蓝苍蝇和蓝蜘蛛。",
+            "有空位时自动补回；其他跟班不会被移除。",
         },
         enInfo = {
-            "Banks overflow Blue Flies and Blue Spiders.",
-            "Reserves real slots for important familiars.",
-            "Turning it off pauses processing without data loss.",
+            "Banks extra flies/spiders before the 64 limit.",
+            "Restores them later; other familiars stay safe.",
         },
     },
     {
         key = "clogGroundDamage",
         group = "general",
-        zhName = "拦路屎地面伤害",
-        enName = "Clog Ground Damage",
+        zhName = "拦路屎水迹伤害修复",
+        enName = "Clog Creep Damage Fix",
         zhInfo = {
-            "让拦路屎（914.0.0）受到地面伤害。",
-            "补偿原版内部飞行判定跳过的玩家水迹伤害。",
-            "伤害、范围与频率沿用当前水迹的原版数值。",
-            "只影响拦路屎，不改变其他敌人的判定。",
+            "玩家生成的伤害水迹可以伤害拦路屎。",
+            "其他敌人和敌方水迹不受影响。",
         },
         enInfo = {
-            "Lets The Clog (914.0.0) take ground damage.",
-            "Restores player-creep hits skipped by its internal flight state.",
-            "Damage, radius and tick rate use the current creep's values.",
-            "Only The Clog is affected; other enemies remain vanilla.",
+            "Player-made damaging creep can hurt The Clog.",
+            "Other enemies and enemy creep are unchanged.",
         },
     },
     {
         key = "heldItemProtection",
         group = "general",
-        zhName = "举起道具保护",
-        enName = "Held Item Protection",
+        zhName = "拾取动画修复",
+        enName = "Pickup Animation Fix",
         zhInfo = {
-            "举起收藏品、尚未加入物品栏时提供保护。",
-            "使用 R 键或遗忘药前，先完成该次拾取。",
-            "多人游戏会分别保护每位玩家举起的道具。",
-            "关闭后保持原版行为。",
+            "使用R键或遗忘药前，先结算正在拾取的道具。",
+            "避免道具在重置时消失。",
         },
         enInfo = {
-            "Protects a collectible still held above the player's head.",
-            "Finishes that pickup before R Key or Forget Me Now activates.",
-            "In co-op, each player's held collectible is protected.",
-            "Turning it off preserves vanilla behavior.",
+            "R Key/Forget Me Now finish pending pickups first.",
+            "Prevents the held item disappearing on reset.",
+        },
+    },
+    {
+        key = "kidsDrawingFormFix",
+        group = "general",
+        zhName = "儿童涂鸦套装修复",
+        enName = "Kid's Drawing Form Fix",
+        zhInfo = {
+            "妈妈的盒子会让儿童涂鸦额外计1件。",
+            "金色版本合计3件，可直接变身嗝屁猫。",
+        },
+        enInfo = {
+            "Mom's Box adds one Guppy count to Kid's Drawing.",
+            "Golden copies total three and trigger Guppy.",
         },
     },
 }
@@ -503,20 +457,14 @@ function ModConfigMenuModule:AddTmtrainerChance(menu)
         Info = function()
             if self:GetLanguage() == "en" then
                 return {
-                    "Chance to include TMTRAINER in each full-reroll pool.",
-                    "0% always redraws it; 100% is vanilla behavior.",
-                    "Covers D4/D100, D Infinity, T-Eden, Dice 1/6 and ? Card.",
-                    "Normal pickup and already-owned TMTRAINER are unaffected.",
-                    "Independent from the other two options in this tab.",
+                    "TMTRAINER chance during an inventory reroll.",
+                    "0% excludes it; 100% keeps vanilla odds.",
                 }
             end
 
             return {
-                "每次全身重随将错误技加入隐藏房道具池的概率。",
-                "0% 时总会重抽；100% 为无 Mod 原版状态。",
-                "覆盖 D4/D100、D 无限、里伊甸、编号丢失、1/6 点骰子房和命运之轮？。",
-                "正常拾取及重随前已持有错误技时不受影响。",
-                "与同栏其他两个选项相互独立。",
+                "全身重随时，出现错误技的概率。",
+                "0%完全排除；100%保持原版概率。",
             }
         end,
     })
@@ -546,11 +494,11 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
             local name
 
             if kind == "visual" then
-                name = language == "en" and "Animation" or "动画"
+                name = language == "en" and "Visual Style" or "护盾外观"
             elseif kind == "hit" then
-                name = language == "en" and "Hit FX" or "受击效果"
+                name = language == "en" and "Hit Effect" or "受击效果"
             else
-                name = language == "en" and "Sound" or "音效"
+                name = language == "en" and "Sound Style" or "护盾音效"
             end
 
             return name .. ": " .. labels[language][style]
@@ -576,49 +524,41 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
             if self:GetLanguage() == "en" then
                 if kind == "visual" then
                     return {
-                        "Choose one of three live shield appearances.",
-                        "Changing it immediately previews the selected style.",
-                        "Includes Particle Wall and a dense frosted shell.",
-                        "High charge adds a dark rim and a wider glow.",
-                        "Low charge stays thin and slightly brittle.",
+                        "Choose the shield's appearance.",
+                        "Changing it previews the new style.",
                     }
                 end
 
                 if kind == "hit" then
                     return {
-                        "Choose one of five absorbed-hit animations.",
-                        "Each flashes brightly, then drops to an afterglow.",
+                        "Choose the shield's blocked-hit flash.",
+                        "Changing it previews the effect.",
                     }
                 end
 
                 return {
-                    "Choose one of three original Soul Shield sounds.",
-                    "Each blends thin, middle and thick recordings.",
-                    "Changing it previews the 30-charge anchor.",
+                    "Choose the shield sound.",
+                    "Changing it previews the 30-charge sound.",
                 }
             end
 
             if kind == "visual" then
                 return {
-                    "选择三种实时护盾外观之一。",
-                    "切换后会立即预览所选样式。",
-                    "包含粒子墙和厚实的蓝色磨砂外壳。",
-                    "高充能增加暗边、光晕范围和粒子厚度。",
-                    "低充能护罩更薄，并带轻微脆弱抖动。",
+                    "选择护盾外观。",
+                    "切换后立即预览。",
                 }
             end
 
             if kind == "hit" then
                 return {
-                    "选择五种魂心护盾受击动画之一。",
-                    "每种都会先明显增亮，再降为余辉。",
+                    "选择护盾抵挡伤害时的闪光效果。",
+                    "切换后立即预览。",
                 }
             end
 
             return {
-                "选择三种原创魂心护盾音效之一。",
-                "每种都会混合薄、中、厚三段录音。",
-                "切换后会试听 30 充能锚点。",
+                "选择护盾音效。",
+                "切换后试听30充能时的音效。",
             }
         end,
     })
@@ -640,25 +580,25 @@ function ModConfigMenuModule:AddShieldPreview(menu, kind, previewCharge)
         Display = function()
             if self:GetLanguage() == "en" then
                 if kind == "visual" then
-                    return "Test Idle: Press right"
+                    return "Preview Shield: press right"
                 end
 
                 if kind == "hit" then
-                    return "Test Hit FX: Press right"
+                    return "Preview Hit Effect: press right"
                 end
 
-                return "Test Sound " .. previewCharge .. ": Press right"
+                return "Preview Sound (" .. previewCharge .. "): press right"
             end
 
             if kind == "visual" then
-                return "测试待机: 按右键"
+                return "预览护盾: 按右键"
             end
 
             if kind == "hit" then
-                return "测试受击: 按右键"
+                return "预览受击效果: 按右键"
             end
 
-            return "测试音效 " .. previewCharge .. ": 按右键"
+            return "预览音效（" .. previewCharge .. "）: 按右键"
         end,
         OnChange = function(value)
             if value <= 0 then
@@ -686,42 +626,42 @@ function ModConfigMenuModule:AddShieldPreview(menu, kind, previewCharge)
             if self:GetLanguage() == "en" then
                 if kind == "visual" then
                     return {
-                        "Replays the idle shield without taking damage.",
-                        "Requires Bethany and Shield Feedback to be enabled.",
+                        "Preview the idle shield without taking damage.",
+                        "Requires Bethany and Shield Effects.",
                     }
                 end
 
                 if kind == "hit" then
                     return {
-                        "Replays the selected hit flash without taking damage.",
-                        "No sound, charge cost, hurt voice, or hit animation.",
+                        "Preview the hit effect without taking damage.",
+                        "No sound, charge cost, hurt animation, or voice.",
                     }
                 end
 
                 return {
-                    "Plays the selected shield at "
-                        .. previewCharge .. " simulated charge.",
-                    "No hurt voice, damage, or charge is produced.",
+                    "Preview the sound at " .. previewCharge
+                        .. " simulated charges.",
+                    "No damage, charge cost, or hurt voice.",
                 }
             end
 
             if kind == "visual" then
                 return {
-                    "无需受伤即可重播当前护盾待机动画。",
-                    "需要使用伯大尼并开启护盾反馈。",
+                    "无需受伤，预览护盾待机效果。",
+                    "需要使用伯大尼并开启护盾视听效果。",
                 }
             end
 
             if kind == "hit" then
                 return {
-                    "无需受伤即可重播所选受击闪光。",
-                    "不会播放音效、扣充能、语音或受击动画。",
+                    "无需受伤，预览护盾受击效果。",
+                    "不会播放音效、扣除充能或触发受伤表现。",
                 }
             end
 
             return {
-                "按模拟 " .. previewCharge .. " 充能试听所选护盾音效。",
-                "不会产生语音、伤害或消耗充能。",
+                "试听模拟" .. previewCharge .. "充能时的护盾音效。",
+                "不会造成伤害、扣除充能或播放受伤语音。",
             }
         end,
     })

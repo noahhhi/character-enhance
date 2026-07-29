@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.9.5"
+local VERSION = "1.9.6"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -16,6 +16,7 @@ local DEFAULT_SETTINGS = {
     familiarCapacity = true,
     clogGroundDamage = true,
     heldItemProtection = true,
+    kidsDrawingFormFix = true,
     rerollHealthProtection = true,
     esauJrFirstPickup = true,
     rerollTmtrainerChance = 0,
@@ -176,6 +177,7 @@ local BethanyGelloWispsModule = include("scripts/bethany_gello_wisps")
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local HeldItemProtectionModule = include("scripts/held_item_protection")
+local KidsDrawingFormModule = include("scripts/kids_drawing_form")
 local ModConfigMenuModule = include("scripts/mod_config_menu")
 
 local rerollHealthModule = RerollHealthModule.New(Context)
@@ -235,6 +237,10 @@ Context:RegisterModule(
     "heldItemProtection",
     HeldItemProtectionModule.New(Context)
 )
+Context:RegisterModule(
+    "kidsDrawingFormFix",
+    KidsDrawingFormModule.New(Context)
+)
 
 ModConfigMenuModule.New(Context)
 
@@ -246,6 +252,7 @@ if Game():GetFrameCount() > 0 then
         "taintedLostWoodenCross",
         "bethanySoulCharge",
         "familiarCapacity",
+        "kidsDrawingFormFix",
     }) do
         local module = Context.Modules[moduleKey]
 
