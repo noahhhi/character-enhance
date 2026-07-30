@@ -135,15 +135,29 @@ local MENU_SETTINGS = {
     {
         key = "rerollHealthProtection",
         group = "taintedEden",
-        zhName = "重随后保留血量",
+        zhName = "Roll 全身道具后保留血量",
         enName = "Keep Health on Reroll",
         zhInfo = {
-            "全身道具重随后，保留每位玩家的血量。",
-            "覆盖里伊甸、重随道具和骰子房。",
+            "Roll 全身道具后，保留每位玩家的血量。",
+            "覆盖里伊甸、D4/D100和骰子房。",
         },
         enInfo = {
             "Inventory rerolls keep each player's health.",
             "Covers Tainted Eden, reroll items, and Dice Rooms.",
+        },
+    },
+    {
+        key = "rerollAbsorbedStats",
+        group = "taintedEden",
+        zhName = "Roll 全身道具后保留吸收属性",
+        enName = "Keep Absorbed Stats",
+        zhInfo = {
+            "Roll 全身道具后，保留虚空和黑符文属性。",
+            "按玩家分别记录；不冻结道具本身的属性。",
+        },
+        enInfo = {
+            "Rerolls keep stats gained from Void and Black Rune.",
+            "Per player; item stats still reroll normally.",
         },
     },
     {
@@ -463,7 +477,7 @@ function ModConfigMenuModule:AddTmtrainerChance(menu)
                 return "TMTRAINER Reroll Chance: " .. chance .. "%"
             end
 
-            return "错误技重随概率: " .. chance .. "%"
+            return "Roll 全身道具时错误技概率: " .. chance .. "%"
         end,
         OnChange = function(chance)
             self.Context:SetSetting(TMTRAINER_CHANCE_KEY, chance)
@@ -477,7 +491,7 @@ function ModConfigMenuModule:AddTmtrainerChance(menu)
             end
 
             return {
-                "全身重随时，出现错误技的概率。",
+                "Roll 全身道具时，出现错误技的概率。",
                 "0%完全排除；100%保持原版概率。",
             }
         end,

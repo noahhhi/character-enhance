@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.9.7"
+local VERSION = "1.9.8"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -19,6 +19,7 @@ local DEFAULT_SETTINGS = {
     kidsDrawingFormFix = true,
     ocularRiftSoundFix = true,
     rerollHealthProtection = true,
+    rerollAbsorbedStats = true,
     esauJrFirstPickup = true,
     rerollTmtrainerChance = 0,
 }
@@ -184,6 +185,7 @@ local ModConfigMenuModule = include("scripts/mod_config_menu")
 
 local rerollHealthModule = RerollHealthModule.New(Context)
 Context:RegisterModule("rerollHealthProtection", rerollHealthModule)
+Context:RegisterSettingHandler("rerollAbsorbedStats", rerollHealthModule)
 Context:RegisterSettingHandler("esauJrFirstPickup", rerollHealthModule)
 Context:RegisterSettingHandler("rerollTmtrainerChance", rerollHealthModule)
 Context:RegisterModule(

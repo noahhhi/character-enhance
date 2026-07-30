@@ -2,6 +2,7 @@ local RerollHealthModule = {}
 RerollHealthModule.__index = RerollHealthModule
 
 local REROLL_SETTING_KEY = "rerollHealthProtection"
+local ABSORBED_STATS_SETTING_KEY = "rerollAbsorbedStats"
 local ESAU_JR_SETTING_KEY = "esauJrFirstPickup"
 local TMTRAINER_SETTING_KEY = "rerollTmtrainerChance"
 local TAINTED_EDEN = PlayerType.PLAYER_EDEN_B
@@ -12,6 +13,10 @@ local DIRECT_REROLL_ITEMS = {
     [CollectibleType.COLLECTIBLE_D4] = true,
     [CollectibleType.COLLECTIBLE_D100] = true,
 }
+local VOID = CollectibleType.COLLECTIBLE_VOID
+local BLANK_CARD = CollectibleType.COLLECTIBLE_BLANK_CARD
+local CLEAR_RUNE = CollectibleType.COLLECTIBLE_CLEAR_RUNE
+local BLACK_RUNE = Card.CARD_BLACK_RUNE
 local ESAU_JR = CollectibleType.COLLECTIBLE_ESAU_JR
 local MISSING_NO = CollectibleType.COLLECTIBLE_MISSING_NO
 local TMTRAINER = CollectibleType.COLLECTIBLE_TMTRAINER
@@ -21,10 +26,84 @@ local SECRET_POOL = ItemPoolType.POOL_SECRET
 local REVERSE_WHEEL_OF_FORTUNE = Card.CARD_REVERSE_WHEEL_OF_FORTUNE
 local PASSIVE = ItemType.ITEM_PASSIVE
 local FAMILIAR = ItemType.ITEM_FAMILIAR
+local ACTIVE = ItemType.ITEM_ACTIVE
+local ENTITY_PICKUP = EntityType.ENTITY_PICKUP
+local COLLECTIBLE_PICKUP = PickupVariant.PICKUP_COLLECTIBLE
+
+local STAT_DEFINITIONS = {
+    damage = {
+        flag = CacheFlag.CACHE_DAMAGE,
+        read = function(player)
+            return player.Damage
+        end,
+        apply = function(player, amount)
+            player.Damage = player.Damage + amount
+        end,
+    },
+    tears = {
+        flag = CacheFlag.CACHE_FIREDELAY,
+        read = function(player)
+            return 30 / (player.MaxFireDelay + 1)
+        end,
+        apply = function(player, amount)
+            local tears = 30 / (player.MaxFireDelay + 1) + amount
+            player.MaxFireDelay = 30 / tears - 1
+        end,
+    },
+    shotSpeed = {
+        flag = CacheFlag.CACHE_SHOTSPEED,
+        read = function(player)
+            return player.ShotSpeed
+        end,
+        apply = function(player, amount)
+            player.ShotSpeed = player.ShotSpeed + amount
+        end,
+    },
+    range = {
+        flag = CacheFlag.CACHE_RANGE,
+        read = function(player)
+            return player.TearRange
+        end,
+        apply = function(player, amount)
+            player.TearRange = player.TearRange + amount
+        end,
+    },
+    speed = {
+        flag = CacheFlag.CACHE_SPEED,
+        read = function(player)
+            return player.MoveSpeed
+        end,
+        apply = function(player, amount)
+            player.MoveSpeed = player.MoveSpeed + amount
+        end,
+    },
+    luck = {
+        flag = CacheFlag.CACHE_LUCK,
+        read = function(player)
+            return player.Luck
+        end,
+        apply = function(player, amount)
+            player.Luck = player.Luck + amount
+        end,
+    },
+}
+
+local EMPTY_STATS = {
+    damage = 0,
+    tears = 0,
+    shotSpeed = 0,
+    range = 0,
+    speed = 0,
+    luck = 0,
+}
 
 function RerollHealthModule.New(context)
     local self = setmetatable({
         Context = context,
+        SavedData = context.GetSavedModuleData
+            and context:GetSavedModuleData(REROLL_SETTING_KEY)
+            or {},
+        PreservedData = {},
         Players = {},
         PendingSyncPlayers = {},
         MaxCollectibleId = 733,
@@ -63,13 +142,17 @@ function RerollHealthModule.New(context)
         )
     end
 
+    self.EvaluateCacheCallback = function(_, player, cacheFlag)
+        self:OnEvaluateCache(player, cacheFlag)
+    end
+
     -- Register before the Bethany module. A restored Soul Heart must already be
     -- present when Bethany's charge tracker runs, otherwise restoration could
     -- be mistaken for a newly collected heart.
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
-        function()
-            self:OnGameStarted()
+        function(_, isContinued)
+            self:OnGameStarted(isContinued)
         end
     )
     context.Mod:AddCallback(
@@ -83,6 +166,10 @@ function RerollHealthModule.New(context)
         function(_, collectibleType, _, player)
             self:OnPreUseItem(collectibleType, player)
         end
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_EVALUATE_CACHE,
+        self.EvaluateCacheCallback
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_ENTITY_TAKE_DMG,
@@ -116,6 +203,8 @@ function RerollHealthModule.New(context)
         end,
         EntityType.ENTITY_PLAYER
     )
+
+    self.PreservedData = self:SanitizeSavedData(self.SavedData)
 
     return self
 end
@@ -156,7 +245,8 @@ function RerollHealthModule:RefreshUpdateCallback()
     self:SetUpdateCallbackEnabled(
         self.RunActive
         and (#self.PendingEsauJr > 0
-            or next(self.PendingSyncPlayers) ~= nil)
+            or next(self.PendingSyncPlayers) ~= nil
+            or self:HasPendingAbsorption())
     )
 end
 
@@ -195,6 +285,169 @@ end
 
 function RerollHealthModule:GetPlayerKey(player)
     return tostring(GetPtrHash(player))
+end
+
+function RerollHealthModule:CopyStats(source)
+    local result = {}
+
+    for statName in pairs(EMPTY_STATS) do
+        result[statName] = tonumber(source and source[statName]) or 0
+    end
+
+    return result
+end
+
+function RerollHealthModule:SanitizeStats(source)
+    local result = self:CopyStats()
+
+    if type(source) ~= "table" then
+        return result
+    end
+
+    for statName in pairs(EMPTY_STATS) do
+        local value = source[statName]
+
+        if type(value) == "number" and value == value
+            and value ~= math.huge and value ~= -math.huge
+            and value >= 0 and value <= 100000
+        then
+            result[statName] = value
+        end
+    end
+
+    return result
+end
+
+function RerollHealthModule:SanitizeSavedData(savedData)
+    local result = { players = {} }
+
+    if type(savedData) ~= "table" then
+        return result
+    end
+
+    if type(savedData.runSeed) == "number"
+        and savedData.runSeed == savedData.runSeed
+        and savedData.runSeed ~= math.huge
+        and savedData.runSeed ~= -math.huge
+    then
+        result.runSeed = math.floor(savedData.runSeed)
+    end
+
+    if type(savedData.absorbedStats) ~= "table" then
+        return result
+    end
+
+    for playerKey, savedPlayer in pairs(savedData.absorbedStats) do
+        local playerIndex = tonumber(playerKey)
+
+        if playerIndex and playerIndex == math.floor(playerIndex)
+            and playerIndex >= 0 and playerIndex <= 15
+            and type(savedPlayer) == "table"
+        then
+            result.players[tostring(playerIndex)] = {
+                preserved = self:SanitizeStats(savedPlayer.preserved),
+                native = self:SanitizeStats(savedPlayer.native),
+            }
+        end
+    end
+
+    return result
+end
+
+function RerollHealthModule:GetRunSeed()
+    local game = Game()
+    local seeds = game.GetSeeds and game:GetSeeds()
+
+    return seeds and seeds:GetStartSeed() or 0
+end
+
+function RerollHealthModule:GetPlayerIndex(player)
+    if not player then
+        return nil
+    end
+
+    local playerHash = GetPtrHash(player)
+    local game = Game()
+
+    for playerIndex = 0, game:GetNumPlayers() - 1 do
+        if GetPtrHash(Isaac.GetPlayer(playerIndex)) == playerHash then
+            return playerIndex
+        end
+    end
+
+    return nil
+end
+
+function RerollHealthModule:CaptureStats(player)
+    local result = {}
+
+    for statName, definition in pairs(STAT_DEFINITIONS) do
+        result[statName] = definition.read(player)
+    end
+
+    return result
+end
+
+function RerollHealthModule:HasStats(stats)
+    for statName in pairs(EMPTY_STATS) do
+        if (stats and stats[statName] or 0) > 0.000001 then
+            return true
+        end
+    end
+
+    return false
+end
+
+function RerollHealthModule:GetAllStatCacheFlags()
+    local flags = 0
+
+    for _, definition in pairs(STAT_DEFINITIONS) do
+        flags = flags | definition.flag
+    end
+
+    return flags
+end
+
+function RerollHealthModule:EvaluatePreservedStats(player)
+    if not player then
+        return
+    end
+
+    player:AddCacheFlags(self:GetAllStatCacheFlags())
+    player:EvaluateItems()
+end
+
+function RerollHealthModule:OnEvaluateCache(player, cacheFlag)
+    if not self.RunActive
+        or not self.Context:IsEnabled(ABSORBED_STATS_SETTING_KEY)
+    then
+        return
+    end
+
+    local state = self.Players[self:GetPlayerKey(player)]
+
+    if not state then
+        return
+    end
+
+    for statName, definition in pairs(STAT_DEFINITIONS) do
+        local amount = state.preservedStats[statName] or 0
+
+        if definition.flag == cacheFlag and amount > 0 then
+            definition.apply(player, amount)
+            return
+        end
+    end
+end
+
+function RerollHealthModule:HasPendingAbsorption()
+    for _, state in pairs(self.Players) do
+        if state.absorption then
+            return true
+        end
+    end
+
+    return false
 end
 
 function RerollHealthModule:RefreshMaxCollectibleId()
@@ -360,18 +613,201 @@ function RerollHealthModule:RestoreHealth(player, target)
     end
 end
 
-function RerollHealthModule:TrackPlayer(player)
+function RerollHealthModule:GetAbsorptionCandidates(source)
+    local candidates = {}
+    local itemConfig = Isaac.GetItemConfig()
+    local pickups = Isaac.FindByType(
+        ENTITY_PICKUP,
+        COLLECTIBLE_PICKUP,
+        -1,
+        false,
+        false
+    )
+
+    for _, entity in ipairs(pickups) do
+        local pickup = entity:ToPickup()
+        local collectible = pickup
+            and itemConfig:GetCollectible(pickup.SubType)
+        local eligible = collectible ~= nil
+
+        if source == "void" then
+            eligible = eligible and collectible.Type ~= ACTIVE
+        end
+
+        if eligible then
+            candidates[#candidates + 1] = {
+                pickup = pickup,
+                optionsIndex = pickup.OptionsPickupIndex or 0,
+            }
+        end
+    end
+
+    return candidates
+end
+
+function RerollHealthModule:QueueAbsorption(player, source)
+    if not self.RunActive or not player then
+        return
+    end
+
+    local key = self:GetPlayerKey(player)
+    local state = self.Players[key]
+
+    if not state then
+        self:TrackPlayer(player)
+        state = self.Players[key]
+    end
+
+    local candidates = self:GetAbsorptionCandidates(source)
+
+    if #candidates == 0 then
+        return
+    end
+
+    -- Nested Blank Card/Clear Rune callbacks may prepare the same Black Rune
+    -- use more than once. The earliest baseline is the only pre-effect state.
+    if not state.absorption then
+        state.absorption = {
+            source = source,
+            before = self:CaptureStats(player),
+            candidates = candidates,
+            cancelled = false,
+        }
+    end
+
+    self:RefreshUpdateCallback()
+end
+
+function RerollHealthModule:GetConsumedCandidateCount(absorption)
+    local count = 0
+    local optionGroups = {}
+
+    for _, candidate in ipairs(absorption.candidates) do
+        local pickup = candidate.pickup
+
+        if pickup and not pickup:Exists() then
+            local optionsIndex = candidate.optionsIndex
+
+            if optionsIndex and optionsIndex ~= 0 then
+                if not optionGroups[optionsIndex] then
+                    optionGroups[optionsIndex] = true
+                    count = count + 1
+                end
+            else
+                count = count + 1
+            end
+        end
+    end
+
+    return count
+end
+
+function RerollHealthModule:FinalizeAbsorption(player, state)
+    local absorption = state.absorption
+    state.absorption = nil
+
+    if not absorption or absorption.cancelled then
+        return false
+    end
+
+    local consumedCount = self:GetConsumedCandidateCount(absorption)
+
+    if consumedCount <= 0 then
+        return false
+    end
+
+    local after = self:CaptureStats(player)
+    local gains = self:CopyStats()
+    local changedStats = 0
+
+    for statName in pairs(EMPTY_STATS) do
+        local gain = after[statName] - absorption.before[statName]
+
+        if gain > 0.000001 then
+            gains[statName] = gain
+            changedStats = changedStats + 1
+        end
+    end
+
+    -- Each consumed pedestal can raise two stats. More changed stat families
+    -- means a stored active effect altered the same frame, so the standard API
+    -- cannot distinguish that temporary change from the permanent absorption.
+    if changedStats > consumedCount * 2 then
+        if Isaac.DebugString then
+            Isaac.DebugString(
+                "[Character Enhance] skipped ambiguous Void stat capture"
+            )
+        end
+        return false
+    end
+
+    if not self:HasStats(gains) then
+        return false
+    end
+
+    for statName in pairs(EMPTY_STATS) do
+        state.nativeAbsorbedStats[statName] =
+            (state.nativeAbsorbedStats[statName] or 0) + gains[statName]
+    end
+
+    return true
+end
+
+function RerollHealthModule:PromoteAbsorbedStats(state, snapshot)
+    if not snapshot or not self:HasStats(snapshot) then
+        return false
+    end
+
+    for statName in pairs(EMPTY_STATS) do
+        local promoted = snapshot[statName] or 0
+        state.preservedStats[statName] =
+            (state.preservedStats[statName] or 0) + promoted
+        state.nativeAbsorbedStats[statName] = math.max(
+            0,
+            (state.nativeAbsorbedStats[statName] or 0) - promoted
+        )
+    end
+
+    return true
+end
+
+function RerollHealthModule:DiscardNativeAbsorbedStats(state, snapshot)
+    if not snapshot or not self:HasStats(snapshot) then
+        return false
+    end
+
+    for statName in pairs(EMPTY_STATS) do
+        state.nativeAbsorbedStats[statName] = math.max(
+            0,
+            (state.nativeAbsorbedStats[statName] or 0)
+                - (snapshot[statName] or 0)
+        )
+    end
+
+    return true
+end
+
+function RerollHealthModule:TrackPlayer(player, playerIndex, savedStats)
     if not player then
         return
     end
 
     self.Players[self:GetPlayerKey(player)] = {
+        player = player,
         pending = nil,
+        absorption = nil,
+        playerIndex = playerIndex,
+        preservedStats = self:SanitizeStats(
+            savedStats and savedStats.preserved
+        ),
+        nativeAbsorbedStats = self:SanitizeStats(
+            savedStats and savedStats.native
+        ),
     }
 end
 
 function RerollHealthModule:OnPlayerInit(player)
-    self:TrackPlayer(player)
+    self:TrackPlayer(player, self:GetPlayerIndex(player))
 
     -- A normal co-op join or rewind reconstruction is already an established
     -- body. During Esau Jr. creation the pre-use callback has queued a scan,
@@ -389,6 +825,7 @@ function RerollHealthModule:QueueRestore(
     local tmtrainerChance = self.Context.Settings[TMTRAINER_SETTING_KEY] or 0
 
     if not player or (not self.Context:IsEnabled(REROLL_SETTING_KEY)
+        and not self.Context:IsEnabled(ABSORBED_STATS_SETTING_KEY)
         and tmtrainerChance >= 100)
     then
         return
@@ -400,6 +837,13 @@ function RerollHealthModule:QueueRestore(
     if not state then
         self:TrackPlayer(player)
         state = self.Players[key]
+    end
+
+    if state.absorption then
+        -- Void can dispatch an absorbed D4/D100 before consuming the current
+        -- pedestal. That inventory reroll makes a before/after stat delta
+        -- ambiguous, so preserve prior tracked gains without recording this use.
+        state.absorption.cancelled = true
     end
 
     -- D100 and D Infinity can invoke the D4 callback internally. Keep the
@@ -421,6 +865,7 @@ function RerollHealthModule:QueueRestore(
 
         state.pending = {
             health = self:CaptureHealth(player),
+            absorbedStats = self:CopyStats(state.nativeAbsorbedStats),
             tmtrainerCount = tmtrainerCount,
             damageAmount = damageAmount,
             tmtrainerAllowed = tmtrainerAllowed,
@@ -623,7 +1068,12 @@ function RerollHealthModule:OnNewRoom()
 end
 
 function RerollHealthModule:OnUseCard(card, player)
-    if card == REVERSE_WHEEL_OF_FORTUNE then
+    if card == BLACK_RUNE then
+        -- Direct uses are prepared by MC_INPUT_ACTION; Blank Card and Clear
+        -- Rune are prepared by their nested pre-use callback. MC_USE_CARD is
+        -- retained as the common completion point without replacing vanilla.
+        return
+    elseif card == REVERSE_WHEEL_OF_FORTUNE then
         self:QueueRestore(player, nil)
     end
 end
@@ -638,7 +1088,15 @@ function RerollHealthModule:OnInputAction(entity, inputHook, buttonAction)
 
     local player = entity and entity:ToPlayer()
 
-    if player and player:GetCard(0) == REVERSE_WHEEL_OF_FORTUNE then
+    if not player then
+        return
+    end
+
+    local card = player:GetCard(0)
+
+    if card == BLACK_RUNE then
+        self:QueueAbsorption(player, "blackRune")
+    elseif card == REVERSE_WHEEL_OF_FORTUNE then
         self:QueueRestore(player, nil)
     end
 end
@@ -773,6 +1231,12 @@ function RerollHealthModule:OnPreUseItem(collectibleType, player)
         -- D4/D100 callback covers those paths without affecting D Infinity's
         -- pedestal-only or stat-only faces.
         self:QueueRestore(player, nil)
+    elseif collectibleType == VOID then
+        self:QueueAbsorption(player, "void")
+    elseif collectibleType == BLANK_CARD or collectibleType == CLEAR_RUNE then
+        if player and player:GetCard(0) == BLACK_RUNE then
+            self:QueueAbsorption(player, "blackRune")
+        end
     elseif collectibleType == ESAU_JR then
         self:QueueEsauJrScan(player)
     end
@@ -921,6 +1385,20 @@ function RerollHealthModule:SyncPlayer(player)
         )
     end
 
+    local statsPromoted = false
+
+    if self.Context:IsEnabled(ABSORBED_STATS_SETTING_KEY) then
+        statsPromoted = self:PromoteAbsorbedStats(
+            state,
+            state.pending.absorbedStats
+        )
+    else
+        statsPromoted = self:DiscardNativeAbsorbedStats(
+            state,
+            state.pending.absorbedStats
+        )
+    end
+
     if self.Context:IsEnabled(REROLL_SETTING_KEY) then
         local baseline = state.pending.health
 
@@ -936,6 +1414,14 @@ function RerollHealthModule:SyncPlayer(player)
 
     state.pending = nil
     self.TmtrainerPreparedDecisions[key] = nil
+
+    if statsPromoted
+        and self.Context:IsEnabled(ABSORBED_STATS_SETTING_KEY)
+    then
+        self:EvaluatePreservedStats(player)
+    end
+
+    return statsPromoted
 end
 
 function RerollHealthModule:OnUpdate()
@@ -946,17 +1432,45 @@ function RerollHealthModule:OnUpdate()
 
     self:ProcessPendingEsauJr()
 
+    local statsChanged = false
+
+    for _, player in pairs(self.PendingSyncPlayers) do
+        local state = self.Players[self:GetPlayerKey(player)]
+
+        if state and state.absorption
+            and self:FinalizeAbsorption(player, state)
+        then
+            statsChanged = true
+        end
+    end
+
+    -- Absorptions that do not also queue a reroll still need reconciliation.
+    for key, state in pairs(self.Players) do
+        if state.absorption and not self.PendingSyncPlayers[key] then
+            local player = state.player
+
+            if player and self:FinalizeAbsorption(player, state) then
+                statsChanged = true
+            end
+        end
+    end
+
     for key, player in pairs(self.PendingSyncPlayers) do
-        self:SyncPlayer(player)
+        if self:SyncPlayer(player) then
+            statsChanged = true
+        end
         self.PendingSyncPlayers[key] = nil
     end
 
+    if statsChanged and self.Context.Save then
+        self.Context:Save()
+    end
 
     self:RefreshUpdateCallback()
     self:RefreshPoolGuardCallback()
 end
 
-function RerollHealthModule:OnGameStarted()
+function RerollHealthModule:OnGameStarted(isContinued)
     self:SetUpdateCallbackEnabled(false)
     self:SetDiceUpdateCallbackEnabled(false)
     self:SetPoolGuardCallbackEnabled(false)
@@ -973,12 +1487,32 @@ function RerollHealthModule:OnGameStarted()
     self.DiceRoomTriggered = false
     self:RefreshMaxCollectibleId()
 
+    self.RunSeed = self:GetRunSeed()
+
     local game = Game()
+
+    local savedPlayers = {}
+
+    if isContinued and self.PreservedData.runSeed == self.RunSeed then
+        savedPlayers = self.PreservedData.players
+    end
 
     for playerIndex = 0, game:GetNumPlayers() - 1 do
         local player = Isaac.GetPlayer(playerIndex)
-        self:TrackPlayer(player)
+        self:TrackPlayer(
+            player,
+            playerIndex,
+            savedPlayers[tostring(playerIndex)]
+        )
         self.KnownEsauJrBodies[self:GetPlayerKey(player)] = true
+
+        if self.Context:IsEnabled(ABSORBED_STATS_SETTING_KEY)
+            and self:HasStats(
+                self.Players[self:GetPlayerKey(player)].preservedStats
+            )
+        then
+            self:EvaluatePreservedStats(player)
+        end
     end
 
     self:OnNewRoom()
@@ -1006,6 +1540,31 @@ function RerollHealthModule:OnSettingChanged(_, settingKey)
         return
     end
 
+    if settingKey == ABSORBED_STATS_SETTING_KEY then
+        if self.RunActive then
+            local game = Game()
+
+            for playerIndex = 0, game:GetNumPlayers() - 1 do
+                self:EvaluatePreservedStats(Isaac.GetPlayer(playerIndex))
+            end
+        end
+
+        return
+    end
+
+
+    if settingKey == REROLL_SETTING_KEY then
+        self.PendingSyncPlayers = {}
+
+        for _, state in pairs(self.Players) do
+            state.pending = nil
+        end
+
+        self:RefreshUpdateCallback()
+        self:RefreshPoolGuardCallback()
+        return
+    end
+
     self.Players = {}
     self.PendingSyncPlayers = {}
 
@@ -1014,14 +1573,38 @@ function RerollHealthModule:OnSettingChanged(_, settingKey)
 
         for playerIndex = 0, game:GetNumPlayers() - 1 do
             local player = Isaac.GetPlayer(playerIndex)
-            self:TrackPlayer(player)
+            self:TrackPlayer(player, playerIndex)
         end
     end
 
     self:RefreshUpdateCallback()
 end
 
+function RerollHealthModule:GetSaveData()
+    if self.RunSeed == nil then
+        return self.SavedData
+    end
+
+    local absorbedStats = {}
+
+    for _, state in pairs(self.Players) do
+        if state.playerIndex ~= nil then
+            absorbedStats[tostring(state.playerIndex)] = {
+                preserved = self:CopyStats(state.preservedStats),
+                native = self:CopyStats(state.nativeAbsorbedStats),
+            }
+        end
+    end
+
+    return {
+        runSeed = self.RunSeed,
+        absorbedStats = absorbedStats,
+    }
+end
+
 function RerollHealthModule:OnPreGameExit()
+    self.SavedData = self:GetSaveData()
+    self.RunSeed = nil
     self:SetUpdateCallbackEnabled(false)
     self:SetDiceUpdateCallbackEnabled(false)
     self:SetPoolGuardCallbackEnabled(false)

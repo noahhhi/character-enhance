@@ -59,6 +59,9 @@
 - Full-inventory rerolls preserve each player's pre-reroll health composition,
   including heart containers, filled Red Hearts, Soul/Black Hearts, Bone
   Hearts, Rotten Hearts, Broken Hearts, Eternal Hearts, and Golden Hearts.
+- An independent fix preserves the permanent stat gains already awarded by
+  Void and Black Rune. Gains are tracked per player; stats supplied by the old
+  passive inventory still reroll normally.
 - Covers Tainted Eden penalty hits, D4, D100, matching D Infinity faces,
   D4/D100 invoked through Void or Metronome, Missing No., one-pip and six-pip
   Dice Rooms, the reversed Wheel of Fortune card, and comparable passive-item
@@ -151,7 +154,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All fifteen gameplay settings remain independently configurable:
+All sixteen gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. Clog Creep Damage Fix
@@ -162,12 +165,13 @@ All fifteen gameplay settings remain independently configurable:
 7. Blue Baby Deal Prices
 8. Poop Queue Overflow Fix
 9. Keep Health on Reroll
-10. Esau Jr. Pickup Effects
-11. TMTRAINER Reroll Chance
-12. Double Soul Charges
-13. Soul Charge Shield
-14. Shield Effects
-15. Gello Wisp Orbit Fix
+10. Keep Absorbed Stats
+11. Esau Jr. Pickup Effects
+12. TMTRAINER Reroll Chance
+13. Double Soul Charges
+14. Soul Charge Shield
+15. Shield Effects
+16. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
