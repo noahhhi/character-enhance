@@ -3,6 +3,7 @@ RerollHealthModule.__index = RerollHealthModule
 
 local REROLL_SETTING_KEY = "rerollHealthProtection"
 local ABSORBED_STATS_SETTING_KEY = "rerollAbsorbedStats"
+local PILL_IDENTIFICATION_SETTING_KEY = "rerollPillIdentification"
 local ESAU_JR_SETTING_KEY = "esauJrFirstPickup"
 local TMTRAINER_SETTING_KEY = "rerollTmtrainerChance"
 local TAINTED_EDEN = PlayerType.PLAYER_EDEN_B
@@ -20,6 +21,8 @@ local BLACK_RUNE = Card.CARD_BLACK_RUNE
 local ESAU_JR = CollectibleType.COLLECTIBLE_ESAU_JR
 local MISSING_NO = CollectibleType.COLLECTIBLE_MISSING_NO
 local TMTRAINER = CollectibleType.COLLECTIBLE_TMTRAINER
+local PHD = CollectibleType.COLLECTIBLE_PHD
+local FALSE_PHD = CollectibleType.COLLECTIBLE_FALSE_PHD
 local NULL_COLLECTIBLE = CollectibleType.COLLECTIBLE_NULL
 local BREAKFAST = CollectibleType.COLLECTIBLE_BREAKFAST
 local SECRET_POOL = ItemPoolType.POOL_SECRET
@@ -474,6 +477,21 @@ function RerollHealthModule:GetTmtrainerCount(player)
     return player:GetCollectibleNum(TMTRAINER, true)
 end
 
+function RerollHealthModule:HasPillIdentifier(player)
+    local phdCount = player:GetCollectibleNum(PHD, true)
+    local falsePhdCount = player:GetCollectibleNum(FALSE_PHD, true)
+
+    return phdCount > 0 or falsePhdCount > 0
+end
+
+function RerollHealthModule:IdentifyAllPills()
+    local itemPool = Game():GetItemPool()
+
+    for pillColor = 1, PillColor.NUM_PILLS - 1 do
+        itemPool:IdentifyPill(pillColor)
+    end
+end
+
 
 function RerollHealthModule:CaptureHealth(player)
     return {
@@ -834,6 +852,7 @@ function RerollHealthModule:QueueRestore(
 
     if not player or (not self.Context:IsEnabled(REROLL_SETTING_KEY)
         and not self.Context:IsEnabled(ABSORBED_STATS_SETTING_KEY)
+        and not self.Context:IsEnabled(PILL_IDENTIFICATION_SETTING_KEY)
         and tmtrainerChance >= 100)
     then
         return
@@ -1350,6 +1369,14 @@ function RerollHealthModule:SyncPlayer(player)
         self:RestoreHealth(player, baseline)
     end
 
+    if self.Context:IsEnabled(PILL_IDENTIFICATION_SETTING_KEY)
+        and self:HasPillIdentifier(player)
+    then
+        -- Inventory rerolls bypass the normal first-pickup path. Reproduce the
+        -- lasting identification granted when either PHD is picked up normally.
+        self:IdentifyAllPills()
+    end
+
     state.pending = nil
     self.TmtrainerPreparedDecisions[key] = nil
 
@@ -1487,6 +1514,11 @@ function RerollHealthModule:OnSettingChanged(_, settingKey)
             end
         end
 
+        return
+    end
+
+
+    if settingKey == PILL_IDENTIFICATION_SETTING_KEY then
         return
     end
 

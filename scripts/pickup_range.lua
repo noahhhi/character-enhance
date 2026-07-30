@@ -117,7 +117,6 @@ end
 
 function PickupRangeModule:OnEvaluateSize(player)
     if not self.Context:IsEnabled("smallPlayerPickupRange")
-        or not self:IsSafeRoom()
         or not player
         or (player.IsDead and player:IsDead())
         or not IsFinitePositive(player.Size)
@@ -132,9 +131,17 @@ function PickupRangeModule:OnEvaluateSize(player)
     end
 
     if not self.RefreshingPlayers then
+        -- CACHE_SIZE can run while the player is being initialized, before
+        -- Game():GetRoom():IsClear() is safe to call. Defer every engine-led
+        -- cache pass to POST_UPDATE; module-led passes originate only from a
+        -- callback where the room has finished loading.
         -- The engine finalizes player Size after all CACHE_SIZE callbacks.
         -- Apply the collision-only override once that cache pass has ended.
         self:ScheduleRefresh()
+        return
+    end
+
+    if not self:IsSafeRoom() then
         return
     end
 
