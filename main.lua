@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.9.8"
+local VERSION = "1.9.9"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -14,6 +14,7 @@ local DEFAULT_SETTINGS = {
     bethanyShieldHitStyle = 1,
     bethanyGelloWispOrbit = true,
     familiarCapacity = true,
+    smallPlayerPickupRange = true,
     clogGroundDamage = true,
     heldItemProtection = true,
     kidsDrawingFormFix = true,
@@ -177,6 +178,7 @@ local BethanyShieldFeedbackModule = include(
 )
 local BethanyGelloWispsModule = include("scripts/bethany_gello_wisps")
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
+local PickupRangeModule = include("scripts/pickup_range")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local HeldItemProtectionModule = include("scripts/held_item_protection")
 local KidsDrawingFormModule = include("scripts/kids_drawing_form")
@@ -232,6 +234,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "familiarCapacity",
     FamiliarCapacityModule.New(Context)
+)
+Context:RegisterModule(
+    "smallPlayerPickupRange",
+    PickupRangeModule.New(Context)
 )
 Context:RegisterModule(
     "clogGroundDamage",

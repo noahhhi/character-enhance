@@ -245,6 +245,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "smallPlayerPickupRange",
+        group = "general",
+        zhName = "小体型拾取范围修复",
+        enName = "Small Player Pickup Range Fix",
+        zhInfo = {
+            "非战斗状态恢复默认拾取与接触范围。",
+            "角色视觉体型保持不变，战斗中仍为小体型。",
+        },
+        enInfo = {
+            "Non-combat: normal pickup/contact reach.",
+            "Visual stays small; combat collision stays small.",
+        },
+    },
+    {
         key = "clogGroundDamage",
         group = "general",
         zhName = "拦路屎水迹伤害修复",
