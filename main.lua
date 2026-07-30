@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.11.2"
+local VERSION = "1.12.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -19,10 +19,12 @@ local DEFAULT_SETTINGS = {
     heldItemProtection = true,
     kidsDrawingFormFix = true,
     ocularRiftSoundFix = true,
+    pillRewindIdentification = true,
     edenStartingItemChoice = true,
     edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
     rerollAbsorbedStats = true,
+    rerollPillIdentification = true,
     esauJrFirstPickup = true,
     rerollTmtrainerChance = 0,
 }
@@ -185,6 +187,9 @@ local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local HeldItemProtectionModule = include("scripts/held_item_protection")
 local KidsDrawingFormModule = include("scripts/kids_drawing_form")
 local OcularRiftSoundModule = include("scripts/ocular_rift_sound")
+local PillRewindIdentificationModule = include(
+    "scripts/pill_rewind_identification"
+)
 local EdenBlessingDuplicatesModule = include(
     "scripts/eden_blessing_duplicates"
 )
@@ -260,6 +265,10 @@ Context:RegisterModule(
     "ocularRiftSoundFix",
     OcularRiftSoundModule.New(Context)
 )
+Context:RegisterModule(
+    "pillRewindIdentification",
+    PillRewindIdentificationModule.New(Context)
+)
 local edenChoicesModule = EdenBlessingDuplicatesModule.New(Context)
 Context:RegisterModule(
     "edenBlessingDuplicateFix",
@@ -278,6 +287,7 @@ if Game():GetFrameCount() > 0 then
         "bethanySoulCharge",
         "familiarCapacity",
         "kidsDrawingFormFix",
+        "pillRewindIdentification",
     }) do
         local module = Context.Modules[moduleKey]
 

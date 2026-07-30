@@ -193,6 +193,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "rerollPillIdentification",
+        group = "taintedEden",
+        zhName = "Roll 获得 PHD 后识别药丸",
+        enName = "Reveal Pills with Rerolled PHD",
+        zhInfo = {
+            "Roll 全身道具获得 PHD/False PHD 时识别药丸。",
+            "药丸名称会像正常拾取道具时一样永久显示。",
+        },
+        enInfo = {
+            "A rerolled PHD or False PHD reveals all pills.",
+            "Pill names stay known after the item is lost.",
+        },
+    },
+    {
         key = "esauJrFirstPickup",
         group = "taintedEden",
         zhName = "小以扫拾取效果",
@@ -344,6 +358,20 @@ local MENU_SETTINGS = {
         enInfo = {
             "Stops Ocular Rift sounds when no tear was fired.",
             "Covers Finger! and similar passive effect sources.",
+        },
+    },
+    {
+        key = "pillRewindIdentification",
+        group = "general",
+        zhName = "药丸回溯识别修复",
+        enName = "Pill Rewind Fix",
+        zhInfo = {
+            "吃过药丸后，用发光沙漏回溯仍保持识别。",
+            "内置说明与右下角药丸名称不会变回问号。",
+        },
+        enInfo = {
+            "Used pills stay identified after a room rewind.",
+            "Built-in descriptions and the HUD keep the name.",
         },
     },
 }

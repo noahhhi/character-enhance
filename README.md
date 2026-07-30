@@ -25,6 +25,7 @@
   <a href="#held-item-protection">Pickup Animation Fix</a> •
   <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
   <a href="#ocular-rift-sound-fix">Ocular Rift Sound Fix</a> •
+  <a href="#pill-rewind-fix">Pill Rewind Fix</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
 </p>
@@ -95,6 +96,9 @@
   with an active-item slot, or change the rerolled item count.
 - Items generated on Esau Jr.'s first use are registered once with vanilla
   transformation progress. Later body swaps do not replay first-pickup effects.
+- When a full-inventory reroll grants PHD or False PHD, all pill names are
+  revealed just as they are after a normal pickup. They stay identified if the
+  item is later lost.
 
 <a id="bethany"></a>
 ## Bethany
@@ -173,6 +177,13 @@
   such as Finger! no longer replay Ocular Rift's shoot sound. Actual fired
   tears and the portal sound retain vanilla behavior.
 
+<a id="pill-rewind-fix"></a>
+## Pill Rewind Fix
+
+- After a pill is used, rewinding the same room with Glowing Hour Glass keeps
+  its effect identified in the built-in Item Descriptions and the bottom-right
+  HUD instead of changing it back to `???`.
+
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
 
@@ -180,7 +191,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All nineteen gameplay settings remain independently configurable:
+All twenty-one gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. Small Player Pickup Range Fix
@@ -188,19 +199,21 @@ All nineteen gameplay settings remain independently configurable:
 4. Pickup Animation Fix
 5. Kid's Drawing Form Fix
 6. Ocular Rift Sound Fix
-7. Eden Starting Passive Choice
-8. Eden's Blessing Choice
-9. Starting Wooden Cross
-10. Blue Baby Deal Prices
-11. Poop Queue Overflow Fix
-12. Keep Health on Reroll
-13. Keep Absorbed Stats
-14. Esau Jr. Pickup Effects
-15. TMTRAINER Reroll Chance
-16. Double Soul Charges
-17. Soul Charge Shield
-18. Shield Effects
-19. Gello Wisp Orbit Fix
+7. Pill Rewind Fix
+8. Eden Starting Passive Choice
+9. Eden's Blessing Choice
+10. Starting Wooden Cross
+11. Blue Baby Deal Prices
+12. Poop Queue Overflow Fix
+13. Keep Health on Reroll
+14. Keep Absorbed Stats
+15. Reveal Pills with Rerolled PHD
+16. Esau Jr. Pickup Effects
+17. TMTRAINER Reroll Chance
+18. Double Soul Charges
+19. Soul Charge Shield
+20. Shield Effects
+21. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `Eden`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu
