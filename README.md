@@ -43,8 +43,9 @@
 ## Eden
 
 - Eden's native random starting passive is removed without leaving its
-  pickup-only health, consumables, or spawned pickups behind. In its place,
-  three random collectible pedestals appear and only one can be taken.
+  pickup-only health, consumables, or spawned pickups behind, and without
+  consuming the sequence those pickups would have used. In its place, three
+  random collectible pedestals appear and only one can be taken.
 - Each Eden's Blessing collected creates its own three-pedestal choice at the
   start of the next run instead of adding one collectible directly.
 - Both choices draw from all available active, passive, and familiar

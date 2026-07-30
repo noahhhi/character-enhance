@@ -6,6 +6,8 @@ local BLESSING_CHOICE_KEY = "edenBlessingDuplicateFix"
 local EDENS_BLESSING = CollectibleType.COLLECTIBLE_EDENS_BLESSING
 local EDEN = PlayerType.PLAYER_EDEN
 local COLLECTIBLE_PICKUP = PickupVariant.PICKUP_COLLECTIBLE
+local COIN_PICKUP = PickupVariant.PICKUP_COIN
+local PENNY = CoinSubType.COIN_PENNY
 local ACTIVE = ItemType.ITEM_ACTIVE
 local PASSIVE = ItemType.ITEM_PASSIVE
 local FAMILIAR = ItemType.ITEM_FAMILIAR
@@ -45,6 +47,7 @@ function EdenChoicesModule.New(context)
         PendingPickups = {},
         PlayerBaselines = {},
         SuppressedPickupCounts = {},
+        RedirectedPickupSeeds = {},
     }, EdenChoicesModule)
 
     self.PendingRewards = self:SanitizePendingRewards(
@@ -57,6 +60,44 @@ function EdenChoicesModule.New(context)
             self:OnPlayerInit(player)
         end
     )
+    local preSpawnCallback = function(
+        _,
+        entityType,
+        variant,
+        subtype,
+        position,
+        velocity,
+        spawner,
+        seed
+    )
+        return self:OnPreEntitySpawn(
+            entityType,
+            variant,
+            subtype,
+            position,
+            velocity,
+            spawner,
+            seed
+        )
+    end
+
+    -- Intercept unresolved player-spawned pickups before their subtype pools
+    -- are queried. Deleting Marbles trinkets in MC_POST_PICKUP_INIT is too
+    -- late: their concrete subtypes have already advanced the trinket stream.
+    if type(context.Mod.AddPriorityCallback) == "function" then
+        context.Mod:AddPriorityCallback(
+            ModCallbacks.MC_PRE_ENTITY_SPAWN,
+            CallbackPriority.IMPORTANT,
+            preSpawnCallback,
+            EntityType.ENTITY_PICKUP
+        )
+    else
+        context.Mod:AddCallback(
+            ModCallbacks.MC_PRE_ENTITY_SPAWN,
+            preSpawnCallback,
+            EntityType.ENTITY_PICKUP
+        )
+    end
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_PICKUP_INIT,
         function(_, pickup)
@@ -143,6 +184,7 @@ end
 function EdenChoicesModule:OnPlayerInit(player)
     if player:GetPlayerType() ~= EDEN
         or not self.Context:IsEnabled(STARTING_CHOICE_KEY)
+        or Game():GetFrameCount() ~= 0
     then
         return
     end
@@ -157,28 +199,68 @@ function EdenChoicesModule:OnPlayerInit(player)
     Debug("captured Eden baseline before native starting items")
 end
 
-function EdenChoicesModule:OnPickupInit(pickup)
-    local spawner = pickup and pickup.SpawnerEntity
-    local player = spawner and spawner:ToPlayer()
+function EdenChoicesModule:OnPreEntitySpawn(
+    entityType,
+    variant,
+    subtype,
+    _position,
+    _velocity,
+    spawner,
+    seed
+)
+    if entityType ~= EntityType.ENTITY_PICKUP
+        or not spawner
+        or type(seed) ~= "number"
+    then
+        return nil
+    end
+
+    local player = spawner:ToPlayer()
 
     if not player then
-        return
+        return nil
     end
 
     local playerKey = self:GetPlayerKey(player)
 
     if self.SuppressedPickupCounts[playerKey] == nil then
-        return
+        return nil
     end
 
     self.SuppressedPickupCounts[playerKey] =
         self.SuppressedPickupCounts[playerKey] + 1
+    self.RedirectedPickupSeeds[seed] = {
+        playerKey = playerKey,
+        originalVariant = variant,
+        originalSubtype = subtype,
+    }
+    Debug(string.format(
+        "redirected native passive pickup 5.%d.%d before subtype resolution",
+        variant,
+        subtype
+    ))
+    return {
+        EntityType.ENTITY_PICKUP,
+        COIN_PICKUP,
+        PENNY,
+        seed,
+    }
+end
+
+function EdenChoicesModule:OnPickupInit(pickup)
+    local redirected = pickup
+        and self.RedirectedPickupSeeds[pickup.InitSeed]
+
+    if not redirected then
+        return
+    end
+
+    self.RedirectedPickupSeeds[pickup.InitSeed] = nil
     pickup:Remove()
     Debug(string.format(
-        "suppressed native passive pickup side effect %d.%d.%d",
-        pickup.Type,
-        pickup.Variant,
-        pickup.SubType
+        "removed redirected native passive pickup from 5.%d.%d",
+        redirected.originalVariant,
+        redirected.originalSubtype
     ))
 end
 
@@ -456,7 +538,7 @@ function EdenChoicesModule:RemoveNativeStartingPassive(player, baseline)
     if collectible then
         player:RemoveCollectible(collectible, true)
         Debug(string.format(
-            "removed native Eden passive %d; suppressed pickups=%d",
+            "removed native Eden passive %d; redirected pickups=%d",
             collectible,
             self.SuppressedPickupCounts[self:GetPlayerKey(player)] or 0
         ))
@@ -495,6 +577,7 @@ end
 
 function EdenChoicesModule:OnGameStarted(isContinued)
     self.PendingPickups = {}
+    self.RedirectedPickupSeeds = {}
 
     if isContinued then
         self.PlayerBaselines = {}
@@ -523,8 +606,6 @@ function EdenChoicesModule:OnGameStarted(isContinued)
         end
     end
 
-    -- The replacement pedestals must not be mistaken for side effects of the
-    -- native passive that was just removed.
     self.PlayerBaselines = {}
     self.SuppressedPickupCounts = {}
 
