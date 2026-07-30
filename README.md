@@ -51,7 +51,9 @@
 - Both choices draw from all available active, passive, and familiar
   collectibles except items tagged `noeden`. Already-owned collectibles are
   excluded, and separate choices in the same starting room do not repeat one
-  another. Continuing a saved run does not create the choices again.
+  another. Every generated option is removed from the run's item pools, whether
+  selected or not, so normal item-pool sources cannot offer it again.
+  Continuing a saved run does not create the choices again.
 
 <a id="tainted-lost"></a>
 ## Tainted Lost

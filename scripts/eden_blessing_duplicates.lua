@@ -421,6 +421,7 @@ function EdenChoicesModule:SpawnChoiceGroup(
     end
 
     local room = Game():GetRoom()
+    local itemPool = Game():GetItemPool()
     local center = room:GetCenterPos()
     local rowOffset = (groupIndex - (groupCount + 1) / 2) * GROUP_SPACING
     local optionsIndex = self:GetOptionsIndex(groupIndex)
@@ -444,6 +445,12 @@ function EdenChoicesModule:SpawnChoiceGroup(
             pickup.Wait = 30
             pickup.Price = 0
             pickup.AutoUpdatePrice = false
+            local removed = itemPool:RemoveCollectible(collectible)
+            Debug(string.format(
+                "removed spawned choice %d from run item pools: %s",
+                collectible,
+                tostring(removed)
+            ))
         end
     end
 
