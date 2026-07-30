@@ -3,10 +3,8 @@ EdenBlessingDuplicatesModule.__index = EdenBlessingDuplicatesModule
 
 local SETTING_KEY = "edenBlessingDuplicateFix"
 local EDEN = PlayerType.PLAYER_EDEN
-local ACTIVE = ItemType.ITEM_ACTIVE
 local PASSIVE = ItemType.ITEM_PASSIVE
 local FAMILIAR = ItemType.ITEM_FAMILIAR
-local PRIMARY_SLOT = ActiveSlot.SLOT_PRIMARY
 local NO_EDEN_TAG = ItemConfig.TAG_NO_EDEN or (1 << 32)
 local RNG_SHIFT_INDEX = 35
 
@@ -18,10 +16,28 @@ end
 function EdenBlessingDuplicatesModule.New(context)
     local self = setmetatable({
         Context = context,
+        StartupActive = false,
         MaxCollectibleId = 1,
         Rng = RNG(),
     }, EdenBlessingDuplicatesModule)
 
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_PLAYER_INIT,
+        function(_, player)
+            self:OnPlayerInit(player)
+        end
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_GET_COLLECTIBLE,
+        function(_, selectedCollectible, poolType, decrease, seed)
+            return self:OnPostGetCollectible(
+                selectedCollectible,
+                poolType,
+                decrease,
+                seed
+            )
+        end
+    )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
         function(_, isContinued)
@@ -67,7 +83,7 @@ function EdenBlessingDuplicatesModule:IsReplacementCandidate(
     return type(config.IsAvailable) ~= "function" or config:IsAvailable()
 end
 
-function EdenBlessingDuplicatesModule:GetReplacement(player)
+function EdenBlessingDuplicatesModule:GetReplacement(player, seed)
     local itemConfig = Isaac.GetItemConfig()
     local candidates = {}
 
@@ -83,91 +99,66 @@ function EdenBlessingDuplicatesModule:GetReplacement(player)
         return nil
     end
 
+    self.Rng:SetSeed(NormalizeSeed(seed), RNG_SHIFT_INDEX)
     return candidates[self.Rng:RandomInt(#candidates) + 1]
 end
 
-function EdenBlessingDuplicatesModule:GetRemovalSlot(player, collectibleType)
-    local config = Isaac.GetItemConfig():GetCollectible(collectibleType)
+function EdenBlessingDuplicatesModule:GetPrimaryEden()
+    local game = Game()
 
-    if not config or config.Type ~= ACTIVE then
-        return PRIMARY_SLOT
+    if game:GetNumPlayers() < 1 then
+        return nil
     end
 
-    local matchingSlots = {}
+    local player = Isaac.GetPlayer(0)
 
-    for _, slot in ipairs({
-        ActiveSlot.SLOT_PRIMARY,
-        ActiveSlot.SLOT_SECONDARY,
-        ActiveSlot.SLOT_POCKET,
-        ActiveSlot.SLOT_POCKET2,
-    }) do
-        if player:GetActiveItem(slot) == collectibleType then
-            matchingSlots[#matchingSlots + 1] = slot
-        end
+    if player and player:GetPlayerType() == EDEN then
+        return player
     end
 
-    -- Never remove the only visible active item. A duplicated active is safe
-    -- to replace only when the engine placed both copies in distinct slots.
-    return #matchingSlots >= 2 and matchingSlots[#matchingSlots] or nil
+    return nil
 end
 
-function EdenBlessingDuplicatesModule:ReplaceOneDuplicate(
-    player,
-    collectibleType
-)
-    local replacement = self:GetReplacement(player)
-    local removalSlot = self:GetRemovalSlot(player, collectibleType)
-
-    if not replacement or removalSlot == nil then
-        return false
-    end
-
-    local countBefore = player:GetCollectibleNum(collectibleType, true)
-    player:RemoveCollectible(
-        collectibleType,
-        true,
-        removalSlot,
-        true
-    )
-
-    if player:GetCollectibleNum(collectibleType, true) >= countBefore then
-        return false
-    end
-
-    player:AddCollectible(replacement, 0, true)
-    return true
-end
-
-function EdenBlessingDuplicatesModule:FixPlayer(player)
-    for collectibleType = 1, self.MaxCollectibleId do
-        while player:GetCollectibleNum(collectibleType, true) > 1 do
-            if not self:ReplaceOneDuplicate(player, collectibleType) then
-                break
-            end
-        end
-    end
-end
-
-function EdenBlessingDuplicatesModule:OnGameStarted(isContinued)
-    if isContinued or not self.Context:IsEnabled(SETTING_KEY) then
+function EdenBlessingDuplicatesModule:OnPlayerInit(player)
+    if not self.Context:IsEnabled(SETTING_KEY)
+        or Game():GetFrameCount() ~= 0
+        or not player
+        or player:GetPlayerType() ~= EDEN
+    then
         return
     end
 
-    local game = Game()
-    local seeds = game:GetSeeds()
-    self.Rng:SetSeed(
-        NormalizeSeed(seeds and seeds:GetStartSeed()),
-        RNG_SHIFT_INDEX
-    )
+    self.StartupActive = true
     self:RefreshMaxCollectibleId()
+end
 
-    for playerIndex = 0, game:GetNumPlayers() - 1 do
-        local player = Isaac.GetPlayer(playerIndex)
-
-        if player and player:GetPlayerType() == EDEN then
-            self:FixPlayer(player)
-        end
+function EdenBlessingDuplicatesModule:OnPostGetCollectible(
+    selectedCollectible,
+    _poolType,
+    _decrease,
+    seed
+)
+    if not self.StartupActive
+        or not self.Context:IsEnabled(SETTING_KEY)
+        or type(selectedCollectible) ~= "number"
+        or selectedCollectible <= 0
+    then
+        return nil
     end
+
+    local player = self:GetPrimaryEden()
+
+    if not player
+        or player:GetCollectibleNum(selectedCollectible, true) <= 0
+    then
+        return nil
+    end
+
+    return self:GetReplacement(player, seed)
+end
+
+function EdenBlessingDuplicatesModule:OnGameStarted(_isContinued)
+    self.StartupActive = false
 end
 
 return EdenBlessingDuplicatesModule
