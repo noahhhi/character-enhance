@@ -161,8 +161,10 @@
 ## Eden's Blessing Duplicate Fix
 
 - On a new run as Eden, an Eden's Blessing reward that duplicates one of
-  Eden's starting collectibles is replaced with another available passive or
-  familiar item. Continuing a run and other characters are unchanged.
+  Eden's starting collectibles is replaced before pickup effects occur. Rewards
+  are drawn from all available passive and familiar collectibles except those
+  tagged `noeden`.
+  Continuing a run and other characters are unchanged.
 
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)

@@ -5,13 +5,11 @@ local SETTING_KEY = "edenBlessingDuplicateFix"
 local EDENS_BLESSING = CollectibleType.COLLECTIBLE_EDENS_BLESSING
 local EDEN = PlayerType.PLAYER_EDEN
 local COLLECTIBLE_PICKUP = PickupVariant.PICKUP_COLLECTIBLE
-local TREASURE_POOL = ItemPoolType.POOL_TREASURE
-local DEFAULT_COLLECTIBLE = CollectibleType.COLLECTIBLE_BREAKFAST
 local PASSIVE = ItemType.ITEM_PASSIVE
 local FAMILIAR = ItemType.ITEM_FAMILIAR
 local NO_EDEN_TAG = ItemConfig.TAG_NO_EDEN or (1 << 32)
-local MAX_REPICKS = 100
 local SEED_STEP = 104729
+local RNG_SHIFT_INDEX = 35
 
 local function Debug(message)
     if type(Isaac.DebugString) == "function" then
@@ -158,11 +156,16 @@ function EdenBlessingDuplicatesModule:IsDuplicateForEden(player, collectible)
         and player:GetCollectibleNum(collectible, true) > 0
 end
 
-function EdenBlessingDuplicatesModule:IsReplacementCandidate(collectible)
+function EdenBlessingDuplicatesModule:IsRewardCandidate(
+    player,
+    collectible
+)
     local config = Isaac.GetItemConfig():GetCollectible(collectible)
 
     if not config or config.Hidden == true
-        or (config.Type ~= PASSIVE and config.Type ~= FAMILIAR)
+        or (config.Type ~= PASSIVE
+            and config.Type ~= FAMILIAR)
+        or self:IsDuplicateForEden(player, collectible)
     then
         return false
     end
@@ -180,33 +183,39 @@ function EdenBlessingDuplicatesModule:IsReplacementCandidate(collectible)
     return type(config.IsAvailable) ~= "function" or config:IsAvailable()
 end
 
-function EdenBlessingDuplicatesModule:DrawReward(player, rewardIndex)
-    local game = Game()
-    local itemPool = game:GetItemPool()
-    local startSeed = game:GetSeeds():GetStartSeed()
-    local baseSeed = startSeed + rewardIndex * SEED_STEP
-    local replacingDuplicate = false
+function EdenBlessingDuplicatesModule:GetRewardCandidates(player)
+    local itemConfig = Isaac.GetItemConfig()
+    local collectibleList = itemConfig:GetCollectibles()
+    local maxCollectible = math.max(0, (collectibleList.Size or 1) - 1)
+    local candidates = {}
 
-    for attempt = 0, MAX_REPICKS do
-        local collectible = itemPool:GetCollectible(
-            TREASURE_POOL,
-            true,
-            NormalizeSeed(baseSeed + attempt),
-            DEFAULT_COLLECTIBLE
-        )
-
-        if type(collectible) == "number" and collectible > 0 then
-            if self:IsDuplicateForEden(player, collectible) then
-                replacingDuplicate = true
-            elseif not replacingDuplicate
-                or self:IsReplacementCandidate(collectible)
-            then
-                return collectible
-            end
+    for collectible = 1, maxCollectible do
+        if self:IsRewardCandidate(player, collectible) then
+            candidates[#candidates + 1] = collectible
         end
     end
 
-    return nil
+    return candidates
+end
+
+function EdenBlessingDuplicatesModule:DrawReward(
+    player,
+    rewardIndex
+)
+    local game = Game()
+    local startSeed = game:GetSeeds():GetStartSeed()
+    local candidates = self:GetRewardCandidates(player)
+
+    if #candidates == 0 then
+        return nil
+    end
+
+    local rng = RNG()
+    rng:SetSeed(
+        NormalizeSeed(startSeed + rewardIndex * SEED_STEP),
+        RNG_SHIFT_INDEX
+    )
+    return candidates[rng:RandomInt(#candidates) + 1]
 end
 
 function EdenBlessingDuplicatesModule:OnGameStarted(isContinued)

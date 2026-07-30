@@ -105,7 +105,7 @@
 <a id="eden-blessing-duplicate-fix"></a>
 ## 伊甸的祝福重复修复
 
-- 使用伊甸新开局时，如果伊甸的祝福给出的奖励与伊甸的初始收藏品重复，会改为另一件可用的被动或跟班道具；继续游戏和其他角色不受影响。
+- 使用伊甸新开局时，如果伊甸的祝福奖励与初始收藏品重复，会在触发拾取效果前更换。奖励从全部可用的被动与跟班收藏品中抽取，并排除带“非伊甸”标签的道具；继续游戏和其他角色不受影响。
 
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951) / 配置菜单
