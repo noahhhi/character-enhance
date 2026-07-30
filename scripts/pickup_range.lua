@@ -32,6 +32,7 @@ function PickupRangeModule.New(context)
         LoggedSafeRoomSize = false,
         RefreshingPlayers = false,
         AdjustedDuringRefresh = 0,
+        PendingSizes = setmetatable({}, { __mode = "k" }),
     }, PickupRangeModule)
 
     self.RefreshCallback = function()
@@ -110,14 +111,29 @@ function PickupRangeModule:OnEvaluateSize(player)
         return
     end
 
-    -- CACHE_SIZE callbacks run after vanilla has rebuilt the player stats.
-    -- Restore only the physical radius that SpriteScale removed; the sprite
-    -- remains visually small because SpriteScale itself is never changed.
-    player.Size = player.Size / scale
-
-    if self.RefreshingPlayers then
-        self.AdjustedDuringRefresh = self.AdjustedDuringRefresh + 1
+    if not self.RefreshingPlayers then
+        -- The engine finalizes player Size after all CACHE_SIZE callbacks.
+        -- Apply the collision-only override once that cache pass has ended.
+        self:ScheduleRefresh()
+        return
     end
+
+    self.PendingSizes[player] = player.Size / scale
+    self.AdjustedDuringRefresh = self.AdjustedDuringRefresh + 1
+end
+
+function PickupRangeModule:ApplyPendingSize(player)
+    local targetSize = self.PendingSizes[player]
+    self.PendingSizes[player] = nil
+
+    if not targetSize or not IsFinitePositive(targetSize) then
+        return
+    end
+
+    -- SetSize is intentionally called after EvaluateItems returns. Assigning
+    -- Size inside MC_EVALUATE_CACHE is overwritten when the engine finishes
+    -- synchronizing the Size stat from SpriteScale.
+    player:SetSize(targetSize, player.SizeMulti, 0)
 end
 
 function PickupRangeModule:RefreshPlayers()
@@ -126,6 +142,7 @@ function PickupRangeModule:RefreshPlayers()
 
     self.RefreshingPlayers = true
     self.AdjustedDuringRefresh = 0
+    self.PendingSizes = setmetatable({}, { __mode = "k" })
 
     for playerIndex = 0, playerCount - 1 do
         local player = Isaac.GetPlayer(playerIndex)
@@ -135,6 +152,7 @@ function PickupRangeModule:RefreshPlayers()
             -- CACHE_SIZE callback then normalizes it only in a cleared room.
             player:AddCacheFlags(CacheFlag.CACHE_SIZE)
             player:EvaluateItems()
+            self:ApplyPendingSize(player)
         end
     end
 
