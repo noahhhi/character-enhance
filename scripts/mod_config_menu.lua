@@ -314,6 +314,20 @@ local MENU_SETTINGS = {
             "Covers Finger! and similar passive effect sources.",
         },
     },
+    {
+        key = "edenBlessingDuplicateFix",
+        group = "general",
+        zhName = "伊甸的祝福重复修复",
+        enName = "Eden's Blessing Duplicate Fix",
+        zhInfo = {
+            "伊甸的祝福不会再复制伊甸的初始道具。",
+            "重复奖励会改为另一件可用的被动道具。",
+        },
+        enInfo = {
+            "Eden's Blessing won't copy Eden's starting item.",
+            "Duplicates reroll into another available passive.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)
