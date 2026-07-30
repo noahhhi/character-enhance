@@ -45,37 +45,64 @@ function PickupRangeModule.New(context)
     local self = setmetatable({
         Context = context,
         Compensation = 0,
+        LastLoggedCompensation = 0,
         ManagedPickups = setmetatable({}, { __mode = "k" }),
+        RefreshPending = false,
     }, PickupRangeModule)
+
+    self.RefreshCallback = function()
+        context.Mod:RemoveCallback(
+            ModCallbacks.MC_POST_UPDATE,
+            self.RefreshCallback
+        )
+        self.RefreshPending = false
+        self:RefreshAll()
+    end
 
     context.Mod:AddCallback(
         ModCallbacks.MC_EVALUATE_CACHE,
-        function(_, player)
-            self:RefreshCompensation(player)
+        function()
+            self:RefreshCompensation()
         end,
         CacheFlag.CACHE_SIZE
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_PICKUP_INIT,
-        function(_, pickup)
-            self:ApplyToPickup(pickup)
+        function()
+            -- Pickup properties can still be incomplete during its init
+            -- callback, so apply once on the following game update.
+            self:ScheduleRefresh()
         end
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_NEW_ROOM,
         function()
-            self:RefreshAll()
+            self:ScheduleRefresh()
         end
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
         function()
-            self:RefreshAll()
+            self:ScheduleRefresh()
         end
     )
 
-    self:RefreshAll()
+    -- A hot-loaded mod does not receive MC_POST_GAME_STARTED for the current
+    -- run. Read the already-active player size on the next valid game update.
+    self:ScheduleRefresh()
     return self
+end
+
+function PickupRangeModule:ScheduleRefresh()
+    if self.RefreshPending then
+        return
+    end
+
+    self.RefreshPending = true
+    self.Context.Mod:AddCallback(
+        ModCallbacks.MC_POST_UPDATE,
+        self.RefreshCallback
+    )
 end
 
 function PickupRangeModule:RestorePickup(pickup, state)
@@ -98,9 +125,8 @@ end
 
 function PickupRangeModule:CalculateCompensation()
     local compensation = 0
-    local playerCount = Game():GetNumPlayers()
 
-    for playerIndex = 0, playerCount - 1 do
+    for playerIndex = 0, Game():GetNumPlayers() - 1 do
         compensation = math.max(
             compensation,
             GetPickupCompensation(Isaac.GetPlayer(playerIndex))
@@ -109,7 +135,6 @@ function PickupRangeModule:CalculateCompensation()
 
     return compensation
 end
-
 
 function PickupRangeModule:GetRoomPickups()
     local pickups = {}
@@ -124,7 +149,6 @@ function PickupRangeModule:GetRoomPickups()
 
     return pickups
 end
-
 
 function PickupRangeModule:ApplyToPickup(pickup)
     if not pickup or pickup.Type ~= ENTITY_PICKUP
@@ -167,6 +191,23 @@ function PickupRangeModule:RefreshRoomPickups()
     end
 end
 
+function PickupRangeModule:LogCompensation(compensation)
+    if compensation <= EPSILON then
+        self.LastLoggedCompensation = 0
+        return
+    end
+
+    if math.abs(compensation - self.LastLoggedCompensation) <= EPSILON then
+        return
+    end
+
+    self.LastLoggedCompensation = compensation
+    Isaac.DebugString(string.format(
+        "[Character Enhance] Small-player pickup compensation active: %.3f",
+        compensation
+    ))
+end
+
 function PickupRangeModule:RefreshCompensation()
     local compensation = self.Context:IsEnabled("smallPlayerPickupRange")
         and self:CalculateCompensation()
@@ -177,6 +218,7 @@ function PickupRangeModule:RefreshCompensation()
     end
 
     self.Compensation = compensation
+    self:LogCompensation(compensation)
 
     if compensation <= EPSILON then
         self:RestoreAll()
@@ -189,6 +231,7 @@ function PickupRangeModule:RefreshAll()
     self.Compensation = self.Context:IsEnabled("smallPlayerPickupRange")
         and self:CalculateCompensation()
         or 0
+    self:LogCompensation(self.Compensation)
 
     if self.Compensation <= EPSILON then
         self:RestoreAll()
@@ -199,11 +242,20 @@ end
 
 function PickupRangeModule:OnSettingChanged(enabled)
     if enabled then
-        self:RefreshAll()
+        self:ScheduleRefresh()
         return
     end
 
+    if self.RefreshPending then
+        self.Context.Mod:RemoveCallback(
+            ModCallbacks.MC_POST_UPDATE,
+            self.RefreshCallback
+        )
+        self.RefreshPending = false
+    end
+
     self.Compensation = 0
+    self:LogCompensation(0)
     self:RestoreAll()
 end
 
