@@ -122,10 +122,10 @@
 <a id="small-player-pickup-range"></a>
 ## Small Player Pickup Range Fix
 
-- Size-down effects, including Pluto, no longer reduce the distance at which a
-  player can collect pickups. Pickup collision stays continuously compensated
-  while any living player is small; the player's smaller collision against
-  enemies, projectiles, and obstacles is preserved.
+- After combat ends, size-down effects including Pluto retain their small
+  appearance while the player's physical radius returns to normal for pickup
+  and contact interactions. Hostile rooms retain the smaller combat collision;
+  pickup entities themselves are never resized.
 
 <a id="clog-ground-damage"></a>
 ## The Clog Creep Damage Fix
