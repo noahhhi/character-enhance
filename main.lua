@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.10.0"
+local VERSION = "1.11.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -19,6 +19,7 @@ local DEFAULT_SETTINGS = {
     heldItemProtection = true,
     kidsDrawingFormFix = true,
     ocularRiftSoundFix = true,
+    edenStartingItemChoice = true,
     edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
     rerollAbsorbedStats = true,
@@ -259,10 +260,12 @@ Context:RegisterModule(
     "ocularRiftSoundFix",
     OcularRiftSoundModule.New(Context)
 )
+local edenChoicesModule = EdenBlessingDuplicatesModule.New(Context)
 Context:RegisterModule(
     "edenBlessingDuplicateFix",
-    EdenBlessingDuplicatesModule.New(Context)
+    edenChoicesModule
 )
+Context:RegisterSettingHandler("edenStartingItemChoice", edenChoicesModule)
 
 ModConfigMenuModule.New(Context)
 

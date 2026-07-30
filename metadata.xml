@@ -4,15 +4,15 @@
     <directory>character-enhance</directory>
     <id>character-enhance</id>
     <description>[h1]Character Enhance[/h1]
-Independently configurable enhancements for Tainted Lost, Tainted Blue Baby, Tainted Eden, Bethany, and Esau Jr., plus absorbed-stat reroll preservation, Eden's Blessing duplicate prevention, small-player pickup-range, familiar-limit, pickup-animation, Kid's Drawing form-count, Ocular Rift sound, and The Clog creep-damage fixes. Requires Repentance+ 1.9.7.15; this is the only tested game version. Other versions are unverified. REPENTOGON is not required.
+Independently configurable enhancements for Eden, Tainted Lost, Tainted Blue Baby, Tainted Eden, Bethany, and Esau Jr. Eden can replace the native starting passive and each Eden's Blessing reward with a choice of three from all eligible collectibles, including active items. Also includes absorbed-stat reroll preservation, small-player pickup-range, familiar-limit, pickup-animation, Kid's Drawing form-count, Ocular Rift sound, and The Clog creep-damage fixes. Requires Repentance+ 1.9.7.15; this is the only tested game version. Other versions are unverified. REPENTOGON is not required.
 
 [h1]角色增强[/h1]
-为里游魂、里蓝人、里伊甸、伯大尼和小以扫提供可独立开关的增强功能，并修复 Roll 全身道具后吸收属性丢失、伊甸的祝福重复奖励、小体型拾取范围、跟班上限、拾取动画、儿童涂鸦套装计数、邪眼裂口异常音效和拦路屎水迹伤害问题。需要《忏悔+》1.9.7.15，且仅测试该游戏版本；其他版本尚未验证。不需要 REPENTOGON。
+为伊甸、里游魂、里蓝人、里伊甸、伯大尼和小以扫提供可独立开关的增强功能。伊甸可以把原生初始被动和每份伊甸的祝福奖励分别改为三选一，候选覆盖包括主动道具在内的全部合格收藏品。另包含 Roll 全身道具后吸收属性保留、小体型拾取范围、跟班上限、拾取动画、儿童涂鸦套装计数、邪眼裂口异常音效和拦路屎水迹伤害修复。需要《忏悔+》1.9.7.15，且仅测试该游戏版本；其他版本尚未验证。不需要 REPENTOGON。
 
 Supports English and Simplified Chinese Mod Config Menu labels. / 支持英文与简体中文 Mod Config Menu。
 
 [url=https://github.com/noahhhi/character-enhance]Source code / 源码[/url]</description>
-    <version>1.10.0</version>
+    <version>1.11.0</version>
     <visibility>Public</visibility>
     <tag id="Lua"/>
     <tag id="Tweaks"/>

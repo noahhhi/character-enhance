@@ -14,6 +14,7 @@
 </p>
 
 <p align="center">
+  <a href="#eden">Eden</a> •
   <a href="#tainted-lost">Tainted Lost</a> •
   <a href="#tainted-blue-baby">Tainted Blue Baby</a> •
   <a href="#tainted-eden">Tainted Eden</a> •
@@ -24,7 +25,6 @@
   <a href="#held-item-protection">Pickup Animation Fix</a> •
   <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
   <a href="#ocular-rift-sound-fix">Ocular Rift Sound Fix</a> •
-  <a href="#eden-blessing-duplicate-fix">Eden's Blessing Duplicate Fix</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
 </p>
@@ -38,6 +38,19 @@
   unverified.
 - Standard Lua Mod API; REPENTOGON is not required
 - [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951) is optional
+
+<a id="eden"></a>
+## Eden
+
+- Eden's native random starting passive is removed without leaving its
+  pickup-only health, consumables, or spawned pickups behind. In its place,
+  three random collectible pedestals appear and only one can be taken.
+- Each Eden's Blessing collected creates its own three-pedestal choice at the
+  start of the next run instead of adding one collectible directly.
+- Both choices draw from all available active, passive, and familiar
+  collectibles except items tagged `noeden`. Already-owned collectibles are
+  excluded, and separate choices in the same starting room do not repeat one
+  another. Continuing a saved run does not create the choices again.
 
 <a id="tainted-lost"></a>
 ## Tainted Lost
@@ -157,15 +170,6 @@
   such as Finger! no longer replay Ocular Rift's shoot sound. Actual fired
   tears and the portal sound retain vanilla behavior.
 
-<a id="eden-blessing-duplicate-fix"></a>
-## Eden's Blessing Duplicate Fix
-
-- On a new run as Eden, an Eden's Blessing reward that duplicates one of
-  Eden's starting collectibles is replaced before pickup effects occur. Rewards
-  are drawn from all available passive and familiar collectibles except those
-  tagged `noeden`.
-  Continuing a run and other characters are unchanged.
-
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
 
@@ -173,7 +177,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All eighteen gameplay settings remain independently configurable:
+All nineteen gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. Small Player Pickup Range Fix
@@ -181,23 +185,24 @@ All eighteen gameplay settings remain independently configurable:
 4. Pickup Animation Fix
 5. Kid's Drawing Form Fix
 6. Ocular Rift Sound Fix
-7. Eden's Blessing Duplicate Fix
-8. Starting Wooden Cross
-9. Blue Baby Deal Prices
-10. Poop Queue Overflow Fix
-11. Keep Health on Reroll
-12. Keep Absorbed Stats
-13. Esau Jr. Pickup Effects
-14. TMTRAINER Reroll Chance
-15. Double Soul Charges
-16. Soul Charge Shield
-17. Shield Effects
-18. Gello Wisp Orbit Fix
+7. Eden Starting Passive Choice
+8. Eden's Blessing Choice
+9. Starting Wooden Cross
+10. Blue Baby Deal Prices
+11. Poop Queue Overflow Fix
+12. Keep Health on Reroll
+13. Keep Absorbed Stats
+14. Esau Jr. Pickup Effects
+15. TMTRAINER Reroll Chance
+16. Double Soul Charges
+17. Soul Charge Shield
+18. Shield Effects
+19. Gello Wisp Orbit Fix
 
-Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
-`T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
-global `MCM` API and legacy/localized editions exposing `ModConfigMenu`.
-Without MCM, saved or default settings still work normally.
+Options are grouped under the tabs `General`, `Eden`, `T-Lost`, `T-Blue Baby`,
+`T-Eden`, and `Bethany`. The integration supports both Mod Config Menu
+Impure's global `MCM` API and legacy/localized editions exposing
+`ModConfigMenu`. Without MCM, saved or default settings still work normally.
 
 <a id="installation"></a>
 ## Installation
