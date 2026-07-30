@@ -245,6 +245,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "smallPlayerPickupRange",
+        group = "general",
+        zhName = "小体型拾取范围修复",
+        enName = "Small Player Pickup Range Fix",
+        zhInfo = {
+            "体型缩小时，掉落物拾取范围保持不变。",
+            "角色受击与障碍物碰撞仍按小体型生效。",
+        },
+        enInfo = {
+            "Size-down effects keep normal pickup reach.",
+            "Player hurt and obstacle collision stays small.",
+        },
+    },
+    {
         key = "clogGroundDamage",
         group = "general",
         zhName = "拦路屎水迹伤害修复",

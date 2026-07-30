@@ -19,6 +19,7 @@
   <a href="#tainted-eden">Tainted Eden</a> •
   <a href="#bethany">Bethany</a> •
   <a href="#familiar-capacity">Familiar Limit Fix</a> •
+  <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
   <a href="#held-item-protection">Pickup Animation Fix</a> •
   <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
@@ -118,6 +119,14 @@
   continued games and remain stored while this module is disabled; a new run
   resets them.
 
+<a id="small-player-pickup-range"></a>
+## Small Player Pickup Range Fix
+
+- Size-down effects, including Pluto, no longer reduce the distance at which a
+  player can collect pickups. Pickup collision stays continuously compensated
+  while any living player is small; the player's smaller collision against
+  enemies, projectiles, and obstacles is preserved.
+
 <a id="clog-ground-damage"></a>
 ## The Clog Creep Damage Fix
 
@@ -154,24 +163,25 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All sixteen gameplay settings remain independently configurable:
+All seventeen gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
-2. Clog Creep Damage Fix
-3. Pickup Animation Fix
-4. Kid's Drawing Form Fix
-5. Ocular Rift Sound Fix
-6. Starting Wooden Cross
-7. Blue Baby Deal Prices
-8. Poop Queue Overflow Fix
-9. Keep Health on Reroll
-10. Keep Absorbed Stats
-11. Esau Jr. Pickup Effects
-12. TMTRAINER Reroll Chance
-13. Double Soul Charges
-14. Soul Charge Shield
-15. Shield Effects
-16. Gello Wisp Orbit Fix
+2. Small Player Pickup Range Fix
+3. Clog Creep Damage Fix
+4. Pickup Animation Fix
+5. Kid's Drawing Form Fix
+6. Ocular Rift Sound Fix
+7. Starting Wooden Cross
+8. Blue Baby Deal Prices
+9. Poop Queue Overflow Fix
+10. Keep Health on Reroll
+11. Keep Absorbed Stats
+12. Esau Jr. Pickup Effects
+13. TMTRAINER Reroll Chance
+14. Double Soul Charges
+15. Soul Charge Shield
+16. Shield Effects
+17. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
