@@ -22,6 +22,7 @@
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
   <a href="#held-item-protection">Pickup Animation Fix</a> •
   <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
+  <a href="#ocular-rift-sound-fix">Ocular Rift Sound Fix</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
 </p>
@@ -136,6 +137,13 @@
   counts with a normal copy and three with a golden copy. A golden Kid's
   Drawing with Mom's Box therefore triggers the Guppy transformation directly.
 
+<a id="ocular-rift-sound-fix"></a>
+## Ocular Rift Sound Fix
+
+- While an Ocular Rift holder is not firing tears, passive tear-effect sources
+  such as Finger! no longer replay Ocular Rift's shoot sound. Actual fired
+  tears and the portal sound retain vanilla behavior.
+
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
 
@@ -143,22 +151,23 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All fourteen gameplay settings remain independently configurable:
+All fifteen gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. Clog Creep Damage Fix
 3. Pickup Animation Fix
 4. Kid's Drawing Form Fix
-5. Starting Wooden Cross
-6. Blue Baby Deal Prices
-7. Poop Queue Overflow Fix
-8. Keep Health on Reroll
-9. Esau Jr. Pickup Effects
-10. TMTRAINER Reroll Chance
-11. Double Soul Charges
-12. Soul Charge Shield
-13. Shield Effects
-14. Gello Wisp Orbit Fix
+5. Ocular Rift Sound Fix
+6. Starting Wooden Cross
+7. Blue Baby Deal Prices
+8. Poop Queue Overflow Fix
+9. Keep Health on Reroll
+10. Esau Jr. Pickup Effects
+11. TMTRAINER Reroll Chance
+12. Double Soul Charges
+13. Soul Charge Shield
+14. Shield Effects
+15. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
