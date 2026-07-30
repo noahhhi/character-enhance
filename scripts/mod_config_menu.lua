@@ -272,6 +272,20 @@ local MENU_SETTINGS = {
             "Golden copies total three and trigger Guppy.",
         },
     },
+    {
+        key = "ocularRiftSoundFix",
+        group = "general",
+        zhName = "邪眼裂口音效修复",
+        enName = "Ocular Rift Sound Fix",
+        zhInfo = {
+            "未发射泪弹时，阻止邪眼裂口误播音效。",
+            "覆盖手指！等持续触发泪弹特效的道具。",
+        },
+        enInfo = {
+            "Stops Ocular Rift sounds when no tear was fired.",
+            "Covers Finger! and similar passive effect sources.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)
