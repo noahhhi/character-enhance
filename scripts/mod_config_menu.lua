@@ -147,6 +147,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "rerollAbsorbedStats",
+        group = "taintedEden",
+        zhName = "重随保留吸收属性",
+        enName = "Keep Absorbed Stats",
+        zhInfo = {
+            "全身重随后，保留虚空和黑符文的属性。",
+            "按玩家分别记录；不冻结道具本身的属性。",
+        },
+        enInfo = {
+            "Rerolls keep stats gained from Void and Black Rune.",
+            "Per player; item stats still reroll normally.",
+        },
+    },
+    {
         key = "esauJrFirstPickup",
         group = "taintedEden",
         zhName = "小以扫拾取效果",
