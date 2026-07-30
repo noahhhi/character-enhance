@@ -3,12 +3,10 @@ EdenBlessingDuplicatesModule.__index = EdenBlessingDuplicatesModule
 
 local SETTING_KEY = "edenBlessingDuplicateFix"
 local EDENS_BLESSING = CollectibleType.COLLECTIBLE_EDENS_BLESSING
-local PICKUP_PROXY = CollectibleType.COLLECTIBLE_SAD_ONION
 local EDEN = PlayerType.PLAYER_EDEN
 local COLLECTIBLE_PICKUP = PickupVariant.PICKUP_COLLECTIBLE
 local TREASURE_POOL = ItemPoolType.POOL_TREASURE
 local DEFAULT_COLLECTIBLE = CollectibleType.COLLECTIBLE_BREAKFAST
-local PRIMARY_SLOT = ActiveSlot.SLOT_PRIMARY
 local PASSIVE = ItemType.ITEM_PASSIVE
 local FAMILIAR = ItemType.ITEM_FAMILIAR
 local NO_EDEN_TAG = ItemConfig.TAG_NO_EDEN or (1 << 32)
@@ -30,27 +28,13 @@ function EdenBlessingDuplicatesModule.New(context)
     local self = setmetatable({
         Context = context,
         PendingRewards = 0,
-        PendingProxyPickups = 0,
-        PendingConversions = {},
+        PendingPickups = {},
     }, EdenBlessingDuplicatesModule)
 
     self.PendingRewards = self:SanitizePendingRewards(
         context:GetSavedModuleData(SETTING_KEY)
     )
 
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_PICKUP_SELECTION,
-        function(_, pickup, variant, subtype)
-            return self:OnPostPickupSelection(pickup, variant, subtype)
-        end
-    )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_PICKUP_INIT,
-        function(_, pickup)
-            self:OnPickupInit(pickup)
-        end,
-        COLLECTIBLE_PICKUP
-    )
     context.Mod:AddCallback(
         ModCallbacks.MC_PRE_PICKUP_COLLISION,
         function(_, pickup, collider)
@@ -92,43 +76,16 @@ function EdenBlessingDuplicatesModule:SanitizePendingRewards(savedData)
     return math.max(0, math.min(99, math.floor(pendingRewards)))
 end
 
-function EdenBlessingDuplicatesModule:OnPostPickupSelection(
-    _pickup,
-    variant,
-    subtype
-)
-    if variant == COLLECTIBLE_PICKUP
-        and subtype == EDENS_BLESSING
-        and self.Context:IsEnabled(SETTING_KEY)
-    then
-        self.PendingProxyPickups = self.PendingProxyPickups + 1
-        return { COLLECTIBLE_PICKUP, PICKUP_PROXY }
-    end
-
-    return nil
-end
-
-function EdenBlessingDuplicatesModule:OnPickupInit(pickup)
-    if self.PendingProxyPickups <= 0
-        or not pickup
-        or pickup.Variant ~= COLLECTIBLE_PICKUP
-        or pickup.SubType ~= PICKUP_PROXY
-    then
-        return
-    end
-
-    pickup:GetData().CharacterEnhanceEdenBlessingProxy = true
-    self.PendingProxyPickups = self.PendingProxyPickups - 1
-end
-
 function EdenBlessingDuplicatesModule:GetPlayerKey(player)
     return tostring(GetPtrHash(player))
 end
 
 function EdenBlessingDuplicatesModule:OnPrePickupCollision(pickup, collider)
     if not pickup
-        or pickup:GetData().CharacterEnhanceEdenBlessingProxy ~= true
+        or pickup.Variant ~= COLLECTIBLE_PICKUP
+        or pickup.SubType ~= EDENS_BLESSING
         or not collider
+        or not self.Context:IsEnabled(SETTING_KEY)
     then
         return
     end
@@ -139,69 +96,59 @@ function EdenBlessingDuplicatesModule:OnPrePickupCollision(pickup, collider)
         return
     end
 
+    -- Set the pedestal's touched state before vanilla copies it into the
+    -- player's queue. Changing QueueItemData after the collision is too late
+    -- for Eden's Blessing: the engine has already captured its first-pickup
+    -- state by then.
+    pickup.Touched = true
+
     local playerKey = self:GetPlayerKey(player)
 
-    if not self.PendingConversions[playerKey] then
-        self.PendingConversions[playerKey] = {
-            player = player,
+    if not self.PendingPickups[playerKey] then
+        self.PendingPickups[playerKey] = {
             pickup = pickup,
-            baseline = player:GetCollectibleNum(PICKUP_PROXY, true),
             graceFrames = 10,
         }
     end
 end
 
-function EdenBlessingDuplicatesModule:ConvertAcquiredProxy(player, pending)
-    local currentCopies = player:GetCollectibleNum(PICKUP_PROXY, true)
-
-    if currentCopies <= pending.baseline then
-        return false
-    end
-
-    player:RemoveCollectible(
-        PICKUP_PROXY,
-        true,
-        PRIMARY_SLOT,
-        false
-    )
-    -- Vanilla has already completed price, option, and pickup-queue handling.
-    -- The placeholder has no irreversible first-pickup grant. Add the real
-    -- Blessing without arming vanilla's next-run counter; this module now owns
-    -- exactly one future reward.
-    player:AddCollectible(EDENS_BLESSING, 0, false)
+function EdenBlessingDuplicatesModule:RecordQueuedPickup(playerKey, queuedItem)
+    -- The real pedestal's touched state was copied into this queue entry before
+    -- collision handling completed. Keep it explicit while the queue exists,
+    -- then persist exactly one module-owned future reward.
+    queuedItem.Touched = true
     self.PendingRewards = math.min(99, self.PendingRewards + 1)
+    self.PendingPickups[playerKey] = nil
     self.Context:Save()
     Debug(string.format(
         "recorded managed reward; pending=%d",
         self.PendingRewards
     ))
-    return true
 end
 
 function EdenBlessingDuplicatesModule:OnPlayerEffectUpdate(player)
     local playerKey = self:GetPlayerKey(player)
-    local pending = self.PendingConversions[playerKey]
+    local pending = self.PendingPickups[playerKey]
 
     if not pending then
         return
     end
 
-    local queuedItem = player.QueuedItem and player.QueuedItem.Item
-    local proxyIsQueued = queuedItem and queuedItem.ID == PICKUP_PROXY
+    local queuedItemData = player.QueuedItem
+    local queuedItem = queuedItemData and queuedItemData.Item
 
-    if self:ConvertAcquiredProxy(player, pending) then
-        self.PendingConversions[playerKey] = nil
-    elseif proxyIsQueued then
+    if queuedItem and queuedItem.ID == EDENS_BLESSING then
+        self:RecordQueuedPickup(playerKey, queuedItemData)
         return
-    elseif not pending.pickup or not pending.pickup:Exists() then
-        -- Repentance+ removes the pedestal before it inserts the collectible,
-        -- and MC_POST_PEFFECT_UPDATE can run between those two operations.
-        -- Keep the baseline briefly so the following frame can observe the
-        -- acquired placeholder instead of discarding the conversion early.
+    end
+
+    if not pending.pickup or not pending.pickup:Exists() then
+        -- The pedestal can disappear one update before QueuedItem becomes
+        -- observable. Keep a short grace period for that engine transition.
         pending.graceFrames = pending.graceFrames - 1
 
         if pending.graceFrames <= 0 then
-            self.PendingConversions[playerKey] = nil
+            self.PendingPickups[playerKey] = nil
         end
     end
 end
@@ -263,8 +210,7 @@ function EdenBlessingDuplicatesModule:DrawReward(player, rewardIndex)
 end
 
 function EdenBlessingDuplicatesModule:OnGameStarted(isContinued)
-    self.PendingProxyPickups = 0
-    self.PendingConversions = {}
+    self.PendingPickups = {}
 
     if isContinued or self.PendingRewards <= 0 then
         return
