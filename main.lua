@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.9.9"
+local VERSION = "1.10.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -19,6 +19,7 @@ local DEFAULT_SETTINGS = {
     heldItemProtection = true,
     kidsDrawingFormFix = true,
     ocularRiftSoundFix = true,
+    edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
     rerollAbsorbedStats = true,
     esauJrFirstPickup = true,
@@ -183,6 +184,9 @@ local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local HeldItemProtectionModule = include("scripts/held_item_protection")
 local KidsDrawingFormModule = include("scripts/kids_drawing_form")
 local OcularRiftSoundModule = include("scripts/ocular_rift_sound")
+local EdenBlessingDuplicatesModule = include(
+    "scripts/eden_blessing_duplicates"
+)
 local ModConfigMenuModule = include("scripts/mod_config_menu")
 
 local rerollHealthModule = RerollHealthModule.New(Context)
@@ -254,6 +258,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "ocularRiftSoundFix",
     OcularRiftSoundModule.New(Context)
+)
+Context:RegisterModule(
+    "edenBlessingDuplicateFix",
+    EdenBlessingDuplicatesModule.New(Context)
 )
 
 ModConfigMenuModule.New(Context)

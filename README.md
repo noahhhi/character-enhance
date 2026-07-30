@@ -24,6 +24,7 @@
   <a href="#held-item-protection">Pickup Animation Fix</a> •
   <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
   <a href="#ocular-rift-sound-fix">Ocular Rift Sound Fix</a> •
+  <a href="#eden-blessing-duplicate-fix">Eden's Blessing Duplicate Fix</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
 </p>
@@ -156,6 +157,13 @@
   such as Finger! no longer replay Ocular Rift's shoot sound. Actual fired
   tears and the portal sound retain vanilla behavior.
 
+<a id="eden-blessing-duplicate-fix"></a>
+## Eden's Blessing Duplicate Fix
+
+- On a new run as Eden, an Eden's Blessing reward that duplicates one of
+  Eden's starting collectibles is replaced with another available passive or
+  familiar item. Continuing a run and other characters are unchanged.
+
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
 
@@ -163,7 +171,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All seventeen gameplay settings remain independently configurable:
+All eighteen gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. Small Player Pickup Range Fix
@@ -171,17 +179,18 @@ All seventeen gameplay settings remain independently configurable:
 4. Pickup Animation Fix
 5. Kid's Drawing Form Fix
 6. Ocular Rift Sound Fix
-7. Starting Wooden Cross
-8. Blue Baby Deal Prices
-9. Poop Queue Overflow Fix
-10. Keep Health on Reroll
-11. Keep Absorbed Stats
-12. Esau Jr. Pickup Effects
-13. TMTRAINER Reroll Chance
-14. Double Soul Charges
-15. Soul Charge Shield
-16. Shield Effects
-17. Gello Wisp Orbit Fix
+7. Eden's Blessing Duplicate Fix
+8. Starting Wooden Cross
+9. Blue Baby Deal Prices
+10. Poop Queue Overflow Fix
+11. Keep Health on Reroll
+12. Keep Absorbed Stats
+13. Esau Jr. Pickup Effects
+14. TMTRAINER Reroll Chance
+15. Double Soul Charges
+16. Soul Charge Shield
+17. Shield Effects
+18. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
