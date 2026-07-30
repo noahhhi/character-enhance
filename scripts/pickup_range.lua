@@ -32,7 +32,9 @@ function PickupRangeModule.New(context)
         LoggedSafeRoomSize = false,
         RefreshingPlayers = false,
         AdjustedDuringRefresh = 0,
-        PendingSizes = setmetatable({}, { __mode = "k" }),
+        PendingSizes = {},
+        MaintainedSizes = {},
+        LastAppliedState = nil,
     }, PickupRangeModule)
 
     self.RefreshCallback = function()
@@ -50,6 +52,12 @@ function PickupRangeModule.New(context)
             self:OnEvaluateSize(player)
         end,
         CacheFlag.CACHE_SIZE
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_PEFFECT_UPDATE,
+        function(_, player)
+            self:MaintainSafeRoomSize(player)
+        end
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_NEW_ROOM,
@@ -118,13 +126,14 @@ function PickupRangeModule:OnEvaluateSize(player)
         return
     end
 
-    self.PendingSizes[player] = player.Size / scale
+    self.PendingSizes[GetPtrHash(player)] = player.Size / scale
     self.AdjustedDuringRefresh = self.AdjustedDuringRefresh + 1
 end
 
 function PickupRangeModule:ApplyPendingSize(player)
-    local targetSize = self.PendingSizes[player]
-    self.PendingSizes[player] = nil
+    local playerHash = GetPtrHash(player)
+    local targetSize = self.PendingSizes[playerHash]
+    self.PendingSizes[playerHash] = nil
 
     if not targetSize or not IsFinitePositive(targetSize) then
         return
@@ -134,6 +143,32 @@ function PickupRangeModule:ApplyPendingSize(player)
     -- Size inside MC_EVALUATE_CACHE is overwritten when the engine finishes
     -- synchronizing the Size stat from SpriteScale.
     player:SetSize(targetSize, player.SizeMulti, 0)
+    self.MaintainedSizes[playerHash] = targetSize
+    self.LastAppliedState = {
+        size = player.Size,
+        targetSize = targetSize,
+        sizeMultiX = player.SizeMulti.X,
+        sizeMultiY = player.SizeMulti.Y,
+        spriteScaleX = player.SpriteScale.X,
+        spriteScaleY = player.SpriteScale.Y,
+    }
+end
+
+function PickupRangeModule:MaintainSafeRoomSize(player)
+    local targetSize = self.MaintainedSizes[GetPtrHash(player)]
+
+    if not targetSize
+        or not self.Context:IsEnabled("smallPlayerPickupRange")
+        or not self:IsSafeRoom()
+        or (player.IsDead and player:IsDead())
+    then
+        return
+    end
+
+    -- The player effect update synchronizes Size from SpriteScale every frame.
+    -- Reapply only the cached safe-room radius: one O(1) write per affected
+    -- player, with no pickup/entity scan and no repeated cache evaluation.
+    player:SetSize(targetSize, player.SizeMulti, 0)
 end
 
 function PickupRangeModule:RefreshPlayers()
@@ -142,7 +177,9 @@ function PickupRangeModule:RefreshPlayers()
 
     self.RefreshingPlayers = true
     self.AdjustedDuringRefresh = 0
-    self.PendingSizes = setmetatable({}, { __mode = "k" })
+    self.PendingSizes = {}
+    self.MaintainedSizes = {}
+    self.LastAppliedState = nil
 
     for playerIndex = 0, playerCount - 1 do
         local player = Isaac.GetPlayer(playerIndex)
@@ -163,9 +200,19 @@ function PickupRangeModule:RefreshPlayers()
         and self.AdjustedDuringRefresh > 0
 
     if active and not self.LoggedSafeRoomSize then
+        local state = self.LastAppliedState
+
         Isaac.DebugString(string.format(
-            "[Character Enhance] Safe-room pickup size restored for %d player(s)",
-            self.AdjustedDuringRefresh
+            "[Character Enhance] Safe-room size active for %d player(s): "
+                .. "size=%.3f target=%.3f multi=(%.3f,%.3f) "
+                .. "sprite=(%.3f,%.3f)",
+            self.AdjustedDuringRefresh,
+            state and state.size or 0,
+            state and state.targetSize or 0,
+            state and state.sizeMultiX or 0,
+            state and state.sizeMultiY or 0,
+            state and state.spriteScaleX or 0,
+            state and state.spriteScaleY or 0
         ))
     end
 

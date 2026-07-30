@@ -122,10 +122,10 @@
 <a id="small-player-pickup-range"></a>
 ## Small Player Pickup Range Fix
 
-- After combat ends, size-down effects including Pluto retain their small
-  appearance while the player's physical radius returns to normal for pickup
-  and contact interactions. Hostile rooms retain the smaller combat collision;
-  pickup entities themselves are never resized.
+- In every non-combat room, size-down effects including Pluto retain their
+  small appearance while the player's physical radius returns to its normal
+  size for pickup and contact interactions. Active combat restores the smaller
+  collision; pickup entities themselves are never resized.
 
 <a id="clog-ground-damage"></a>
 ## The Clog Creep Damage Fix

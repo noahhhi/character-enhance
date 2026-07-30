@@ -250,11 +250,11 @@ local MENU_SETTINGS = {
         zhName = "小体型拾取范围修复",
         enName = "Small Player Pickup Range Fix",
         zhInfo = {
-            "脱离战斗后恢复正常拾取与接触范围。",
+            "非战斗状态恢复默认拾取与接触范围。",
             "角色视觉体型保持不变，战斗中仍为小体型。",
         },
         enInfo = {
-            "Cleared rooms restore normal pickup/contact reach.",
+            "Non-combat: normal pickup/contact reach.",
             "Visual stays small; combat collision stays small.",
         },
     },
