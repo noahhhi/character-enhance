@@ -252,10 +252,18 @@ end
 
 function RerollHealthModule:SetPoolGuardCallbackEnabled(enabled)
     if enabled and not self.PoolGuardCallbackRegistered then
-        self.Context.Mod:AddCallback(
-            ModCallbacks.MC_POST_GET_COLLECTIBLE,
-            self.PoolGuardCallback
-        )
+        if type(self.Context.Mod.AddPriorityCallback) == "function" then
+            self.Context.Mod:AddPriorityCallback(
+                ModCallbacks.MC_POST_GET_COLLECTIBLE,
+                CallbackPriority.IMPORTANT,
+                self.PoolGuardCallback
+            )
+        else
+            self.Context.Mod:AddCallback(
+                ModCallbacks.MC_POST_GET_COLLECTIBLE,
+                self.PoolGuardCallback
+            )
+        end
         self.PoolGuardCallbackRegistered = true
     elseif not enabled and self.PoolGuardCallbackRegistered then
         self.Context.Mod:RemoveCallback(
@@ -1170,60 +1178,6 @@ function RerollHealthModule:OnPostGetCollectible(
     return replacement
 end
 
-function RerollHealthModule:ReplaceUnexpectedTmtrainer(
-    player,
-    previousTmtrainerCount,
-    currentTmtrainerCount,
-    fullInventoryReroll,
-    preRollAllowed
-)
-    if not fullInventoryReroll
-        or (previousTmtrainerCount or 0) > 0
-        or self:GetTmtrainerChance() >= 100
-    then
-        return false
-    end
-
-
-    local tmtrainerAllowed = preRollAllowed
-
-    if tmtrainerAllowed == nil then
-        tmtrainerAllowed = self:RollTmtrainerAllowed(player)
-    end
-
-    if tmtrainerAllowed then
-        return false
-    end
-
-    local unexpectedCount = currentTmtrainerCount or 0
-
-    if unexpectedCount <= 0 then
-        return false
-    end
-
-    local replaced = false
-
-    for _ = 1, unexpectedCount do
-        player:RemoveCollectible(
-            TMTRAINER,
-            true,
-            ActiveSlot.SLOT_PRIMARY,
-            true
-        )
-        player:AddCollectible(
-            self:GetSecretRoomReplacement(player),
-            0,
-            true,
-            ActiveSlot.SLOT_PRIMARY,
-            0,
-            SECRET_POOL
-        )
-        replaced = true
-    end
-
-    return replaced
-end
-
 function RerollHealthModule:OnPreUseItem(collectibleType, player)
     if DIRECT_REROLL_ITEMS[collectibleType] then
         -- D Infinity's D4/D100 faces, Void and Metronome dispatch the selected
@@ -1367,22 +1321,6 @@ function RerollHealthModule:SyncPlayer(player)
     -- have nothing to reconcile.
     if not state.pending then
         return
-    end
-
-    local preRollAllowed = self.TmtrainerPreparedDecisions[key]
-
-    if state.pending.tmtrainerAllowed ~= nil then
-        preRollAllowed = state.pending.tmtrainerAllowed
-    end
-
-    if state.pending.tmtrainerCount ~= nil then
-        self:ReplaceUnexpectedTmtrainer(
-            player,
-            state.pending.tmtrainerCount,
-            self:GetTmtrainerCount(player),
-            true,
-            preRollAllowed
-        )
     end
 
     local statsPromoted = false
