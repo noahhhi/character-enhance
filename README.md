@@ -14,6 +14,7 @@
 </p>
 
 <p align="center">
+  <a href="#eden">Eden</a> •
   <a href="#tainted-lost">Tainted Lost</a> •
   <a href="#tainted-blue-baby">Tainted Blue Baby</a> •
   <a href="#tainted-eden">Tainted Eden</a> •
@@ -37,6 +38,19 @@
   unverified.
 - Standard Lua Mod API; REPENTOGON is not required
 - [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951) is optional
+
+<a id="eden"></a>
+## Eden
+
+- Eden's native random starting passive is removed without leaving its
+  pickup-only health, consumables, or spawned pickups behind. In its place,
+  three random collectible pedestals appear and only one can be taken.
+- Each Eden's Blessing collected creates its own three-pedestal choice at the
+  start of the next run instead of adding one collectible directly.
+- Both choices draw from all available active, passive, and familiar
+  collectibles except items tagged `noeden`. Already-owned collectibles are
+  excluded, and separate choices in the same starting room do not repeat one
+  another. Continuing a saved run does not create the choices again.
 
 <a id="tainted-lost"></a>
 ## Tainted Lost
@@ -163,7 +177,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All seventeen gameplay settings remain independently configurable:
+All nineteen gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. Small Player Pickup Range Fix
@@ -171,22 +185,24 @@ All seventeen gameplay settings remain independently configurable:
 4. Pickup Animation Fix
 5. Kid's Drawing Form Fix
 6. Ocular Rift Sound Fix
-7. Starting Wooden Cross
-8. Blue Baby Deal Prices
-9. Poop Queue Overflow Fix
-10. Keep Health on Reroll
-11. Keep Absorbed Stats
-12. Esau Jr. Pickup Effects
-13. TMTRAINER Reroll Chance
-14. Double Soul Charges
-15. Soul Charge Shield
-16. Shield Effects
-17. Gello Wisp Orbit Fix
+7. Eden Starting Passive Choice
+8. Eden's Blessing Choice
+9. Starting Wooden Cross
+10. Blue Baby Deal Prices
+11. Poop Queue Overflow Fix
+12. Keep Health on Reroll
+13. Keep Absorbed Stats
+14. Esau Jr. Pickup Effects
+15. TMTRAINER Reroll Chance
+16. Double Soul Charges
+17. Soul Charge Shield
+18. Shield Effects
+19. Gello Wisp Orbit Fix
 
-Options are grouped under the tabs `General`, `T-Lost`, `T-Blue Baby`,
-`T-Eden`, and `Bethany`. The integration supports both Mod Config Menu Impure's
-global `MCM` API and legacy/localized editions exposing `ModConfigMenu`.
-Without MCM, saved or default settings still work normally.
+Options are grouped under the tabs `General`, `Eden`, `T-Lost`, `T-Blue Baby`,
+`T-Eden`, and `Bethany`. The integration supports both Mod Config Menu
+Impure's global `MCM` API and legacy/localized editions exposing
+`ModConfigMenu`. Without MCM, saved or default settings still work normally.
 
 <a id="installation"></a>
 ## Installation

@@ -7,13 +7,15 @@ local LANGUAGE_ZH = 1
 local LANGUAGE_EN = 2
 local SUBCATEGORY = {
     general = 1,
-    taintedLost = 2,
-    taintedBlueBaby = 3,
-    taintedEden = 4,
-    bethany = 5,
+    eden = 2,
+    taintedLost = 3,
+    taintedBlueBaby = 4,
+    taintedEden = 5,
+    bethany = 6,
 }
 local SUBCATEGORY_ORDER = {
     "general",
+    "eden",
     "taintedLost",
     "taintedBlueBaby",
     "taintedEden",
@@ -59,6 +61,7 @@ local TEXT = {
         version = "版本",
         subcategories = {
             general = "通用",
+            eden = "伊甸",
             taintedLost = "里游魂",
             taintedBlueBaby = "里蓝人",
             taintedEden = "里伊甸",
@@ -77,6 +80,7 @@ local TEXT = {
         version = "Version",
         subcategories = {
             general = "General",
+            eden = "Eden",
             taintedLost = "T-Lost",
             taintedBlueBaby = "T-Blue Baby",
             taintedEden = "T-Eden",
@@ -90,6 +94,34 @@ local TEXT = {
 }
 
 local MENU_SETTINGS = {
+    {
+        key = "edenStartingItemChoice",
+        group = "eden",
+        zhName = "初始被动三选一",
+        enName = "Starting Passive Choice",
+        zhInfo = {
+            "移除伊甸原生的随机初始被动道具。",
+            "从全部非“非伊甸”道具中三选一，主动也会出现。",
+        },
+        enInfo = {
+            "Removes Eden's native random starting passive.",
+            "Choose 1 of 3 eligible items; actives can appear.",
+        },
+    },
+    {
+        key = "edenBlessingDuplicateFix",
+        group = "eden",
+        zhName = "伊甸的祝福三选一",
+        enName = "Eden's Blessing Choice",
+        zhInfo = {
+            "每份伊甸的祝福在下局生成一组三选一道具。",
+            "包括主动；排除已拥有和“非伊甸”道具。",
+        },
+        enInfo = {
+            "Each Eden's Blessing creates a choice of 3 next run.",
+            "Actives included; owned/noeden items are excluded.",
+        },
+    },
     {
         key = "taintedLostWoodenCross",
         group = "taintedLost",
