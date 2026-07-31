@@ -22,6 +22,7 @@
   <a href="#familiar-capacity">Familiar Limit Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
+  <a href="#lost-soul-white-fire-fix">Lost Soul White Fire Fix</a> •
   <a href="#held-item-protection">Pickup Animation Fix</a> •
   <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
   <a href="#ocular-rift-sound-fix">Ocular Rift Sound Fix</a> •
@@ -155,6 +156,16 @@
   Lemonade. Damage, radius, and tick rate follow the creep's current values;
   other enemies remain unchanged.
 
+<a id="lost-soul-white-fire-fix"></a>
+## Lost Soul White Fire Fix
+
+- The Lost Soul familiar (entity 3.211.0) can pass through White Fire Places
+  (entity 33.4.0) without taking damage or being knocked away. Players still
+  enter the Lost form normally when touching the fire.
+- The enabled-by-default child option grants Lost Soul a visible, one-use Holy
+  Mantle when it touches white fire. White fire does not consume that shield;
+  the next other damaging hit does.
+
 <a id="held-item-protection"></a>
 ## Pickup Animation Fix
 
@@ -191,29 +202,31 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All twenty-one gameplay settings remain independently configurable:
+All twenty-three gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. Small Player Pickup Range Fix
 3. Clog Creep Damage Fix
-4. Pickup Animation Fix
-5. Kid's Drawing Form Fix
-6. Ocular Rift Sound Fix
-7. Pill Rewind Fix
-8. Eden Starting Passive Choice
-9. Eden's Blessing Choice
-10. Starting Wooden Cross
-11. Blue Baby Deal Prices
-12. Poop Queue Overflow Fix
-13. Keep Health on Reroll
-14. Keep Absorbed Stats
-15. Reveal Pills with Rerolled PHD
-16. Esau Jr. Pickup Effects
-17. TMTRAINER Reroll Chance
-18. Double Soul Charges
-19. Soul Charge Shield
-20. Shield Effects
-21. Gello Wisp Orbit Fix
+4. Lost Soul White Fire Fix
+5. White Fire Grants Mantle
+6. Pickup Animation Fix
+7. Kid's Drawing Form Fix
+8. Ocular Rift Sound Fix
+9. Pill Rewind Fix
+10. Eden Starting Passive Choice
+11. Eden's Blessing Choice
+12. Starting Wooden Cross
+13. Blue Baby Deal Prices
+14. Poop Queue Overflow Fix
+15. Keep Health on Reroll
+16. Keep Absorbed Stats
+17. Reveal Pills with Rerolled PHD
+18. Esau Jr. Pickup Effects
+19. TMTRAINER Reroll Chance
+20. Double Soul Charges
+21. Soul Charge Shield
+22. Shield Effects
+23. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `Eden`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu

@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.12.0"
+local VERSION = "1.14.2"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -16,6 +16,8 @@ local DEFAULT_SETTINGS = {
     familiarCapacity = true,
     smallPlayerPickupRange = true,
     clogGroundDamage = true,
+    lostSoulWhiteFireFix = true,
+    lostSoulWhiteFireMantle = true,
     heldItemProtection = true,
     kidsDrawingFormFix = true,
     ocularRiftSoundFix = true,
@@ -184,6 +186,9 @@ local BethanyGelloWispsModule = include("scripts/bethany_gello_wisps")
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
 local PickupRangeModule = include("scripts/pickup_range")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
+local LostSoulWhiteFireModule = include(
+    "scripts/lost_soul_white_fire_phase"
+)
 local HeldItemProtectionModule = include("scripts/held_item_protection")
 local KidsDrawingFormModule = include("scripts/kids_drawing_form")
 local OcularRiftSoundModule = include("scripts/ocular_rift_sound")
@@ -252,6 +257,14 @@ Context:RegisterModule(
 Context:RegisterModule(
     "clogGroundDamage",
     ClogGroundDamageModule.New(Context)
+)
+Context:RegisterModule(
+    "lostSoulWhiteFireFix",
+    LostSoulWhiteFireModule.New(Context)
+)
+Context:RegisterSettingHandler(
+    "lostSoulWhiteFireMantle",
+    Context.Modules.lostSoulWhiteFireFix
 )
 Context:RegisterModule(
     "heldItemProtection",

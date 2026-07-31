@@ -319,6 +319,34 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "lostSoulWhiteFireFix",
+        group = "general",
+        zhName = "迷失幽魂白火免伤修复",
+        enName = "Lost Soul White Fire Fix",
+        zhInfo = {
+            "迷失幽魂可穿过白火，不会受伤或被弹开。",
+            "玩家触火获得游魂诅咒的行为保持原版。",
+        },
+        enInfo = {
+            "Lost Soul passes through white fire unharmed.",
+            "Players still enter the Lost form as normal.",
+        },
+    },
+    {
+        key = "lostSoulWhiteFireMantle",
+        group = "general",
+        zhName = "  白火给予神圣屏障",
+        enName = "  White Fire Grants Mantle",
+        zhInfo = {
+            "接触白火时，迷失幽魂获得可见的神圣屏障。",
+            "下一次其他伤害会消耗；白火不会。",
+        },
+        enInfo = {
+            "White fire grants one visible Holy Mantle.",
+            "Next other hit uses it; white fire does not.",
+        },
+    },
+    {
         key = "heldItemProtection",
         group = "general",
         zhName = "拾取动画修复",
