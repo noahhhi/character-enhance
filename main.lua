@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.14.4"
+local VERSION = "1.15.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -14,6 +14,7 @@ local DEFAULT_SETTINGS = {
     bethanyShieldHitStyle = 1,
     bethanyGelloWispOrbit = true,
     familiarCapacity = true,
+    incubusCSectionAnimation = true,
     smallPlayerPickupRange = true,
     clogGroundDamage = true,
     lostSoulWhiteFireFix = true,
@@ -184,6 +185,9 @@ local BethanyShieldFeedbackModule = include(
 )
 local BethanyGelloWispsModule = include("scripts/bethany_gello_wisps")
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
+local IncubusCSectionAnimationModule = include(
+    "scripts/incubus_c_section_animation"
+)
 local PickupRangeModule = include("scripts/pickup_range")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local LostSoulWhiteFireModule = include(
@@ -249,6 +253,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "familiarCapacity",
     FamiliarCapacityModule.New(Context)
+)
+Context:RegisterModule(
+    "incubusCSectionAnimation",
+    IncubusCSectionAnimationModule.New(Context)
 )
 Context:RegisterModule(
     "smallPlayerPickupRange",

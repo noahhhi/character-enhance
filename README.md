@@ -20,6 +20,7 @@
   <a href="#tainted-eden">Tainted Eden</a> •
   <a href="#bethany">Bethany</a> •
   <a href="#familiar-capacity">Familiar Limit Fix</a> •
+  <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
   <a href="#lost-soul-white-fire-fix">Lost Soul White Fire Fix</a> •
@@ -141,6 +142,13 @@
   continued games and remain stored while this module is disabled; a new run
   resets them.
 
+<a id="incubus-c-section-animation-fix"></a>
+## C Section Incubus Animation Fix
+
+- While its owner holds C Section, Incubus plays its idle flying animation
+  again when not firing. Shooting animations, behavior, and other familiars
+  remain unchanged.
+
 <a id="small-player-pickup-range"></a>
 ## Small Player Pickup Range Fix
 
@@ -202,31 +210,32 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All twenty-three gameplay settings remain independently configurable:
+All twenty-four gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
-2. Small Player Pickup Range Fix
-3. Clog Creep Damage Fix
-4. Lost Soul White Fire Fix
-5. White Fire Grants Mantle
-6. Pickup Animation Fix
-7. Kid's Drawing Form Fix
-8. Ocular Rift Sound Fix
-9. Pill Rewind Fix
-10. Eden Starting Passive Choice
-11. Eden's Blessing Choice
-12. Starting Wooden Cross
-13. Blue Baby Deal Prices
-14. Poop Queue Overflow Fix
-15. Keep Health on Reroll
-16. Keep Absorbed Stats
-17. Reveal Pills with Rerolled PHD
-18. Esau Jr. Pickup Effects
-19. TMTRAINER Reroll Chance
-20. Double Soul Charges
-21. Soul Charge Shield
-22. Shield Effects
-23. Gello Wisp Orbit Fix
+2. C Section Incubus Animation Fix
+3. Small Player Pickup Range Fix
+4. Clog Creep Damage Fix
+5. Lost Soul White Fire Fix
+6. White Fire Grants Mantle
+7. Pickup Animation Fix
+8. Kid's Drawing Form Fix
+9. Ocular Rift Sound Fix
+10. Pill Rewind Fix
+11. Eden Starting Passive Choice
+12. Eden's Blessing Choice
+13. Starting Wooden Cross
+14. Blue Baby Deal Prices
+15. Poop Queue Overflow Fix
+16. Keep Health on Reroll
+17. Keep Absorbed Stats
+18. Reveal Pills with Rerolled PHD
+19. Esau Jr. Pickup Effects
+20. TMTRAINER Reroll Chance
+21. Double Soul Charges
+22. Soul Charge Shield
+23. Shield Effects
+24. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `Eden`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu

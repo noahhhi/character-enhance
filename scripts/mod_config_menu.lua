@@ -291,6 +291,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "incubusCSectionAnimation",
+        group = "general",
+        zhName = "剖腹产淫魔动画修复",
+        enName = "C Section Incubus Animation Fix",
+        zhInfo = {
+            "持有剖腹产时，淫魔恢复待机飞行动画。",
+            "射击动画及其他跟班保持原版。",
+        },
+        enInfo = {
+            "Restores Incubus's idle flight with C Section.",
+            "Shooting and other familiars stay unchanged.",
+        },
+    },
+    {
         key = "smallPlayerPickupRange",
         group = "general",
         zhName = "小体型拾取范围修复",
