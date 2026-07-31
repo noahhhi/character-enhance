@@ -4,28 +4,25 @@ LostSoulWhiteFireModule.__index = LostSoulWhiteFireModule
 local SETTING_KEY = "lostSoulWhiteFireFix"
 local MANTLE_SETTING_KEY = "lostSoulWhiteFireMantle"
 local MANTLE_DATA_KEY = "CharacterEnhanceLostSoulWhiteFireMantle"
+local MANTLE_VISUAL_DATA_KEY =
+    "CharacterEnhanceLostSoulWhiteFireMantleVisual"
 local CONTACT_DATA_KEY = "CharacterEnhanceLostSoulWhiteFireContact"
+local PHASING_DATA_KEY = "CharacterEnhanceLostSoulWhiteFirePhasing"
+local COLLISION_DATA_KEY =
+    "CharacterEnhanceLostSoulWhiteFireCollisionClass"
 local FAMILIAR_TYPE = EntityType.ENTITY_FAMILIAR
 local LOST_SOUL_VARIANT = FamiliarVariant.LOST_SOUL
 local LOST_SOUL_SUBTYPE = 0
 local FIREPLACE_TYPE = EntityType.ENTITY_FIREPLACE
 local WHITE_FIRE_VARIANT = 4
 local ANY_SUBTYPE = -1
-local OFFSCREEN_POSITION = Vector(-1000000, -1000000)
+local PHASE_MARGIN = 16
+local MANTLE_ANIMATION = "Mantle"
 local HOLY_MANTLE_EFFECT = "gfx/1000.016_poof02_holymantle.anm2"
-
-local function EntityKey(entity)
-    if type(GetPtrHash) == "function" then
-        return GetPtrHash(entity)
-    end
-
-    return entity
-end
 
 function LostSoulWhiteFireModule.New(context)
     local self = setmetatable({
         Context = context,
-        RelocatedFamiliars = {},
         Sfx = type(SFXManager) == "function" and SFXManager() or nil,
     }, LostSoulWhiteFireModule)
 
@@ -55,22 +52,6 @@ function LostSoulWhiteFireModule.New(context)
         ModCallbacks.MC_PRE_NPC_COLLISION,
         function(_, npc, collider, low)
             return self:OnPreNpcCollision(npc, collider, low)
-        end,
-        FIREPLACE_TYPE
-    )
-
-    context.Mod:AddCallback(
-        ModCallbacks.MC_PRE_NPC_UPDATE,
-        function(_, npc)
-            return self:OnPreNpcUpdate(npc)
-        end,
-        FIREPLACE_TYPE
-    )
-
-    context.Mod:AddCallback(
-        ModCallbacks.MC_NPC_UPDATE,
-        function(_, npc)
-            self:OnNpcUpdate(npc)
         end,
         FIREPLACE_TYPE
     )
@@ -127,18 +108,22 @@ function LostSoulWhiteFireModule:IsWhiteFireSource(source)
         and source.Variant == WHITE_FIRE_VARIANT
 end
 
-function LostSoulWhiteFireModule:IsTouching(familiar, fire)
+function LostSoulWhiteFireModule:IsWithin(familiar, fire, margin)
     if not familiar.Position or not fire.Position then
         return false
     end
 
     local familiarSize = type(familiar.Size) == "number" and familiar.Size or 0
     local fireSize = type(fire.Size) == "number" and fire.Size or 0
-    local radius = familiarSize + fireSize
+    local radius = familiarSize + fireSize + (margin or 0)
     local offsetX = familiar.Position.X - fire.Position.X
     local offsetY = familiar.Position.Y - fire.Position.Y
 
     return offsetX * offsetX + offsetY * offsetY <= radius * radius
+end
+
+function LostSoulWhiteFireModule:IsTouching(familiar, fire)
+    return self:IsWithin(familiar, fire, 0)
 end
 
 function LostSoulWhiteFireModule:GetData(familiar)
@@ -157,6 +142,7 @@ function LostSoulWhiteFireModule:GrantMantle(familiar)
 
     local data = self:GetData(familiar)
     data[MANTLE_DATA_KEY] = true
+    self:EnsureMantleVisual(familiar)
 end
 
 function LostSoulWhiteFireModule:OnWhiteFireContact(familiar)
@@ -171,6 +157,44 @@ end
 
 function LostSoulWhiteFireModule:HasMantle(familiar)
     return self:GetData(familiar)[MANTLE_DATA_KEY] == true
+end
+
+function LostSoulWhiteFireModule:EnsureMantleVisual(familiar)
+    local data = self:GetData(familiar)
+
+    if data[MANTLE_DATA_KEY] ~= true
+        or type(familiar.GetSprite) ~= "function"
+    then
+        return
+    end
+
+    local sprite = familiar:GetSprite()
+
+    if not sprite or sprite:IsOverlayPlaying(MANTLE_ANIMATION) then
+        return
+    end
+
+    sprite:PlayOverlay(MANTLE_ANIMATION, true)
+    data[MANTLE_VISUAL_DATA_KEY] = true
+end
+
+function LostSoulWhiteFireModule:RemoveMantleVisual(familiar)
+    local data = self:GetData(familiar)
+
+    if data[MANTLE_VISUAL_DATA_KEY] ~= true
+        or type(familiar.GetSprite) ~= "function"
+    then
+        data[MANTLE_VISUAL_DATA_KEY] = nil
+        return
+    end
+
+    local sprite = familiar:GetSprite()
+
+    if sprite and sprite:IsOverlayPlaying(MANTLE_ANIMATION) then
+        sprite:RemoveOverlay()
+    end
+
+    data[MANTLE_VISUAL_DATA_KEY] = nil
 end
 
 function LostSoulWhiteFireModule:PlayMantleBreak(familiar)
@@ -212,11 +236,12 @@ function LostSoulWhiteFireModule:ConsumeMantle(familiar)
     end
 
     data[MANTLE_DATA_KEY] = nil
+    self:RemoveMantleVisual(familiar)
     self:PlayMantleBreak(familiar)
     return true
 end
 
-function LostSoulWhiteFireModule:FindTouchingWhiteFire(familiar)
+function LostSoulWhiteFireModule:FindWhiteFireWithin(familiar, margin)
     local fires = Isaac.FindByType(
         FIREPLACE_TYPE,
         WHITE_FIRE_VARIANT,
@@ -226,10 +251,40 @@ function LostSoulWhiteFireModule:FindTouchingWhiteFire(familiar)
     )
 
     for _, fire in ipairs(fires) do
-        if self:IsLiveWhiteFire(fire) and self:IsTouching(familiar, fire) then
+        if self:IsLiveWhiteFire(fire)
+            and self:IsWithin(familiar, fire, margin)
+        then
             return fire
         end
     end
+end
+
+function LostSoulWhiteFireModule:BeginPhasing(familiar)
+    local data = self:GetData(familiar)
+
+    if data[PHASING_DATA_KEY] ~= true then
+        data[PHASING_DATA_KEY] = true
+        data[COLLISION_DATA_KEY] = familiar.EntityCollisionClass
+    end
+
+    familiar.EntityCollisionClass = EntityCollisionClass.ENTCOLL_NONE
+end
+
+function LostSoulWhiteFireModule:EndPhasing(familiar)
+    local data = self:GetData(familiar)
+
+    if data[PHASING_DATA_KEY] ~= true then
+        return
+    end
+
+    if familiar.EntityCollisionClass == EntityCollisionClass.ENTCOLL_NONE
+        and data[COLLISION_DATA_KEY] ~= nil
+    then
+        familiar.EntityCollisionClass = data[COLLISION_DATA_KEY]
+    end
+
+    data[PHASING_DATA_KEY] = nil
+    data[COLLISION_DATA_KEY] = nil
 end
 
 function LostSoulWhiteFireModule:OnFamiliarUpdate(familiar)
@@ -238,75 +293,35 @@ function LostSoulWhiteFireModule:OnFamiliarUpdate(familiar)
     end
 
     local data = self:GetData(familiar)
+    self:EnsureMantleVisual(familiar)
 
     if not self.Context:IsEnabled(SETTING_KEY) then
         data[CONTACT_DATA_KEY] = nil
+        self:EndPhasing(familiar)
         return
     end
 
-    if self:FindTouchingWhiteFire(familiar) then
+    local nearbyFire = self:FindWhiteFireWithin(familiar, PHASE_MARGIN)
+
+    if nearbyFire then
+        self:BeginPhasing(familiar)
+    else
+        self:EndPhasing(familiar)
+    end
+
+    if nearbyFire and self:IsTouching(familiar, nearbyFire) then
         self:OnWhiteFireContact(familiar)
     else
         data[CONTACT_DATA_KEY] = nil
     end
 end
 
-function LostSoulWhiteFireModule:OnPreNpcUpdate(npc)
-    if not self.Context:IsEnabled(SETTING_KEY)
-        or not self:IsLiveWhiteFire(npc)
-    then
-        return
-    end
-
-    local relocated = {}
-    local familiars = Isaac.FindByType(
-        FAMILIAR_TYPE,
-        LOST_SOUL_VARIANT,
-        LOST_SOUL_SUBTYPE,
-        false,
-        false
-    )
-
-    for _, familiar in ipairs(familiars) do
-        if self:IsLostSoul(familiar) and self:IsTouching(familiar, npc) then
-            self:OnWhiteFireContact(familiar)
-            relocated[#relocated + 1] = {
-                Familiar = familiar,
-                Position = Vector(familiar.Position.X, familiar.Position.Y),
-            }
-            familiar.Position = OFFSCREEN_POSITION
-        end
-    end
-
-    if #relocated > 0 then
-        self.RelocatedFamiliars[EntityKey(npc)] = relocated
-    end
-end
-
-function LostSoulWhiteFireModule:OnNpcUpdate(npc)
-    local key = EntityKey(npc)
-    local relocated = self.RelocatedFamiliars[key]
-
-    if not relocated then
-        return
-    end
-
-    self.RelocatedFamiliars[key] = nil
-
-    for _, record in ipairs(relocated) do
-        local familiar = record.Familiar
-
-        if type(familiar.Exists) ~= "function" or familiar:Exists() then
-            familiar.Position = record.Position
-        end
-    end
-end
-
 function LostSoulWhiteFireModule:OnPreFamiliarCollision(familiar, collider, low)
     if self.Context:IsEnabled(SETTING_KEY)
         and self:IsLostSoul(familiar)
-        and self:IsWhiteFire(collider)
+        and self:IsLiveWhiteFire(collider)
     then
+        self:BeginPhasing(familiar)
         self:OnWhiteFireContact(familiar)
         return false
     end
@@ -314,9 +329,10 @@ end
 
 function LostSoulWhiteFireModule:OnPreNpcCollision(npc, collider, low)
     if self.Context:IsEnabled(SETTING_KEY)
-        and self:IsWhiteFire(npc)
+        and self:IsLiveWhiteFire(npc)
         and self:IsLostSoul(collider)
     then
+        self:BeginPhasing(collider)
         self:OnWhiteFireContact(collider)
         return false
     end
@@ -336,6 +352,7 @@ function LostSoulWhiteFireModule:OnEntityTakeDamage(
     if self.Context:IsEnabled(SETTING_KEY)
         and self:IsWhiteFireSource(source)
     then
+        self:BeginPhasing(entity)
         self:OnWhiteFireContact(entity)
         return false
     end

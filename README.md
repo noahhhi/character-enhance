@@ -159,12 +159,12 @@
 <a id="lost-soul-white-fire-fix"></a>
 ## Lost Soul White Fire Fix
 
-- White Fire Places (entity 33.4.0) cannot damage the Lost Soul familiar
-  (entity 3.211.0). Players still enter the Lost form normally when touching
-  the fire.
-- The enabled-by-default child option grants Lost Soul a one-use Holy Mantle
-  when it touches white fire. White fire does not consume that shield; the
-  next other damaging hit does.
+- The Lost Soul familiar (entity 3.211.0) can pass through White Fire Places
+  (entity 33.4.0) without taking damage or being knocked away. Players still
+  enter the Lost form normally when touching the fire.
+- The enabled-by-default child option grants Lost Soul a visible, one-use Holy
+  Mantle when it touches white fire. White fire does not consume that shield;
+  the next other damaging hit does.
 
 <a id="held-item-protection"></a>
 ## Pickup Animation Fix

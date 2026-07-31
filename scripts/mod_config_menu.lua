@@ -324,11 +324,11 @@ local MENU_SETTINGS = {
         zhName = "迷失幽魂白火免伤修复",
         enName = "Lost Soul White Fire Fix",
         zhInfo = {
-            "白色火堆不再伤害迷失幽魂。",
+            "迷失幽魂可穿过白火，不会受伤或被弹开。",
             "玩家触火获得游魂诅咒的行为保持原版。",
         },
         enInfo = {
-            "White Fire Places cannot damage Lost Soul.",
+            "Lost Soul passes through white fire unharmed.",
             "Players still enter the Lost form as normal.",
         },
     },
@@ -338,11 +338,11 @@ local MENU_SETTINGS = {
         zhName = "  白火给予神圣屏障",
         enName = "  White Fire Grants Mantle",
         zhInfo = {
-            "接触白火时，迷失幽魂获得一次神圣屏障。",
+            "接触白火时，迷失幽魂获得可见的神圣屏障。",
             "下一次其他伤害会消耗；白火不会。",
         },
         enInfo = {
-            "White fire grants Lost Soul one Holy Mantle.",
+            "White fire grants one visible Holy Mantle.",
             "Next other hit uses it; white fire does not.",
         },
     },

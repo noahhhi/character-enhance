@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.14.1"
+local VERSION = "1.14.2"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -187,7 +187,7 @@ local FamiliarCapacityModule = include("scripts/familiar_capacity")
 local PickupRangeModule = include("scripts/pickup_range")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local LostSoulWhiteFireModule = include(
-    "scripts/lost_soul_white_fire_protection"
+    "scripts/lost_soul_white_fire_phase"
 )
 local HeldItemProtectionModule = include("scripts/held_item_protection")
 local KidsDrawingFormModule = include("scripts/kids_drawing_form")
