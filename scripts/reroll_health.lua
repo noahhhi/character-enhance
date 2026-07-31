@@ -399,6 +399,55 @@ function RerollHealthModule:CaptureStats(player)
     return result
 end
 
+function RerollHealthModule:CaptureInternalRerollStats(player)
+    local state = player and self.Players[self:GetPlayerKey(player)]
+
+    if not state then
+        return nil
+    end
+
+    return {
+        stats = self:CaptureStats(player),
+        nativeAbsorbedStats = self:CopyStats(state.nativeAbsorbedStats),
+    }
+end
+
+function RerollHealthModule:RestoreInternalRerollStats(player, snapshot)
+    local state = player and self.Players[self:GetPlayerKey(player)]
+
+    if not state or not snapshot or not snapshot.stats then
+        return false
+    end
+
+    local after = self:CaptureStats(player)
+    local changed = false
+
+    for statName in pairs(EMPTY_STATS) do
+        local lost = (snapshot.stats[statName] or 0)
+            - (after[statName] or 0)
+
+        if lost > 0.000001 then
+            state.preservedStats[statName]
+                = (state.preservedStats[statName] or 0) + lost
+            local nativeBefore = snapshot.nativeAbsorbedStats
+                and snapshot.nativeAbsorbedStats[statName]
+                or 0
+            local promoted = math.min(lost, nativeBefore)
+            state.nativeAbsorbedStats[statName] = math.max(
+                0,
+                (state.nativeAbsorbedStats[statName] or 0) - promoted
+            )
+            changed = true
+        end
+    end
+
+    if changed then
+        self:EvaluatePreservedStats(player)
+    end
+
+    return changed
+end
+
 function RerollHealthModule:HasStats(stats)
     for statName in pairs(EMPTY_STATS) do
         if (stats and stats[statName] or 0) > 0.000001 then
@@ -843,17 +892,30 @@ function RerollHealthModule:OnPlayerInit(player)
     end
 end
 
+function RerollHealthModule:PrepareZodiacForFullInventoryReroll(player)
+    local zodiacModule = self.Context.Modules
+        and self.Context.Modules.zodiacFloorItemDisplay
+
+    if zodiacModule and zodiacModule.PrepareForFullInventoryReroll then
+        zodiacModule:PrepareForFullInventoryReroll(player)
+    end
+end
+
 function RerollHealthModule:QueueRestore(
     player,
     damageAmount,
     preparedTmtrainerDecision
 )
+    if not player then
+        return
+    end
+
     local tmtrainerChance = self.Context.Settings[TMTRAINER_SETTING_KEY] or 0
 
-    if not player or (not self.Context:IsEnabled(REROLL_SETTING_KEY)
+    if not self.Context:IsEnabled(REROLL_SETTING_KEY)
         and not self.Context:IsEnabled(ABSORBED_STATS_SETTING_KEY)
         and not self.Context:IsEnabled(PILL_IDENTIFICATION_SETTING_KEY)
-        and tmtrainerChance >= 100)
+        and tmtrainerChance >= 100
     then
         return
     end
@@ -993,6 +1055,7 @@ function RerollHealthModule:OnPlayerEffectUpdate(player)
 
     if self.DiceRoomFace == 1 then
         local key = self:GetPlayerKey(player)
+        self:PrepareZodiacForFullInventoryReroll(player)
         self:QueueRestore(
             player,
             nil,
@@ -1008,6 +1071,7 @@ function RerollHealthModule:OnPlayerEffectUpdate(player)
     for playerIndex = 0, game:GetNumPlayers() - 1 do
         local affectedPlayer = Isaac.GetPlayer(playerIndex)
         local key = self:GetPlayerKey(affectedPlayer)
+        self:PrepareZodiacForFullInventoryReroll(affectedPlayer)
         self:QueueRestore(
             affectedPlayer,
             nil,
@@ -1063,6 +1127,7 @@ function RerollHealthModule:OnNewLevel()
         local player = Isaac.GetPlayer(playerIndex)
 
         if player:GetCollectibleNum(MISSING_NO, true) > 0 then
+            self:PrepareZodiacForFullInventoryReroll(player)
             self:QueueRestore(player, nil)
         end
     end
@@ -1101,6 +1166,7 @@ function RerollHealthModule:OnUseCard(card, player)
         -- retained as the common completion point without replacing vanilla.
         return
     elseif card == REVERSE_WHEEL_OF_FORTUNE then
+        self:PrepareZodiacForFullInventoryReroll(player)
         self:QueueRestore(player, nil)
     end
 end
@@ -1198,11 +1264,21 @@ function RerollHealthModule:OnPostGetCollectible(
 end
 
 function RerollHealthModule:OnPreUseItem(collectibleType, player)
+    local zodiacModule = self.Context.Modules
+        and self.Context.Modules.zodiacFloorItemDisplay
+
+    if zodiacModule and zodiacModule.IsInternalNativeReroll
+        and zodiacModule:IsInternalNativeReroll(player)
+    then
+        return
+    end
+
     if DIRECT_REROLL_ITEMS[collectibleType] then
         -- D Infinity's D4/D100 faces, Void and Metronome dispatch the selected
         -- vanilla active effect through this callback too. Handling the inner
         -- D4/D100 callback covers those paths without affecting D Infinity's
         -- pedestal-only or stat-only faces.
+        self:PrepareZodiacForFullInventoryReroll(player)
         self:QueueRestore(player, nil)
     elseif collectibleType == VOID then
         self:QueueAbsorption(player, "void")
@@ -1322,6 +1398,7 @@ function RerollHealthModule:OnEntityTakeDamage(entity, amount, flags, source)
         return
     end
 
+    self:PrepareZodiacForFullInventoryReroll(player)
     self:QueueRestore(player, amount)
 end
 
