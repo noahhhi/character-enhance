@@ -163,8 +163,8 @@
   (entity 33.4.0) without taking damage or being knocked away. Players still
   enter the Lost form normally when touching the fire.
 - The enabled-by-default child option grants Lost Soul a visible, one-use Holy
-  Mantle when it touches white fire. White fire does not consume that shield;
-  the next other damaging hit does.
+  Mantle with a brief choir cue when it touches white fire. White fire
+  does not consume that shield; the next other damaging hit does.
 
 <a id="held-item-protection"></a>
 ## Pickup Animation Fix
