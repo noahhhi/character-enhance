@@ -10,6 +10,14 @@ local TREASURE_POOL = ItemPoolType and ItemPoolType.POOL_TREASURE or 0
 local MAX_SEQUENCE_LENGTH = 512
 local MAX_RECENT_POOLS = 96
 local INVENTORY_SCAN_INTERVAL = 5
+local MANAGED_WISP_TAG = "CharacterEnhanceZodiacWisp"
+local ITEM_WISP = FamiliarVariant and FamiliarVariant.ITEM_WISP
+local ENTITY_FAMILIAR = EntityType and EntityType.ENTITY_FAMILIAR
+local NO_ENTITY_COLLISION = EntityCollisionClass
+    and EntityCollisionClass.ENTCOLL_NONE
+local NO_GRID_COLLISION = EntityGridCollisionClass
+    and EntityGridCollisionClass.GRIDCOLL_NONE
+local WISP_FIRE_COOLDOWN = 2147483647
 
 local EFFECT_DEFINITIONS = {
     {
@@ -150,6 +158,26 @@ function ZodiacFloorItemDisplayModule.New(context)
             self:OnNewRoom()
         end
     )
+
+    if ModCallbacks.MC_FAMILIAR_UPDATE and ITEM_WISP then
+        context.Mod:AddCallback(
+            ModCallbacks.MC_FAMILIAR_UPDATE,
+            function(_, familiar)
+                self:OnFamiliarUpdate(familiar)
+            end,
+            ITEM_WISP
+        )
+    end
+
+    if ModCallbacks.MC_ENTITY_TAKE_DMG and ENTITY_FAMILIAR then
+        context.Mod:AddCallback(
+            ModCallbacks.MC_ENTITY_TAKE_DMG,
+            function(_, entity)
+                return self:OnEntityTakeDamage(entity)
+            end,
+            ENTITY_FAMILIAR
+        )
+    end
 
     local poolCallback = function(
         _,
@@ -305,6 +333,9 @@ function ZodiacFloorItemDisplayModule:SanitizeSavedData(savedData)
                     effect = effect,
                     sequence = sequence,
                     baseline = self:SanitizeBaseline(savedState.baseline),
+                    effectCarrier = savedState.effectCarrier == "wisp"
+                        and "wisp"
+                        or nil,
                 }
             end
         end
@@ -698,16 +729,214 @@ function ZodiacFloorItemDisplayModule:RemoveManagedEffect(player, state)
     end
 
     state.managedEffectCount = 0
+
+    for _, wisp in ipairs(self:FindManagedWisps(player, state)) do
+        if self:EntityExists(wisp) then
+            wisp:Remove()
+        end
+    end
+
+    state.managedWisps = {}
+    state.pendingWispFrame = nil
+    self:RefreshPlayerItems(player)
+end
+
+function ZodiacFloorItemDisplayModule:EntityExists(entity)
+    return entity ~= nil
+        and (type(entity.Exists) ~= "function" or entity:Exists())
+end
+
+function ZodiacFloorItemDisplayModule:IsManagedWisp(wisp, player)
+    if not wisp or type(wisp.GetData) ~= "function" then
+        return false
+    end
+
+    local data = wisp:GetData()
+
+    if not data or data[MANAGED_WISP_TAG] ~= true then
+        return false
+    end
+
+    if not player then
+        return true
+    end
+
+    local owner = wisp.Player
+    return owner ~= nil
+        and self:GetPlayerKey(owner) == self:GetPlayerKey(player)
+end
+
+function ZodiacFloorItemDisplayModule:FindManagedWisps(player, state)
+    local result = {}
+    local seen = {}
+
+    local function append(wisp)
+        if not self:EntityExists(wisp)
+            or not self:IsManagedWisp(wisp, player)
+        then
+            return
+        end
+
+        local hash = self:GetPlayerKey(wisp)
+
+        if not seen[hash] then
+            seen[hash] = true
+            result[#result + 1] = wisp
+        end
+    end
+
+    for _, wisp in ipairs(state.managedWisps or {}) do
+        append(wisp)
+    end
+
+    if Isaac.FindByType and ENTITY_FAMILIAR and ITEM_WISP then
+        for _, entity in ipairs(Isaac.FindByType(
+            ENTITY_FAMILIAR,
+            ITEM_WISP,
+            -1,
+            false,
+            false
+        )) do
+            local familiar = type(entity.ToFamiliar) == "function"
+                and entity:ToFamiliar()
+                or entity
+            append(familiar)
+        end
+    end
+
+    return result
+end
+
+
+function ZodiacFloorItemDisplayModule:RefreshPlayerItems(player)
+    if type(player.AddCacheFlags) == "function" and CacheFlag then
+        player:AddCacheFlags(CacheFlag.CACHE_ALL)
+    end
+
+    if type(player.EvaluateItems) == "function" then
+        player:EvaluateItems()
+    end
+end
+
+function ZodiacFloorItemDisplayModule:StabilizeManagedWisp(wisp)
+    if not self:IsManagedWisp(wisp) then
+        return
+    end
+
+    wisp.Visible = false
+    wisp.FireCooldown = WISP_FIRE_COOLDOWN
+    wisp.CollisionDamage = 0
+
+    if NO_ENTITY_COLLISION then
+        wisp.EntityCollisionClass = NO_ENTITY_COLLISION
+    end
+    if NO_GRID_COLLISION then
+        wisp.GridCollisionClass = NO_GRID_COLLISION
+    end
+end
+
+function ZodiacFloorItemDisplayModule:TagManagedWisp(wisp, player, effect)
+    local data = wisp:GetData()
+    data[MANAGED_WISP_TAG] = true
+    data.CharacterEnhanceZodiacEffect = effect
+    data.CharacterEnhanceZodiacOwner = self:GetPlayerKey(player)
+    self:StabilizeManagedWisp(wisp)
+end
+
+function ZodiacFloorItemDisplayModule:ScheduleManagedEffect(
+    player,
+    state
+)
+    self:RemoveManagedEffect(player, state)
+    state.pendingWispFrame = Game():GetFrameCount() + 1
 end
 
 function ZodiacFloorItemDisplayModule:ApplyManagedEffect(player, state)
-    local count = CountZodiacEntries(state.sequence)
+    local desiredCount = CountZodiacEntries(state.sequence)
 
-    self:RemoveManagedEffect(player, state)
+    if desiredCount <= 0 or not VALID_EFFECTS[state.effect]
+        or type(player.AddItemWisp) ~= "function"
+    then
+        self:RemoveManagedEffect(player, state)
+        return false
+    end
 
-    if count > 0 and VALID_EFFECTS[state.effect] then
-        player:GetEffects():AddCollectibleEffect(state.effect, true, count)
-        state.managedEffectCount = count
+    -- Saves created by the old implementation may still contain its inert
+    -- TemporaryEffects entry. Remove it once before adopting native item wisps.
+    local legacyCount = state.managedEffectCount or 0
+
+    if legacyCount > 0 then
+        player:GetEffects():RemoveCollectibleEffect(
+            state.effect,
+            legacyCount
+        )
+        state.managedEffectCount = 0
+    end
+
+    local matching = {}
+    local removedWrongEffect = false
+
+    for _, wisp in ipairs(self:FindManagedWisps(player, state)) do
+        local data = wisp:GetData()
+        local effect = data.CharacterEnhanceZodiacEffect or wisp.SubType
+
+        if effect == state.effect and #matching < desiredCount then
+            self:StabilizeManagedWisp(wisp)
+            matching[#matching + 1] = wisp
+        else
+            wisp:Remove()
+            removedWrongEffect = removedWrongEffect or effect ~= state.effect
+        end
+    end
+
+    local frame = Game():GetFrameCount()
+
+    if removedWrongEffect then
+        state.managedWisps = matching
+        state.pendingWispFrame = frame + 1
+        self:RefreshPlayerItems(player)
+        return false
+    end
+
+    if state.pendingWispFrame and frame < state.pendingWispFrame then
+        state.managedWisps = matching
+        return false
+    end
+
+    while #matching < desiredCount do
+        local wisp = player:AddItemWisp(
+            state.effect,
+            player.Position,
+            false
+        )
+
+        if not wisp then
+            break
+        end
+
+        self:TagManagedWisp(wisp, player, state.effect)
+        matching[#matching + 1] = wisp
+    end
+
+    state.managedWisps = matching
+    state.pendingWispFrame = #matching == desiredCount and nil or frame + 1
+    self:RefreshPlayerItems(player)
+    return #matching == desiredCount
+end
+
+function ZodiacFloorItemDisplayModule:OnFamiliarUpdate(familiar)
+    if self:IsManagedWisp(familiar) then
+        self:StabilizeManagedWisp(familiar)
+    end
+end
+
+function ZodiacFloorItemDisplayModule:OnEntityTakeDamage(entity)
+    local familiar = entity and type(entity.ToFamiliar) == "function"
+        and entity:ToFamiliar()
+        or nil
+
+    if self:IsManagedWisp(familiar) then
+        return false
     end
 end
 
@@ -875,8 +1104,10 @@ function ZodiacFloorItemDisplayModule:CreateStateFromZodiac(
         baseline = {},
         storageMode = "zodiac",
         managedEffectCount = 0,
+        managedWisps = {},
         suspendedForReroll = false,
         lastInventoryScanFrame = -1,
+        lastWispScanFrame = -1,
     }
 
     for _ = 1, zodiacCount do
@@ -1013,13 +1244,11 @@ function ZodiacFloorItemDisplayModule:RotateFloorEffect(player, state)
     end
 
     if effect ~= state.effect then
-        self:RemoveManagedEffect(player, state)
+        self:ScheduleManagedEffect(player, state)
 
         if not self:RebuildSequence(player, state, "proxy", effect) then
             return false
         end
-
-        self:ApplyManagedEffect(player, state)
     else
         self:ApplyManagedEffect(player, state)
     end
@@ -1113,9 +1342,13 @@ function ZodiacFloorItemDisplayModule:RestoreSavedState(
         sequence = savedState.sequence,
         baseline = savedState.baseline,
         storageMode = "proxy",
-        managedEffectCount = expectedProxyCount,
+        managedEffectCount = savedState.effectCarrier == "wisp"
+            and 0
+            or expectedProxyCount,
+        managedWisps = {},
         suspendedForReroll = false,
         lastInventoryScanFrame = -1,
+        lastWispScanFrame = -1,
     }
 
     self:NormalizeSequence(state)
@@ -1276,6 +1509,14 @@ function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
 
     local frame = Game():GetFrameCount()
 
+    if state.pendingWispFrame
+        or (frame ~= state.lastWispScanFrame
+            and frame % INVENTORY_SCAN_INTERVAL == 0)
+    then
+        state.lastWispScanFrame = frame
+        self:ApplyManagedEffect(player, state)
+    end
+
     if frame ~= state.lastInventoryScanFrame
         and frame % INVENTORY_SCAN_INTERVAL == 0
     then
@@ -1366,6 +1607,7 @@ function ZodiacFloorItemDisplayModule:GetSaveData()
                 effect = state.effect,
                 sequence = state.sequence,
                 baseline = state.baseline,
+                effectCarrier = "wisp",
             }
         end
     end
@@ -1377,6 +1619,19 @@ function ZodiacFloorItemDisplayModule:GetSaveData()
 end
 
 function ZodiacFloorItemDisplayModule:OnPreGameExit()
+    if self.RunActive then
+        local game = Game()
+
+        for playerIndex = 0, game:GetNumPlayers() - 1 do
+            local player = Isaac.GetPlayer(playerIndex)
+            local state = self.Players[self:GetPlayerKey(player)]
+
+            if state then
+                self:RemoveManagedEffect(player, state)
+            end
+        end
+    end
+
     self.RunActive = false
 end
 
