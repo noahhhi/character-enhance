@@ -13,14 +13,7 @@ local INVENTORY_SCAN_INTERVAL = 5
 local MANAGED_WISP_TAG = "CharacterEnhanceZodiacWisp"
 local ITEM_WISP = FamiliarVariant and FamiliarVariant.ITEM_WISP
 local ENTITY_FAMILIAR = EntityType and EntityType.ENTITY_FAMILIAR
-local NO_ENTITY_COLLISION = EntityCollisionClass
-    and EntityCollisionClass.ENTCOLL_NONE
-local NO_GRID_COLLISION = EntityGridCollisionClass
-    and EntityGridCollisionClass.GRIDCOLL_NONE
-local WISP_FIRE_COOLDOWN = 2147483647
-local SACRIFICIAL_ALTAR = CollectibleType.COLLECTIBLE_SACRIFICIAL_ALTAR
-local HEART_PICKUP = PickupVariant.PICKUP_HEART
-local HALF_SOUL_HEART = HeartSubType.HEART_HALF_SOUL
+local REVERSE_STARS = Card and Card.CARD_REVERSE_STARS
 
 local EFFECT_DEFINITIONS = {
     {
@@ -133,7 +126,7 @@ function ZodiacFloorItemDisplayModule.New(context)
         ProxyIdsReady = false,
         RecentPools = {},
         MutationDepth = 0,
-        LastInventoryScanFrame = -1,
+        RestoringGame = false,
         MissingProxyWarningLogged = false,
     }, ZodiacFloorItemDisplayModule)
 
@@ -162,39 +155,14 @@ function ZodiacFloorItemDisplayModule.New(context)
         end
     )
 
-    if ModCallbacks.MC_FAMILIAR_UPDATE and ITEM_WISP then
+    if ModCallbacks.MC_USE_CARD and REVERSE_STARS then
         context.Mod:AddCallback(
-            ModCallbacks.MC_FAMILIAR_UPDATE,
-            function(_, familiar)
-                self:OnFamiliarUpdate(familiar)
-            end,
-            ITEM_WISP
+            ModCallbacks.MC_USE_CARD,
+            function(_, card, player)
+                self:OnUseCard(card, player)
+            end
         )
     end
-
-    if ModCallbacks.MC_ENTITY_TAKE_DMG and ENTITY_FAMILIAR then
-        context.Mod:AddCallback(
-            ModCallbacks.MC_ENTITY_TAKE_DMG,
-            function(_, entity)
-                return self:OnEntityTakeDamage(entity)
-            end,
-            ENTITY_FAMILIAR
-        )
-    end
-
-    context.Mod:AddCallback(
-        ModCallbacks.MC_PRE_USE_ITEM,
-        function(_, collectibleType, _, player)
-            self:OnPreUseItem(collectibleType, player)
-        end
-    )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_PICKUP_INIT,
-        function(_, pickup)
-            self:OnHeartPickupInit(pickup)
-        end,
-        HEART_PICKUP
-    )
 
     local poolCallback = function(
         _,
@@ -265,24 +233,28 @@ function ZodiacFloorItemDisplayModule:SanitizeSequence(sequence)
             break
         end
 
-        if type(entry) == "table" and entry.kind == "zodiac" then
-            result[#result + 1] = {
-                kind = "zodiac",
-                pool = self:SanitizePool(entry.pool),
-            }
-        elseif type(entry) == "table" and entry.kind == "item" then
-            local collectible = self:SanitizeInteger(
-                entry.id,
-                1,
-                1000000
-            )
+        if type(entry) == "table" then
+            local pool = self:SanitizePool(entry.pool)
 
-            if collectible and collectible ~= ZODIAC then
+            if entry.kind == "zodiac" then
                 result[#result + 1] = {
-                    kind = "item",
-                    id = collectible,
-                    pool = self:SanitizePool(entry.pool),
+                    kind = "zodiac",
+                    pool = pool,
                 }
+            elseif entry.kind == "item" then
+                local collectible = self:SanitizeInteger(
+                    entry.id,
+                    1,
+                    0x7FFFFFFF
+                )
+
+                if collectible and collectible ~= ZODIAC then
+                    result[#result + 1] = {
+                        kind = "item",
+                        id = collectible,
+                        pool = pool,
+                    }
+                end
             end
         end
     end
@@ -297,17 +269,15 @@ function ZodiacFloorItemDisplayModule:SanitizeBaseline(baseline)
         return result
     end
 
-    for collectibleKey, savedCount in pairs(baseline) do
+    for rawCollectible, rawCount in pairs(baseline) do
         local collectible = self:SanitizeInteger(
-            collectibleKey,
+            rawCollectible,
             1,
-            1000000
+            0x7FFFFFFF
         )
-        local count = self:SanitizeInteger(savedCount, 0, 99)
+        local count = self:SanitizeInteger(rawCount, 0, 99)
 
-        if collectible and count and count > 0
-            and collectible ~= ZODIAC
-        then
+        if collectible and collectible ~= ZODIAC and count and count > 0 then
             result[collectible] = count
         end
     end
@@ -356,27 +326,26 @@ function ZodiacFloorItemDisplayModule:SanitizeSavedData(savedData)
         return result
     end
 
-    for playerKey, savedState in pairs(savedData.players) do
-        local playerIndex = self:SanitizeInteger(playerKey, 0, 15)
+    for rawPlayerIndex, savedState in pairs(savedData.players) do
+        local playerIndex = self:SanitizeInteger(rawPlayerIndex, 0, 63)
 
         if playerIndex and type(savedState) == "table" then
             local effect = self:SanitizeInteger(
                 savedState.effect,
                 1,
-                1000000
+                0x7FFFFFFF
             )
             local sequence = self:SanitizeSequence(savedState.sequence)
 
-            if VALID_EFFECTS[effect]
-                and CountZodiacEntries(sequence) > 0
-            then
+            if VALID_EFFECTS[effect] and CountZodiacEntries(sequence) > 0 then
                 result.players[tostring(playerIndex)] = {
                     effect = effect,
                     sequence = sequence,
                     baseline = self:SanitizeBaseline(savedState.baseline),
-                    effectCarrier = savedState.effectCarrier == "wisp"
-                        and "wisp"
+                    displayMode = savedState.displayMode == "native"
+                        and "native"
                         or nil,
+                    legacyCarrier = savedState.effectCarrier == "wisp",
                     wispSeeds = self:SanitizeWispSeeds(
                         savedState.wispSeeds
                     ),
@@ -397,11 +366,13 @@ function ZodiacFloorItemDisplayModule:GetPlayerKey(player)
 end
 
 function ZodiacFloorItemDisplayModule:GetPlayerIndex(player)
-    local targetKey = self:GetPlayerKey(player)
     local game = Game()
+    local targetKey = self:GetPlayerKey(player)
 
     for playerIndex = 0, game:GetNumPlayers() - 1 do
-        if self:GetPlayerKey(Isaac.GetPlayer(playerIndex)) == targetKey then
+        local candidate = Isaac.GetPlayer(playerIndex)
+
+        if candidate and self:GetPlayerKey(candidate) == targetKey then
             return playerIndex
         end
     end
@@ -417,11 +388,11 @@ function ZodiacFloorItemDisplayModule:ResolveProxyIds()
     for _, definition in ipairs(EFFECT_DEFINITIONS) do
         local proxyId = Isaac.GetItemIdByName(definition.proxyName)
 
-        if type(proxyId) ~= "number" or proxyId <= 0 then
-            self.ProxyIdsReady = false
-        else
+        if type(proxyId) == "number" and proxyId > 0 then
             self.ProxyByEffect[definition.effect] = proxyId
             self.EffectByProxy[proxyId] = definition.effect
+        else
+            self.ProxyIdsReady = false
         end
     end
 
@@ -491,9 +462,6 @@ function ZodiacFloorItemDisplayModule:NormalizeSequence(state)
         MAX_SEQUENCE_LENGTH - #originalSequence
     )
 
-    -- Older saves only stored counts for items owned before Zodiac. Their
-    -- native History order is not exposed by the current standard API, so
-    -- migrate them once in stable collectible order ahead of the marker.
     for _, collectible in ipairs(self.TrackedCollectibles) do
         for _ = 1, baseline[collectible] or 0 do
             if #sequence < prefixLimit then
@@ -765,362 +733,6 @@ function ZodiacFloorItemDisplayModule:SyncSequence(player, state)
     return changed
 end
 
-function ZodiacFloorItemDisplayModule:RemoveManagedEffect(player, state)
-    local count = state.managedEffectCount or 0
-
-    if count > 0 and VALID_EFFECTS[state.effect] then
-        player:GetEffects():RemoveCollectibleEffect(state.effect, count)
-    end
-
-    state.managedEffectCount = 0
-
-    for _, wisp in ipairs(self:FindManagedWisps(player, state)) do
-        if self:EntityExists(wisp) then
-            self:RetireManagedWisp(wisp)
-        end
-    end
-
-    state.managedWisps = {}
-    state.pendingWispFrame = nil
-    self:RefreshPlayerItems(player)
-end
-
-function ZodiacFloorItemDisplayModule:EntityExists(entity)
-    return entity ~= nil
-        and (type(entity.Exists) ~= "function" or entity:Exists())
-end
-
-function ZodiacFloorItemDisplayModule:RetireManagedWisp(wisp)
-    if type(wisp.Kill) == "function" then
-        -- Remove() deletes a restored item-wisp entity but leaves its modified
-        -- collectible registered on Repentance+ 1.9.7.15. Kill() follows the
-        -- native wisp retirement path and immediately reconciles ownership.
-        -- Sacrificial Altar creates the half Soul Heart itself; a direct Kill()
-        -- does not create that pickup.
-        wisp:Kill()
-    else
-        wisp:Remove()
-    end
-end
-
-function ZodiacFloorItemDisplayModule:IsWispOwner(wisp, player)
-    if not player then
-        return true
-    end
-
-    local owner = wisp and wisp.Player
-    return owner ~= nil
-        and self:GetPlayerKey(owner) == self:GetPlayerKey(player)
-end
-
-function ZodiacFloorItemDisplayModule:IsManagedWisp(
-    wisp,
-    player,
-    state
-)
-    if not wisp or type(wisp.GetData) ~= "function" then
-        return false
-    end
-
-    local data = wisp:GetData()
-
-    if data and data[MANAGED_WISP_TAG] == true then
-        return self:IsWispOwner(wisp, player)
-    end
-
-    if not state or not self:IsWispOwner(wisp, player) then
-        return false
-    end
-
-    local seed = self:SanitizeInteger(wisp.InitSeed, 0, 0xFFFFFFFF)
-
-    for _, managedSeed in ipairs(state.managedWispSeeds or {}) do
-        if seed == managedSeed then
-            return true
-        end
-    end
-
-    return false
-end
-
-function ZodiacFloorItemDisplayModule:FindManagedWisps(player, state)
-    local result = {}
-    local seen = {}
-
-    local function append(wisp)
-        if not self:EntityExists(wisp)
-            or not self:IsManagedWisp(wisp, player, state)
-        then
-            return
-        end
-
-        local hash = self:GetPlayerKey(wisp)
-
-        if not seen[hash] then
-            seen[hash] = true
-            result[#result + 1] = wisp
-        end
-    end
-
-    for _, wisp in ipairs(state.managedWisps or {}) do
-        append(wisp)
-    end
-
-    if Isaac.FindByType and ENTITY_FAMILIAR and ITEM_WISP then
-        for _, entity in ipairs(Isaac.FindByType(
-            ENTITY_FAMILIAR,
-            ITEM_WISP,
-            -1,
-            false,
-            false
-        )) do
-            local familiar = type(entity.ToFamiliar) == "function"
-                and entity:ToFamiliar()
-                or entity
-            append(familiar)
-        end
-    end
-
-    return result
-end
-
-function ZodiacFloorItemDisplayModule:UpdateManagedWispSeeds(state, wisps)
-    local seeds = {}
-    local seen = {}
-
-    for _, wisp in ipairs(wisps or {}) do
-        local seed = self:EntityExists(wisp)
-            and self:SanitizeInteger(wisp.InitSeed, 0, 0xFFFFFFFF)
-            or nil
-
-        if seed and not seen[seed] then
-            seen[seed] = true
-            seeds[#seeds + 1] = seed
-        end
-    end
-
-    local previous = state.managedWispSeeds or {}
-    local changed = #previous ~= #seeds
-
-    if not changed then
-        for index, seed in ipairs(seeds) do
-            if previous[index] ~= seed then
-                changed = true
-                break
-            end
-        end
-    end
-
-    state.managedWispSeeds = seeds
-    return changed
-end
-
-function ZodiacFloorItemDisplayModule:FindOwnedEffectWisps(player, effect)
-    local result = {}
-
-    if not Isaac.FindByType or not ENTITY_FAMILIAR or not ITEM_WISP then
-        return result
-    end
-
-    for _, entity in ipairs(Isaac.FindByType(
-        ENTITY_FAMILIAR,
-        ITEM_WISP,
-        effect,
-        false,
-        false
-    )) do
-        local familiar = type(entity.ToFamiliar) == "function"
-            and entity:ToFamiliar()
-            or entity
-
-        if self:EntityExists(familiar)
-            and self:IsWispOwner(familiar, player)
-        then
-            result[#result + 1] = familiar
-        end
-    end
-
-    return result
-end
-
-function ZodiacFloorItemDisplayModule:RecoverLegacyManagedWisps(
-    player,
-    state
-)
-    if not state.needsLegacyWispRecovery then
-        return
-    end
-
-    state.needsLegacyWispRecovery = false
-    local desiredCount = CountZodiacEntries(state.sequence)
-    local candidates = self:FindOwnedEffectWisps(player, state.effect)
-
-    table.sort(candidates, function(left, right)
-        local leftManaged = self:IsManagedWisp(left, player) and 1 or 0
-        local rightManaged = self:IsManagedWisp(right, player) and 1 or 0
-
-        if leftManaged ~= rightManaged then
-            return leftManaged > rightManaged
-        end
-
-        return (left.InitSeed or 0) < (right.InitSeed or 0)
-    end)
-
-    local managed = {}
-
-    for _, wisp in ipairs(candidates) do
-        if #managed < desiredCount then
-            self:TagManagedWisp(wisp, player, state.effect)
-            managed[#managed + 1] = wisp
-        else
-            self:RetireManagedWisp(wisp)
-        end
-    end
-
-    state.managedWisps = managed
-    self:UpdateManagedWispSeeds(state, managed)
-    self:RefreshPlayerItems(player)
-end
-
-
-function ZodiacFloorItemDisplayModule:RefreshPlayerItems(player)
-    if type(player.AddCacheFlags) == "function" and CacheFlag then
-        player:AddCacheFlags(CacheFlag.CACHE_ALL)
-    end
-
-    if type(player.EvaluateItems) == "function" then
-        player:EvaluateItems()
-    end
-end
-
-function ZodiacFloorItemDisplayModule:StabilizeManagedWisp(wisp)
-    if not self:IsManagedWisp(wisp) then
-        return
-    end
-
-    wisp.Visible = false
-    wisp.FireCooldown = WISP_FIRE_COOLDOWN
-    wisp.CollisionDamage = 0
-
-    if NO_ENTITY_COLLISION then
-        wisp.EntityCollisionClass = NO_ENTITY_COLLISION
-    end
-    if NO_GRID_COLLISION then
-        wisp.GridCollisionClass = NO_GRID_COLLISION
-    end
-end
-
-function ZodiacFloorItemDisplayModule:TagManagedWisp(wisp, player, effect)
-    local data = wisp:GetData()
-    data[MANAGED_WISP_TAG] = true
-    data.CharacterEnhanceZodiacEffect = effect
-    data.CharacterEnhanceZodiacOwner = self:GetPlayerKey(player)
-    self:StabilizeManagedWisp(wisp)
-end
-
-function ZodiacFloorItemDisplayModule:ScheduleManagedEffect(
-    player,
-    state
-)
-    self:RemoveManagedEffect(player, state)
-    state.pendingWispFrame = Game():GetFrameCount() + 1
-end
-
-function ZodiacFloorItemDisplayModule:ApplyManagedEffect(player, state)
-    local desiredCount = CountZodiacEntries(state.sequence)
-
-    if desiredCount <= 0 or not VALID_EFFECTS[state.effect]
-        or type(player.AddItemWisp) ~= "function"
-    then
-        self:RemoveManagedEffect(player, state)
-        return false
-    end
-
-    -- Saves created by the old implementation may still contain its inert
-    -- TemporaryEffects entry. Remove it once before adopting native item wisps.
-    local legacyCount = state.managedEffectCount or 0
-
-    if legacyCount > 0 then
-        player:GetEffects():RemoveCollectibleEffect(
-            state.effect,
-            legacyCount
-        )
-        state.managedEffectCount = 0
-    end
-
-    local matching = {}
-    local removedWrongEffect = false
-
-    for _, wisp in ipairs(self:FindManagedWisps(player, state)) do
-        local data = wisp:GetData()
-        local effect = data.CharacterEnhanceZodiacEffect or wisp.SubType
-
-        if effect == state.effect and #matching < desiredCount then
-            self:TagManagedWisp(wisp, player, state.effect)
-            matching[#matching + 1] = wisp
-        else
-            self:RetireManagedWisp(wisp)
-            removedWrongEffect = removedWrongEffect or effect ~= state.effect
-        end
-    end
-
-    local frame = Game():GetFrameCount()
-
-    if removedWrongEffect then
-        state.managedWisps = matching
-        state.pendingWispFrame = frame + 1
-        self:RefreshPlayerItems(player)
-        return false
-    end
-
-    if state.pendingWispFrame and frame < state.pendingWispFrame then
-        state.managedWisps = matching
-        return false
-    end
-
-    while #matching < desiredCount do
-        local wisp = player:AddItemWisp(
-            state.effect,
-            player.Position,
-            false
-        )
-
-        if not wisp then
-            break
-        end
-
-        self:TagManagedWisp(wisp, player, state.effect)
-        matching[#matching + 1] = wisp
-    end
-
-    state.managedWisps = matching
-    state.pendingWispFrame = #matching == desiredCount and nil or frame + 1
-    local seedsChanged = self:UpdateManagedWispSeeds(state, matching)
-    self:RefreshPlayerItems(player)
-
-    if seedsChanged and self.RunActive and not self.RestoringGame then
-        self.Context:Save()
-    end
-
-    return #matching == desiredCount
-end
-
-function ZodiacFloorItemDisplayModule:OnFamiliarUpdate(familiar)
-    if self:IsManagedWisp(familiar) then
-        self:StabilizeManagedWisp(familiar)
-    end
-end
-
-function ZodiacFloorItemDisplayModule:OnEntityTakeDamage(entity)
-    local familiar = entity and type(entity.ToFamiliar) == "function"
-        and entity:ToFamiliar()
-        or nil
-
-    if self:IsManagedWisp(familiar) then
-        return false
-    end
-end
-
 function ZodiacFloorItemDisplayModule:AddOwnedCollectible(
     player,
     collectible,
@@ -1148,29 +760,168 @@ function ZodiacFloorItemDisplayModule:RemoveOwnedCollectible(
     )
 end
 
-function ZodiacFloorItemDisplayModule:GetStoredCollectible(state, entry)
-    if entry.kind == "item" then
-        return entry.id
+function ZodiacFloorItemDisplayModule:RemoveAllProxies(player)
+    if not self.ProxyIdsReady then
+        return 0
     end
 
-    if state.storageMode == "zodiac" then
-        return ZODIAC
+    local removed = 0
+    self.MutationDepth = self.MutationDepth + 1
+
+    for proxyId in pairs(self.EffectByProxy) do
+        local count = player:GetCollectibleNum(proxyId, true)
+
+        for _ = 1, count do
+            self:RemoveOwnedCollectible(player, proxyId)
+            removed = removed + 1
+        end
     end
 
-    return self.ProxyByEffect[state.effect]
+    self.MutationDepth = self.MutationDepth - 1
+    return removed
 end
 
-function ZodiacFloorItemDisplayModule:RebuildSequence(
-    player,
-    state,
-    targetMode,
-    targetEffect
-)
-    if not self.ProxyIdsReady or #state.sequence == 0 then
+function ZodiacFloorItemDisplayModule:GetProxyCount(player, effect)
+    local proxyId = self.ProxyByEffect[effect]
+
+    if not proxyId then
+        return 0
+    end
+
+    return player:GetCollectibleNum(proxyId, true)
+end
+
+function ZodiacFloorItemDisplayModule:GetZodiacPool(state, ordinal)
+    local current = 0
+
+    for _, entry in ipairs(state.sequence) do
+        if entry.kind == "zodiac" then
+            current = current + 1
+
+            if current == ordinal then
+                return entry.pool
+            end
+        end
+    end
+
+    return TREASURE_POOL
+end
+
+function ZodiacFloorItemDisplayModule:EnsureMarkers(player, state)
+    local desiredCount = player:GetCollectibleNum(ZODIAC, true)
+    local effect = player:GetZodiacEffect()
+
+    if desiredCount <= 0 or not VALID_EFFECTS[effect] then
+        return self:RemoveAllProxies(player) > 0
+    end
+
+    local correctCount = self:GetProxyCount(player, effect)
+    local totalCount = 0
+
+    for proxyId in pairs(self.EffectByProxy) do
+        totalCount = totalCount
+            + player:GetCollectibleNum(proxyId, true)
+    end
+
+    if correctCount == desiredCount and totalCount == desiredCount then
+        state.storageMode = "display"
         return false
     end
 
-    if targetMode == "proxy" and not self.ProxyByEffect[targetEffect] then
+    self:RemoveAllProxies(player)
+    local proxyId = self.ProxyByEffect[effect]
+    self.MutationDepth = self.MutationDepth + 1
+
+    for ordinal = 1, desiredCount do
+        self:AddOwnedCollectible(
+            player,
+            proxyId,
+            self:GetZodiacPool(state, ordinal)
+        )
+    end
+
+    self.MutationDepth = self.MutationDepth - 1
+    state.storageMode = "display"
+    return true
+end
+
+function ZodiacFloorItemDisplayModule:CaptureLegacySeeds(savedState)
+    local seeds = {}
+
+    for _, seed in ipairs(savedState and savedState.wispSeeds or {}) do
+        seeds[seed] = true
+    end
+
+    return seeds
+end
+
+function ZodiacFloorItemDisplayModule:IsWispOwner(wisp, player)
+    local owner = wisp and wisp.Player
+    return owner ~= nil
+        and self:GetPlayerKey(owner) == self:GetPlayerKey(player)
+end
+
+function ZodiacFloorItemDisplayModule:CleanupLegacyWisps(
+    player,
+    savedState
+)
+    if not Isaac.FindByType or not ENTITY_FAMILIAR or not ITEM_WISP then
+        return 0
+    end
+
+    local seeds = self:CaptureLegacySeeds(savedState)
+    local removed = 0
+
+    for _, entity in ipairs(Isaac.FindByType(
+        ENTITY_FAMILIAR,
+        ITEM_WISP,
+        -1,
+        false,
+        false
+    )) do
+        local wisp = type(entity.ToFamiliar) == "function"
+            and entity:ToFamiliar()
+            or entity
+        local data = wisp and type(wisp.GetData) == "function"
+            and wisp:GetData()
+            or nil
+        local seed = wisp and self:SanitizeInteger(
+            wisp.InitSeed,
+            0,
+            0xFFFFFFFF
+        )
+        local managed = data and data[MANAGED_WISP_TAG] == true
+            or seed and seeds[seed]
+
+        if managed and self:IsWispOwner(wisp, player) then
+            if type(wisp.Kill) == "function" then
+                wisp:Kill()
+            else
+                wisp:Remove()
+            end
+            removed = removed + 1
+        end
+    end
+
+    if removed > 0 then
+        if type(player.AddCacheFlags) == "function" and CacheFlag then
+            player:AddCacheFlags(CacheFlag.CACHE_ALL)
+        end
+        if type(player.EvaluateItems) == "function" then
+            player:EvaluateItems()
+        end
+    end
+
+    return removed
+end
+
+function ZodiacFloorItemDisplayModule:RebuildDisplaySequence(
+    player,
+    state,
+    effect,
+    includeMarkers
+)
+    if #state.sequence == 0 or not VALID_EFFECTS[effect] then
         return false
     end
 
@@ -1179,79 +930,87 @@ function ZodiacFloorItemDisplayModule:RebuildSequence(
     local health, rerollModule = self:CaptureHealth(player)
     self.MutationDepth = self.MutationDepth + 1
 
-    for index = #state.sequence, 1, -1 do
-        local collectible = self:GetStoredCollectible(
-            state,
-            state.sequence[index]
-        )
+    for proxyId in pairs(self.EffectByProxy) do
+        local count = player:GetCollectibleNum(proxyId, true)
 
-        if collectible and player:GetCollectibleNum(collectible, true) > 0 then
+        for _ = 1, count do
+            self:RemoveOwnedCollectible(player, proxyId)
+        end
+    end
+
+    for index = #state.sequence, 1, -1 do
+        local entry = state.sequence[index]
+        local collectible = entry.kind == "zodiac" and ZODIAC or entry.id
+
+        if collectible
+            and player:GetCollectibleNum(collectible, true) > 0
+        then
             self:RemoveOwnedCollectible(player, collectible)
         end
     end
 
-    state.effect = targetEffect or state.effect
-    state.storageMode = targetMode
+    local proxyId = self.ProxyByEffect[effect]
 
     for _, entry in ipairs(state.sequence) do
-        local collectible = entry.kind == "zodiac"
-            and (targetMode == "zodiac"
-                and ZODIAC
-                or self.ProxyByEffect[state.effect])
-            or entry.id
-        self:AddOwnedCollectible(player, collectible, entry.pool)
+        if entry.kind == "zodiac" then
+            self:AddOwnedCollectible(player, ZODIAC, entry.pool)
+
+            if includeMarkers then
+                self:AddOwnedCollectible(player, proxyId, entry.pool)
+            end
+        else
+            self:AddOwnedCollectible(player, entry.id, entry.pool)
+        end
     end
 
     self.MutationDepth = self.MutationDepth - 1
     self:RestoreConsumables(player, consumables)
     self:RestoreHealth(player, health, rerollModule)
+    state.effect = effect
+    state.storageMode = includeMarkers and "display" or "native"
     state.lastCounts = self:CaptureCounts(player)
     return true
 end
 
-function ZodiacFloorItemDisplayModule:SnapshotEffectCounts(player)
-    local result = {}
-    local effects = player:GetEffects()
+function ZodiacFloorItemDisplayModule:AppendZodiacEntries(
+    state,
+    count
+)
+    local added = 0
 
-    for effect in pairs(VALID_EFFECTS) do
-        result[effect] = effects:GetCollectibleEffectNum(effect)
+    for _ = 1, count do
+        if #state.sequence >= MAX_SEQUENCE_LENGTH then
+            break
+        end
+
+        state.sequence[#state.sequence + 1] = {
+            kind = "zodiac",
+            pool = self:ConsumeRecentPool(ZODIAC),
+        }
+        added = added + 1
     end
 
-    return result
+    return added
 end
 
-function ZodiacFloorItemDisplayModule:RemoveNewNativeEffects(
-    player,
-    beforeCounts
+function ZodiacFloorItemDisplayModule:RemoveZodiacEntries(
+    state,
+    count
 )
-    local effects = player:GetEffects()
+    local removed = 0
 
-    for effect in pairs(VALID_EFFECTS) do
-        local before = beforeCounts[effect] or 0
-        local after = effects:GetCollectibleEffectNum(effect)
+    for index = #state.sequence, 1, -1 do
+        if removed >= count then
+            break
+        end
 
-        if after > before then
-            effects:RemoveCollectibleEffect(effect, after - before)
+        if state.sequence[index].kind == "zodiac" then
+            table.remove(state.sequence, index)
+            removed = removed + 1
         end
     end
-end
 
-function ZodiacFloorItemDisplayModule:DetermineFloorEffect(player, poolType)
-    local beforeEffects = self:SnapshotEffectCounts(player)
-    local consumables = self:CaptureConsumables(player)
-    self.MutationDepth = self.MutationDepth + 1
-    self:AddOwnedCollectible(player, ZODIAC, poolType)
-    local effect = player:GetZodiacEffect()
-    self:RemoveOwnedCollectible(player, ZODIAC)
-    self.MutationDepth = self.MutationDepth - 1
-    self:RestoreConsumables(player, consumables)
-    self:RemoveNewNativeEffects(player, beforeEffects)
-
-    if VALID_EFFECTS[effect] then
-        return effect
-    end
-
-    return nil
+    return removed
 end
 
 function ZodiacFloorItemDisplayModule:CreateStateFromZodiac(
@@ -1283,24 +1042,13 @@ function ZodiacFloorItemDisplayModule:CreateStateFromZodiac(
             )
             or {},
         baseline = {},
-        storageMode = "zodiac",
-        managedEffectCount = 0,
-        managedWisps = {},
-        managedWispSeeds = {},
+        storageMode = "native",
         suspendedForReroll = false,
         lastInventoryScanFrame = -1,
-        lastWispScanFrame = -1,
     }
 
-    for _ = 1, zodiacCount do
-        state.sequence[#state.sequence + 1] = {
-            kind = "zodiac",
-            pool = self:ConsumeRecentPool(ZODIAC),
-        }
-    end
-
+    self:AppendZodiacEntries(state, zodiacCount)
     self.PendingPlayers[playerKey] = nil
-
     return state
 end
 
@@ -1312,15 +1060,12 @@ function ZodiacFloorItemDisplayModule:AdoptZodiac(player, state)
     end
 
     local playerIndex = self:GetPlayerIndex(player)
-    local newPools = {}
 
     if playerIndex == nil then
         return false
     end
 
-    if state then
-        self:NormalizeSequence(state)
-    end
+    local changed = false
 
     if not state then
         state = self:CreateStateFromZodiac(
@@ -1334,23 +1079,38 @@ function ZodiacFloorItemDisplayModule:AdoptZodiac(player, state)
         end
 
         self.Players[self:GetPlayerKey(player)] = state
-
-        for index = #state.sequence - zodiacCount + 1, #state.sequence do
-            newPools[#newPools + 1] = state.sequence[index].pool
-        end
+        changed = true
     else
-        self:SyncSequence(player, state)
+        self:NormalizeSequence(state)
+        changed = self:SyncSequence(player, state) or changed
+        local recordedCount = CountZodiacEntries(state.sequence)
 
-        for _ = 1, zodiacCount do
-            if #state.sequence < MAX_SEQUENCE_LENGTH then
-                local poolType = self:ConsumeRecentPool(ZODIAC)
-                state.sequence[#state.sequence + 1] = {
-                    kind = "zodiac",
-                    pool = poolType,
-                }
-                newPools[#newPools + 1] = poolType
-            end
+        if zodiacCount > recordedCount then
+            self:AppendZodiacEntries(state, zodiacCount - recordedCount)
+            changed = true
+        elseif zodiacCount < recordedCount then
+            self:RemoveZodiacEntries(state, recordedCount - zodiacCount)
+            changed = true
         end
+    end
+
+    changed = self:EnsureMarkers(player, state) or changed
+    state.lastCounts = self:CaptureCounts(player)
+
+    if changed and not self.RestoringGame then
+        self.Context:Save()
+    end
+
+    return true
+end
+
+function ZodiacFloorItemDisplayModule:IsInternalNativeReroll(player)
+    return false
+end
+
+function ZodiacFloorItemDisplayModule:RotateFloorEffect(player, state)
+    if state.suspendedForReroll then
+        return false
     end
 
     local effect = player:GetZodiacEffect()
@@ -1359,184 +1119,17 @@ function ZodiacFloorItemDisplayModule:AdoptZodiac(player, state)
         return false
     end
 
-    local consumables = self:CaptureConsumables(player)
-    self.MutationDepth = self.MutationDepth + 1
-
-    for index, poolType in ipairs(newPools) do
-        self:RemoveOwnedCollectible(player, ZODIAC)
-        self:AddOwnedCollectible(
-            player,
-            self.ProxyByEffect[effect],
-            poolType
-        )
-    end
-
-    self.MutationDepth = self.MutationDepth - 1
-    self:RestoreConsumables(player, consumables)
-    state.effect = effect
-    state.storageMode = "proxy"
-    self:ApplyManagedEffect(player, state)
-    state.lastCounts = self:CaptureCounts(player)
-    self.Context:Save()
-    return true
-end
-
-function ZodiacFloorItemDisplayModule:GetProxyCount(player, state)
-    local proxyId = self.ProxyByEffect[state.effect]
-
-    if not proxyId then
-        return 0
-    end
-
-    return player:GetCollectibleNum(proxyId, true)
-end
-
-function ZodiacFloorItemDisplayModule:IsInternalNativeReroll(player)
-    return false
-end
-
-function ZodiacFloorItemDisplayModule:OnPreUseItem(
-    collectibleType,
-    player
-)
-    if collectibleType ~= SACRIFICIAL_ALTAR
-        or not player
-        or not self.RunActive
-        or not self.Context:IsEnabled(SETTING_KEY)
-    then
-        return
-    end
-
-    local state = self.Players[self:GetPlayerKey(player)]
-
-    if state and not state.suspendedForReroll
-        and state.storageMode == "proxy"
-    then
-        local managedCount = #self:FindManagedWisps(player, state)
-
-        if managedCount <= 0 then
-            return
-        end
-
-        local frame = Game():GetFrameCount()
-        local pending = state.altarHalfSoulSuppression
-
-        if pending and pending.frame == frame then
-            pending.count = pending.count + managedCount
-        else
-            state.altarHalfSoulSuppression = {
-                frame = frame,
-                count = managedCount,
-            }
-        end
-
-        -- Vanilla still sacrifices the sign familiar and grants its normal
-        -- Altar reward. Reconcile the carrier afterward; only the extra Half
-        -- Soul Heart caused by our item-wisp implementation is suppressed.
-        state.pendingWispFrame = frame + 1
-    end
-end
-
-function ZodiacFloorItemDisplayModule:GetAltarStateForHeart(pickup)
-    local spawner = pickup and pickup.SpawnerEntity
-    local player = spawner and type(spawner.ToPlayer) == "function"
-        and spawner:ToPlayer()
-        or nil
-
-    if not player and spawner
-        and type(spawner.ToFamiliar) == "function"
-    then
-        local familiar = spawner:ToFamiliar()
-        player = familiar and familiar.Player
-    end
-
-    if player then
-        local state = self.Players[self:GetPlayerKey(player)]
-
-        if state then
-            return state
-        end
-    end
-
-    local candidate = nil
-    local frame = Game():GetFrameCount()
-
-    for _, state in pairs(self.Players) do
-        local pending = state.altarHalfSoulSuppression
-
-        if pending and pending.frame == frame and pending.count > 0 then
-            if candidate then
-                -- Ambiguous co-op ownership: preserve the pickup instead of
-                -- guessing which player's item wisp created it.
-                return nil
-            end
-
-            candidate = state
-        end
-    end
-
-    return candidate
-end
-
-function ZodiacFloorItemDisplayModule:OnHeartPickupInit(pickup)
-    if not pickup or pickup.SubType ~= HALF_SOUL_HEART
-        or not self.RunActive
-        or not self.Context:IsEnabled(SETTING_KEY)
-    then
-        return
-    end
-
-    local state = self:GetAltarStateForHeart(pickup)
-    local pending = state and state.altarHalfSoulSuppression
-
-    if not pending or pending.frame ~= Game():GetFrameCount()
-        or pending.count <= 0
-    then
-        return
-    end
-
-    pending.count = pending.count - 1
-    pickup:Remove()
-end
-
-function ZodiacFloorItemDisplayModule:RestoreStateToZodiac(player, state)
-    self:RemoveManagedEffect(player, state)
-
-    if state.storageMode ~= "zodiac" then
-        self:RebuildSequence(player, state, "zodiac", state.effect)
-    end
-
-    state.storageMode = "zodiac"
-end
-
-function ZodiacFloorItemDisplayModule:RotateFloorEffect(player, state)
-    if state.suspendedForReroll or state.storageMode ~= "proxy" then
-        return false
-    end
-
-    local firstPool = TREASURE_POOL
-
-    for _, entry in ipairs(state.sequence) do
-        if entry.kind == "zodiac" then
-            firstPool = entry.pool
-            break
-        end
-    end
-
-    local effect = self:DetermineFloorEffect(player, firstPool)
-
-    if not effect then
-        return false
-    end
-
     if effect ~= state.effect then
-        self:ScheduleManagedEffect(player, state)
-
-        if not self:RebuildSequence(player, state, "proxy", effect) then
+        if not self:RebuildDisplaySequence(
+            player,
+            state,
+            effect,
+            true
+        ) then
             return false
         end
     else
-        self:ApplyManagedEffect(player, state)
+        self:EnsureMarkers(player, state)
     end
 
     state.effect = effect
@@ -1558,7 +1151,8 @@ function ZodiacFloorItemDisplayModule:PrepareForFullInventoryReroll(player)
         return false
     end
 
-    self:RestoreStateToZodiac(player, state)
+    self:RemoveAllProxies(player)
+    state.storageMode = "native"
     state.suspendedForReroll = true
     state.rerollFrame = Game():GetFrameCount()
     self.Context:Save()
@@ -1573,11 +1167,19 @@ function ZodiacFloorItemDisplayModule:FinishFullInventoryReroll(
         return false
     end
 
-    self:RemoveManagedEffect(player, state)
-    self.Players[self:GetPlayerKey(player)] = nil
-    local zodiacCount = player:GetCollectibleNum(ZODIAC, true)
+    local key = self:GetPlayerKey(player)
+    self:RemoveAllProxies(player)
+    self.Players[key] = nil
+    local playerIndex = self:GetPlayerIndex(player)
 
-    if zodiacCount > 0 then
+    if playerIndex ~= nil then
+        self.PendingPlayers[key] = self:CreatePendingState(
+            player,
+            playerIndex
+        )
+    end
+
+    if player:GetCollectibleNum(ZODIAC, true) > 0 then
         self:AdoptZodiac(player, nil)
     else
         self.Context:Save()
@@ -1586,38 +1188,14 @@ function ZodiacFloorItemDisplayModule:FinishFullInventoryReroll(
     return true
 end
 
-function ZodiacFloorItemDisplayModule:RecoverStrayProxies(player)
-    if not self.ProxyIdsReady then
-        return 0
-    end
-
-    local recovered = 0
-    self.MutationDepth = self.MutationDepth + 1
-
-    for proxyId in pairs(self.EffectByProxy) do
-        local count = player:GetCollectibleNum(proxyId, true)
-
-        for _ = 1, count do
-            self:RemoveOwnedCollectible(player, proxyId)
-            self:AddOwnedCollectible(player, ZODIAC, TREASURE_POOL)
-            recovered = recovered + 1
-        end
-    end
-
-    self.MutationDepth = self.MutationDepth - 1
-    return recovered
-end
-
 function ZodiacFloorItemDisplayModule:RestoreSavedState(
     player,
     playerIndex,
-    savedState
+    savedState,
+    displayEnabled
 )
-    local proxyId = self.ProxyByEffect[savedState.effect]
-    local expectedProxyCount = CountZodiacEntries(savedState.sequence)
-
-    if not proxyId
-        or player:GetCollectibleNum(proxyId, true) < expectedProxyCount
+    if type(savedState) ~= "table"
+        or CountZodiacEntries(savedState.sequence) <= 0
     then
         return nil
     end
@@ -1627,24 +1205,67 @@ function ZodiacFloorItemDisplayModule:RestoreSavedState(
         effect = savedState.effect,
         sequence = savedState.sequence,
         baseline = savedState.baseline,
-        storageMode = "proxy",
-        managedEffectCount = savedState.effectCarrier == "wisp"
-            and 0
-            or expectedProxyCount,
-        managedWisps = {},
-        managedWispSeeds = savedState.wispSeeds or {},
-        needsLegacyWispRecovery = savedState.effectCarrier == "wisp"
-            and #(savedState.wispSeeds or {}) == 0,
+        storageMode = savedState.displayMode == "native"
+            and "display"
+            or "legacyProxy",
         suspendedForReroll = false,
         lastInventoryScanFrame = -1,
-        lastWispScanFrame = -1,
     }
 
     self:NormalizeSequence(state)
+    self:CleanupLegacyWisps(player, savedState)
+    local expectedZodiacCount = CountZodiacEntries(state.sequence)
+    local actualZodiacCount = player:GetCollectibleNum(ZODIAC, true)
+    local legacyProxyCount = self:GetProxyCount(player, state.effect)
+    local rebuiltEffect = nil
 
+    if actualZodiacCount < expectedZodiacCount
+        and legacyProxyCount >= expectedZodiacCount
+    then
+        self.Players[self:GetPlayerKey(player)] = state
+
+        if not self:RebuildDisplaySequence(
+            player,
+            state,
+            state.effect,
+            displayEnabled
+        ) then
+            self.Players[self:GetPlayerKey(player)] = nil
+            return nil
+        end
+
+        rebuiltEffect = state.effect
+        actualZodiacCount = player:GetCollectibleNum(ZODIAC, true)
+    end
+
+    if actualZodiacCount < expectedZodiacCount then
+        return nil
+    end
+
+    local nativeEffect = player:GetZodiacEffect()
+
+    if VALID_EFFECTS[nativeEffect] then
+        state.effect = nativeEffect
+    end
+
+    state.storageMode = displayEnabled and "display" or "native"
     self.Players[self:GetPlayerKey(player)] = state
-    self:RecoverLegacyManagedWisps(player, state)
-    self:ApplyManagedEffect(player, state)
+
+    if displayEnabled then
+        if rebuiltEffect == state.effect then
+            self:EnsureMarkers(player, state)
+        else
+            self:RebuildDisplaySequence(
+                player,
+                state,
+                state.effect,
+                true
+            )
+        end
+    else
+        self:RemoveAllProxies(player)
+    end
+
     state.lastCounts = self:CaptureCounts(player)
     return state
 end
@@ -1657,7 +1278,6 @@ function ZodiacFloorItemDisplayModule:OnGameStarted(isContinued)
     self.PendingPlayers = {}
     self.RecentPools = {}
     self.TrackedCollectibles = nil
-    self.LastInventoryScanFrame = Game():GetFrameCount()
 
     if not self:ResolveProxyIds() then
         self.RestoringGame = false
@@ -1667,27 +1287,33 @@ function ZodiacFloorItemDisplayModule:OnGameStarted(isContinued)
     self:BuildTrackedCollectibles()
     local sanitized = self:SanitizeSavedData(self.SavedData)
     local canRestore = isContinued and sanitized.runSeed == self.RunSeed
+    local displayEnabled = self.Context:IsEnabled(SETTING_KEY)
     local game = Game()
 
     for playerIndex = 0, game:GetNumPlayers() - 1 do
         local player = Isaac.GetPlayer(playerIndex)
-        local state = canRestore
-            and self.Context:IsEnabled(SETTING_KEY)
-            and self:RestoreSavedState(
+        local savedState = canRestore
+            and sanitized.players[tostring(playerIndex)]
+            or nil
+        local state = savedState and self:RestoreSavedState(
             player,
             playerIndex,
-            sanitized.players[tostring(playerIndex)] or {}
+            savedState,
+            displayEnabled
         )
 
         if not state then
-            self:RecoverStrayProxies(player)
+            self:CleanupLegacyWisps(player, savedState)
+            self:RemoveAllProxies(player)
 
-            if self.Context:IsEnabled(SETTING_KEY) then
+            if displayEnabled then
                 if not self:AdoptZodiac(player, nil) then
                     self.PendingPlayers[self:GetPlayerKey(player)]
                         = self:CreatePendingState(player, playerIndex)
                 end
             end
+        elseif not displayEnabled then
+            self.Players[self:GetPlayerKey(player)] = nil
         end
     end
 
@@ -1708,6 +1334,23 @@ function ZodiacFloorItemDisplayModule:UpdateQueuedItem(player, state)
     end
 end
 
+function ZodiacFloorItemDisplayModule:ClearPlayerState(player, state)
+    self:RemoveAllProxies(player)
+    self:CleanupLegacyWisps(player, nil)
+    local key = self:GetPlayerKey(player)
+    self.Players[key] = nil
+    local playerIndex = self:GetPlayerIndex(player)
+
+    if playerIndex ~= nil then
+        self.PendingPlayers[key] = self:CreatePendingState(
+            player,
+            playerIndex
+        )
+    end
+
+    self.Context:Save()
+end
+
 function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
     if not self.RunActive or not player or player:IsDead()
         or not self.ProxyIdsReady
@@ -1720,7 +1363,8 @@ function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
 
     if not self.Context:IsEnabled(SETTING_KEY) then
         if state then
-            self:RestoreStateToZodiac(player, state)
+            self:RemoveAllProxies(player)
+            self:CleanupLegacyWisps(player, nil)
             self.Players[key] = nil
             self.Context:Save()
         end
@@ -1733,14 +1377,21 @@ function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
         return
     end
 
-    if state and state.altarHalfSoulSuppression
-        and Game():GetFrameCount()
-            > state.altarHalfSoulSuppression.frame
-    then
-        state.altarHalfSoulSuppression = nil
+    if state and state.pendingFloorRefresh then
+        if self:RotateFloorEffect(player, state) then
+            return
+        end
+
+        state.pendingFloorRefresh = state.pendingFloorRefresh - 1
+
+        if state.pendingFloorRefresh <= 0 then
+            state.pendingFloorRefresh = nil
+        end
     end
 
-    if player:GetCollectibleNum(ZODIAC, true) > 0 then
+    local zodiacCount = player:GetCollectibleNum(ZODIAC, true)
+
+    if zodiacCount > 0 then
         local pendingState = self.PendingPlayers[key]
 
         if not state and pendingState then
@@ -1750,6 +1401,9 @@ function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
 
         self:AdoptZodiac(player, state)
         state = self.Players[key]
+    elseif state then
+        self:ClearPlayerState(player, state)
+        return
     end
 
     if not state then
@@ -1783,46 +1437,27 @@ function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
     end
 
     self:UpdateQueuedItem(player, state)
-
-    if state.pendingFloorRefresh then
-        if self:RotateFloorEffect(player, state) then
-            return
-        end
-
-        state.pendingFloorRefresh = state.pendingFloorRefresh - 1
-
-        if state.pendingFloorRefresh <= 0 then
-            state.pendingFloorRefresh = nil
-        end
-    end
-
-    local expectedProxyCount = CountZodiacEntries(state.sequence)
-
-    if state.storageMode == "proxy"
-        and self:GetProxyCount(player, state) < expectedProxyCount
-    then
-        self:RemoveManagedEffect(player, state)
-        self.Players[key] = nil
-        self.Context:Save()
-        return
-    end
-
     local frame = Game():GetFrameCount()
-
-    if state.pendingWispFrame
-        or (frame ~= state.lastWispScanFrame
-            and frame % INVENTORY_SCAN_INTERVAL == 0)
-    then
-        state.lastWispScanFrame = frame
-        self:ApplyManagedEffect(player, state)
-    end
 
     if frame ~= state.lastInventoryScanFrame
         and frame % INVENTORY_SCAN_INTERVAL == 0
     then
         state.lastInventoryScanFrame = frame
+        local changed = self:SyncSequence(player, state)
+        local effect = player:GetZodiacEffect()
 
-        if self:SyncSequence(player, state) then
+        if VALID_EFFECTS[effect] and effect ~= state.effect then
+            changed = self:RebuildDisplaySequence(
+                player,
+                state,
+                effect,
+                true
+            ) or changed
+        else
+            changed = self:EnsureMarkers(player, state) or changed
+        end
+
+        if changed then
             self.Context:Save()
         end
     end
@@ -1854,8 +1489,30 @@ function ZodiacFloorItemDisplayModule:OnNewRoom()
         if state and not state.suspendedForReroll
             and not state.pendingFloorRefresh
         then
-            self:ApplyManagedEffect(player, state)
+            local effect = player:GetZodiacEffect()
+            local changed = false
+
+            if VALID_EFFECTS[effect] and effect ~= state.effect then
+                changed = self:RebuildDisplaySequence(
+                    player,
+                    state,
+                    effect,
+                    true
+                )
+            else
+                changed = self:EnsureMarkers(player, state)
+            end
+
+            if changed then
+                self.Context:Save()
+            end
         end
+    end
+end
+
+function ZodiacFloorItemDisplayModule:OnUseCard(card, player)
+    if card == REVERSE_STARS then
+        self:PrepareForFullInventoryReroll(player)
     end
 end
 
@@ -1872,17 +1529,14 @@ function ZodiacFloorItemDisplayModule:OnSettingChanged(value)
         local state = self.Players[key]
 
         if value == false then
-            if state then
-                self:RestoreStateToZodiac(player, state)
-                self.Players[key] = nil
-            else
-                self:RecoverStrayProxies(player)
-            end
+            self:RemoveAllProxies(player)
+            self:CleanupLegacyWisps(player, nil)
+            self.Players[key] = nil
             self.PendingPlayers[key] = nil
         else
-            self:RecoverStrayProxies(player)
+            self:RemoveAllProxies(player)
 
-            if not self:AdoptZodiac(player, nil) then
+            if not self:AdoptZodiac(player, state) then
                 self.PendingPlayers[key] = self:CreatePendingState(
                     player,
                     playerIndex
@@ -1907,8 +1561,7 @@ function ZodiacFloorItemDisplayModule:GetSaveData()
                 effect = state.effect,
                 sequence = state.sequence,
                 baseline = state.baseline,
-                effectCarrier = "wisp",
-                wispSeeds = state.managedWispSeeds,
+                displayMode = "native",
             }
         end
     end
@@ -1920,19 +1573,6 @@ function ZodiacFloorItemDisplayModule:GetSaveData()
 end
 
 function ZodiacFloorItemDisplayModule:OnPreGameExit()
-    if self.RunActive then
-        local game = Game()
-
-        for playerIndex = 0, game:GetNumPlayers() - 1 do
-            local player = Isaac.GetPlayer(playerIndex)
-            local state = self.Players[self:GetPlayerKey(player)]
-
-            if state then
-                self:RemoveManagedEffect(player, state)
-            end
-        end
-    end
-
     self.RunActive = false
 end
 

@@ -422,12 +422,12 @@ local MENU_SETTINGS = {
         zhName = "显示黄道十二宫层效果",
         enName = "Show Zodiac's Floor Item",
         zhInfo = {
-            "灰色道具与实际星座效果按楼层同步。",
-            "My Stuff 同时说明当前效果与黄道十二宫。",
+            "在原版黄道十二宫旁显示无属性灰色道具。",
+            "My Stuff 说明本层星座效果与黄道十二宫。",
         },
         enInfo = {
-            "Syncs the gray tracker and actual sign each floor.",
-            "My Stuff explains both the sign and Zodiac.",
+            "Shows an inert gray item beside native Zodiac.",
+            "My Stuff explains the floor's sign and Zodiac.",
         },
     },
 }

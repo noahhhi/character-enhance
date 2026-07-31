@@ -207,20 +207,20 @@
 <a id="zodiac-floor-item"></a>
 ## Zodiac Floor Item
 
-- After Zodiac is picked up, its position in the right-side item tracker shows
-  a gray item for the current one of its twelve sign effects. The marker updates
-  in place on every new floor, including console `stage` transitions, while the
-  passive inventory keeps its recorded pickup order. The matching sign ability
-  is active at the same time, without replaying health, pickup drops,
-  transformations, or other first-pickup rewards.
+- After Zodiac is picked up, its original tracker icon remains and an inert gray
+  item beside it shows the current one of its twelve sign effects. Vanilla
+  Zodiac alone supplies the matching ability. The gray marker updates in place
+  on every new floor, including console `stage` transitions, while the passive
+  inventory keeps its recorded pickup order without replaying first-pickup
+  rewards.
 - The marker's pause-menu **My Stuff** page lists the current sign's effects,
   followed by a blank line and Zodiac's random-effect/floor-reroll explanation.
   Repentance+ currently mispositions custom death-item thumbnails in the left
   inventory grid, so that small slot is left empty instead of overlapping a
   different item; the page icon and description remain available.
-- Before a supported full-inventory reroll, the marker becomes Zodiac again so
-  vanilla reroll pools and behavior still apply. If Zodiac survives or is rolled
-  again, the current floor marker resumes automatically.
+- Before a supported full-inventory reroll or Reverse Stars, the inert marker is
+  removed so only the real Zodiac participates. If Zodiac remains afterward,
+  the current floor marker returns automatically.
 
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
