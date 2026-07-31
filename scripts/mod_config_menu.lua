@@ -319,6 +319,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "lostSoulWhiteFireFix",
+        group = "general",
+        zhName = "迷失幽魂白火免伤修复",
+        enName = "Lost Soul White Fire Fix",
+        zhInfo = {
+            "白色火堆不再伤害迷失幽魂。",
+            "玩家触火获得游魂诅咒的行为保持原版。",
+        },
+        enInfo = {
+            "White Fire Places cannot damage Lost Soul.",
+            "Players still enter the Lost form as normal.",
+        },
+    },
+    {
         key = "heldItemProtection",
         group = "general",
         zhName = "拾取动画修复",
