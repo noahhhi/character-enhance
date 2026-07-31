@@ -28,6 +28,22 @@ function LostSoulWhiteFireModule.New(context)
         FAMILIAR_TYPE
     )
 
+    context.Mod:AddCallback(
+        ModCallbacks.MC_PRE_FAMILIAR_COLLISION,
+        function(_, familiar, collider, low)
+            return self:OnPreFamiliarCollision(familiar, collider, low)
+        end,
+        LOST_SOUL_VARIANT
+    )
+
+    context.Mod:AddCallback(
+        ModCallbacks.MC_PRE_NPC_COLLISION,
+        function(_, npc, collider, low)
+            return self:OnPreNpcCollision(npc, collider, low)
+        end,
+        FIREPLACE_TYPE
+    )
+
     return self
 end
 
@@ -38,13 +54,18 @@ function LostSoulWhiteFireModule:IsLostSoul(entity)
         and entity.SubType == LOST_SOUL_SUBTYPE
 end
 
+function LostSoulWhiteFireModule:IsWhiteFire(entity)
+    return entity
+        and entity.Type == FIREPLACE_TYPE
+        and entity.Variant == WHITE_FIRE_VARIANT
+        and entity.SubType == WHITE_FIRE_SUBTYPE
+end
+
 function LostSoulWhiteFireModule:IsWhiteFireSource(source)
     local entity = source and source.Entity
 
     if entity then
-        return entity.Type == FIREPLACE_TYPE
-            and entity.Variant == WHITE_FIRE_VARIANT
-            and entity.SubType == WHITE_FIRE_SUBTYPE
+        return self:IsWhiteFire(entity)
     end
 
     -- EntityRef retains Type and Variant if the live pointer disappears. White
@@ -53,6 +74,31 @@ function LostSoulWhiteFireModule:IsWhiteFireSource(source)
     return source
         and source.Type == FIREPLACE_TYPE
         and source.Variant == WHITE_FIRE_VARIANT
+end
+
+function LostSoulWhiteFireModule:OnPreFamiliarCollision(familiar, collider, low)
+    if self.Context:IsEnabled(SETTING_KEY)
+        and self:IsLostSoul(familiar)
+        and self:IsWhiteFire(collider)
+    then
+        -- White Fire Places kill Lost Soul in their internal collision path,
+        -- before a normal fireplace EntityRef reaches MC_ENTITY_TAKE_DMG.
+        -- Returning a boolean skips that internal code; false also avoids
+        -- applying an unrelated physical collision response to the familiar.
+        return false
+    end
+end
+
+function LostSoulWhiteFireModule:OnPreNpcCollision(npc, collider, low)
+    if self.Context:IsEnabled(SETTING_KEY)
+        and self:IsWhiteFire(npc)
+        and self:IsLostSoul(collider)
+    then
+        -- Repentance+ 1.9.7.15 dispatches this contact from the White Fire
+        -- Place's NPC collision path rather than Lost Soul's familiar path.
+        -- Returning false skips the fireplace's internal kill response.
+        return false
+    end
 end
 
 function LostSoulWhiteFireModule:OnEntityTakeDamage(
