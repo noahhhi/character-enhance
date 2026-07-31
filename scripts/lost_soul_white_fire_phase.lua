@@ -18,6 +18,8 @@ local WHITE_FIRE_VARIANT = 4
 local ANY_SUBTYPE = -1
 local PHASE_MARGIN = 16
 local MANTLE_ANIMATION = "Mantle"
+local MANTLE_GRANT_VOLUME = 0.35
+local MANTLE_GRANT_PITCH = 1.5
 local HOLY_MANTLE_EFFECT = "gfx/1000.016_poof02_holymantle.anm2"
 
 function LostSoulWhiteFireModule.New(context)
@@ -137,12 +139,20 @@ end
 
 function LostSoulWhiteFireModule:GrantMantle(familiar)
     if not self.Context:IsEnabled(MANTLE_SETTING_KEY) then
-        return
+        return false
     end
 
     local data = self:GetData(familiar)
+
+    if data[MANTLE_DATA_KEY] == true then
+        self:EnsureMantleVisual(familiar)
+        return false
+    end
+
     data[MANTLE_DATA_KEY] = true
     self:EnsureMantleVisual(familiar)
+    self:PlayMantleGrant()
+    return true
 end
 
 function LostSoulWhiteFireModule:OnWhiteFireContact(familiar)
@@ -157,6 +167,18 @@ end
 
 function LostSoulWhiteFireModule:HasMantle(familiar)
     return self:GetData(familiar)[MANTLE_DATA_KEY] == true
+end
+
+function LostSoulWhiteFireModule:PlayMantleGrant()
+    if self.Sfx and SoundEffect and SoundEffect.SOUND_CHOIR_UNLOCK then
+        self.Sfx:Play(
+            SoundEffect.SOUND_CHOIR_UNLOCK,
+            MANTLE_GRANT_VOLUME,
+            0,
+            false,
+            MANTLE_GRANT_PITCH
+        )
+    end
 end
 
 function LostSoulWhiteFireModule:EnsureMantleVisual(familiar)

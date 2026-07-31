@@ -338,11 +338,11 @@ local MENU_SETTINGS = {
         zhName = "  白火给予神圣屏障",
         enName = "  White Fire Grants Mantle",
         zhInfo = {
-            "接触白火时，迷失幽魂获得可见的神圣屏障。",
+            "接触白火获得屏障，并播放短促轻声圣歌。",
             "下一次其他伤害会消耗；白火不会。",
         },
         enInfo = {
-            "White fire grants one visible Holy Mantle.",
+            "White fire grants a Mantle with a soft choir.",
             "Next other hit uses it; white fire does not.",
         },
     },
