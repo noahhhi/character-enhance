@@ -10,7 +10,7 @@ local LOST_SOUL_VARIANT = FamiliarVariant.LOST_SOUL
 local LOST_SOUL_SUBTYPE = 0
 local FIREPLACE_TYPE = EntityType.ENTITY_FIREPLACE
 local WHITE_FIRE_VARIANT = 4
-local WHITE_FIRE_SUBTYPE = 0
+local ANY_SUBTYPE = -1
 local OFFSCREEN_POSITION = Vector(-1000000, -1000000)
 local HOLY_MANTLE_EFFECT = "gfx/1000.016_poof02_holymantle.anm2"
 
@@ -97,7 +97,6 @@ function LostSoulWhiteFireModule:IsWhiteFire(entity)
     return entity
         and entity.Type == FIREPLACE_TYPE
         and entity.Variant == WHITE_FIRE_VARIANT
-        and entity.SubType == WHITE_FIRE_SUBTYPE
 end
 
 function LostSoulWhiteFireModule:IsLiveWhiteFire(entity)
@@ -119,9 +118,10 @@ function LostSoulWhiteFireModule:IsWhiteFireSource(source)
         return self:IsWhiteFire(entity)
     end
 
-    -- EntityRef retains Type and Variant if the live pointer disappears. White
-    -- Fire Places have no nonzero subtype, so those fields still identify the
-    -- vanilla 33.4.0 source without broadening this to other fireplaces.
+    -- EntityRef retains Type and Variant if the live pointer disappears.
+    -- White Fire Places spawn as 33.4.0 but change their runtime subtype while
+    -- active (observed as 33.4.2 in Repentance+ 1.9.7.15), so Type and Variant
+    -- are the stable identity fields.
     return source
         and source.Type == FIREPLACE_TYPE
         and source.Variant == WHITE_FIRE_VARIANT
@@ -220,7 +220,7 @@ function LostSoulWhiteFireModule:FindTouchingWhiteFire(familiar)
     local fires = Isaac.FindByType(
         FIREPLACE_TYPE,
         WHITE_FIRE_VARIANT,
-        WHITE_FIRE_SUBTYPE,
+        ANY_SUBTYPE,
         false,
         false
     )
