@@ -19,7 +19,8 @@ local NO_GRID_COLLISION = EntityGridCollisionClass
     and EntityGridCollisionClass.GRIDCOLL_NONE
 local WISP_FIRE_COOLDOWN = 2147483647
 local SACRIFICIAL_ALTAR = CollectibleType.COLLECTIBLE_SACRIFICIAL_ALTAR
-local SACRIFICIAL_ALTAR_REPLAY_DELAY = 2
+local HEART_PICKUP = PickupVariant.PICKUP_HEART
+local HALF_SOUL_HEART = HeartSubType.HEART_HALF_SOUL
 
 local EFFECT_DEFINITIONS = {
     {
@@ -183,23 +184,16 @@ function ZodiacFloorItemDisplayModule.New(context)
 
     context.Mod:AddCallback(
         ModCallbacks.MC_PRE_USE_ITEM,
-        function(
-            _,
-            collectibleType,
-            _,
-            player,
-            useFlags,
-            activeSlot,
-            varData
-        )
-            return self:OnPreUseItem(
-                collectibleType,
-                player,
-                useFlags,
-                activeSlot,
-                varData
-            )
+        function(_, collectibleType, _, player)
+            self:OnPreUseItem(collectibleType, player)
         end
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_PICKUP_INIT,
+        function(_, pickup)
+            self:OnHeartPickupInit(pickup)
+        end,
+        HEART_PICKUP
     )
 
     local poolCallback = function(
@@ -1403,10 +1397,7 @@ end
 
 function ZodiacFloorItemDisplayModule:OnPreUseItem(
     collectibleType,
-    player,
-    useFlags,
-    activeSlot,
-    varData
+    player
 )
     if collectibleType ~= SACRIFICIAL_ALTAR
         or not player
@@ -1421,60 +1412,91 @@ function ZodiacFloorItemDisplayModule:OnPreUseItem(
     if state and not state.suspendedForReroll
         and state.storageMode == "proxy"
     then
-        if state.replayingSacrificialAltar then
+        local managedCount = #self:FindManagedWisps(player, state)
+
+        if managedCount <= 0 then
             return
         end
 
-        if state.pendingSacrificialAltar then
-            return true
+        local frame = Game():GetFrameCount()
+        local pending = state.altarHalfSoulSuppression
+
+        if pending and pending.frame == frame then
+            pending.count = pending.count + managedCount
+        else
+            state.altarHalfSoulSuppression = {
+                frame = frame,
+                count = managedCount,
+            }
         end
 
-        -- Sacrificial Altar has already cached item-wisp ownership by the time
-        -- MC_PRE_USE_ITEM runs. Cancel this invocation, retire only our hidden
-        -- sign carriers through the native Kill path, then replay the same
-        -- vanilla use on the next frame after ownership has settled.
-        self:ScheduleManagedEffect(player, state)
-        state.pendingSacrificialAltar = {
-            frame = Game():GetFrameCount(),
-            useFlags = tonumber(useFlags) or 0,
-            activeSlot = tonumber(activeSlot) or -1,
-            varData = tonumber(varData) or 0,
-        }
-        return true
+        -- Vanilla still sacrifices the sign familiar and grants its normal
+        -- Altar reward. Reconcile the carrier afterward; only the extra Half
+        -- Soul Heart caused by our item-wisp implementation is suppressed.
+        state.pendingWispFrame = frame + 1
     end
 end
 
-function ZodiacFloorItemDisplayModule:ReplaySacrificialAltar(player, state)
-    local pending = state.pendingSacrificialAltar
+function ZodiacFloorItemDisplayModule:GetAltarStateForHeart(pickup)
+    local spawner = pickup and pickup.SpawnerEntity
+    local player = spawner and type(spawner.ToPlayer) == "function"
+        and spawner:ToPlayer()
+        or nil
 
-    if not pending then
-        return false
-    end
-
-    if Game():GetFrameCount()
-        < (pending.frame or -1) + SACRIFICIAL_ALTAR_REPLAY_DELAY
+    if not player and spawner
+        and type(spawner.ToFamiliar) == "function"
     then
-        -- Keep normal reconciliation from recreating the carrier during the
-        -- ownership-cleanup frame.
-        return true
+        local familiar = spawner:ToFamiliar()
+        player = familiar and familiar.Player
     end
 
-    state.pendingSacrificialAltar = nil
-    state.replayingSacrificialAltar = true
-    player:UseActiveItem(
-        SACRIFICIAL_ALTAR,
-        pending.useFlags,
-        pending.activeSlot,
-        pending.varData
-    )
-    state.replayingSacrificialAltar = false
+    if player then
+        local state = self.Players[self:GetPlayerKey(player)]
 
-    -- A killed item wisp remains in vanilla's modified-collectible ownership
-    -- until the following entity cleanup. Do not replay during that cleanup
-    -- frame, and do not recreate the carrier in the later altar frame. It
-    -- returns on the following player-effect update.
-    state.pendingWispFrame = Game():GetFrameCount() + 1
-    return true
+        if state then
+            return state
+        end
+    end
+
+    local candidate = nil
+    local frame = Game():GetFrameCount()
+
+    for _, state in pairs(self.Players) do
+        local pending = state.altarHalfSoulSuppression
+
+        if pending and pending.frame == frame and pending.count > 0 then
+            if candidate then
+                -- Ambiguous co-op ownership: preserve the pickup instead of
+                -- guessing which player's item wisp created it.
+                return nil
+            end
+
+            candidate = state
+        end
+    end
+
+    return candidate
+end
+
+function ZodiacFloorItemDisplayModule:OnHeartPickupInit(pickup)
+    if not pickup or pickup.SubType ~= HALF_SOUL_HEART
+        or not self.RunActive
+        or not self.Context:IsEnabled(SETTING_KEY)
+    then
+        return
+    end
+
+    local state = self:GetAltarStateForHeart(pickup)
+    local pending = state and state.altarHalfSoulSuppression
+
+    if not pending or pending.frame ~= Game():GetFrameCount()
+        or pending.count <= 0
+    then
+        return
+    end
+
+    pending.count = pending.count - 1
+    pickup:Remove()
 end
 
 function ZodiacFloorItemDisplayModule:RestoreStateToZodiac(player, state)
@@ -1711,8 +1733,11 @@ function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
         return
     end
 
-    if state and self:ReplaySacrificialAltar(player, state) then
-        return
+    if state and state.altarHalfSoulSuppression
+        and Game():GetFrameCount()
+            > state.altarHalfSoulSuppression.frame
+    then
+        state.altarHalfSoulSuppression = nil
     end
 
     if player:GetCollectibleNum(ZODIAC, true) > 0 then
