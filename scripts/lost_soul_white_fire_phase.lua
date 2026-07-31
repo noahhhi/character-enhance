@@ -18,7 +18,7 @@ local WHITE_FIRE_VARIANT = 4
 local ANY_SUBTYPE = -1
 local PHASE_MARGIN = 16
 local MANTLE_ANIMATION = "Mantle"
-local MANTLE_GRANT_VOLUME = 0.35
+local MANTLE_GRANT_VOLUME = 1
 local MANTLE_GRANT_PITCH = 1.5
 local HOLY_MANTLE_EFFECT = "gfx/1000.016_poof02_holymantle.anm2"
 
