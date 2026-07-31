@@ -1,0 +1,87 @@
+<collectibles>
+    <collectible id="1">
+        <info text="-0.3 speed"/>
+        <info text="While in a room with enemies, Isaac gains a stacking speed bonus over time"/>
+        <info text="Once per room, when maximum speed is reached, Isaac gains invincibility for 5 seconds"/>
+        <info text="While invincible, Isaac deals contact damage but tears are disabled"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="2">
+        <info text="+0.25 speed"/>
+        <info text="When moving fast enough, running into enemies deals contact damage and prevents contact damage to Isaac"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="3">
+        <info text="After taking damage, all additional damage in the room is reduced to 1/2 heart"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="4">
+        <info text="Isaac can break most obstacles by walking over them"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="5">
+        <info text="Chance when taking damage to activate a shield for 10 seconds"/>
+        <info text="Chance increases with luck"/>
+        <info text="Converts negative pill effects into positive ones"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="6">
+        <info text="Stat upgrades are balanced among all stats"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="7">
+        <info text="Grants poison tears"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="8">
+        <info text="+0.2 speed"/>
+        <info text="Grants piercing tears"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="9">
+        <info text="+1 max health"/>
+        <info text="+0.1 speed"/>
+        <info text="+0.5 fire rate"/>
+        <info text="+0.5 damage"/>
+        <info text="+0.75 range"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="10">
+        <info text="Leaves a trail of creep that deals 66% of Isaac's damage and copies his tear effects"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="11">
+        <info text="+0.5 fire rate"/>
+        <info text="+0.12 tear size"/>
+        <info text="Increased knockback"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+    <collectible id="12">
+        <info text="Familiar that is bound to Isaac and attacks nearby enemies"/>
+        <info text=" "/>
+        <info text="Grants 1 random Zodiac item effect"/>
+        <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
+    </collectible>
+</collectibles>

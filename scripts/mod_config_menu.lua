@@ -416,6 +416,20 @@ local MENU_SETTINGS = {
             "Built-in descriptions and the HUD keep the name.",
         },
     },
+    {
+        key = "zodiacFloorItemDisplay",
+        group = "general",
+        zhName = "显示黄道十二宫层效果",
+        enName = "Show Zodiac's Floor Item",
+        zhInfo = {
+            "在原版黄道十二宫旁显示无属性灰色道具。",
+            "My Stuff 说明本层星座效果与黄道十二宫。",
+        },
+        enInfo = {
+            "Shows an inert gray item beside native Zodiac.",
+            "My Stuff explains the floor's sign and Zodiac.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)

@@ -28,6 +28,7 @@
   <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
   <a href="#ocular-rift-sound-fix">Ocular Rift Sound Fix</a> •
   <a href="#pill-rewind-fix">Pill Rewind Fix</a> •
+  <a href="#zodiac-floor-item">Zodiac Floor Item</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
 </p>
@@ -203,6 +204,24 @@
   its effect identified in the built-in Item Descriptions and the bottom-right
   HUD instead of changing it back to `???`.
 
+<a id="zodiac-floor-item"></a>
+## Zodiac Floor Item
+
+- After Zodiac is picked up, its original tracker icon remains and an inert gray
+  item beside it shows the current one of its twelve sign effects. Vanilla
+  Zodiac alone supplies the matching ability. The gray marker updates in place
+  on every new floor, including console `stage` transitions, while the passive
+  inventory keeps its recorded pickup order without replaying first-pickup
+  rewards.
+- The marker's pause-menu **My Stuff** page lists the current sign's effects,
+  followed by a blank line and Zodiac's random-effect/floor-reroll explanation.
+  Repentance+ currently mispositions custom death-item thumbnails in the left
+  inventory grid, so that small slot is left empty instead of overlapping a
+  different item; the page icon and description remain available.
+- Before a supported full-inventory reroll or Reverse Stars, the inert marker is
+  removed so only the real Zodiac participates. If Zodiac remains afterward,
+  the current floor marker returns automatically.
+
 <a id="mod-config-menu"></a>
 ## [Mod Config Menu Impure](https://steamcommunity.com/sharedfiles/filedetails/?id=3701683951)
 
@@ -210,7 +229,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All twenty-four gameplay settings remain independently configurable:
+All twenty-five gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. C Section Incubus Animation Fix
@@ -222,20 +241,21 @@ All twenty-four gameplay settings remain independently configurable:
 8. Kid's Drawing Form Fix
 9. Ocular Rift Sound Fix
 10. Pill Rewind Fix
-11. Eden Starting Passive Choice
-12. Eden's Blessing Choice
-13. Starting Wooden Cross
-14. Blue Baby Deal Prices
-15. Poop Queue Overflow Fix
-16. Keep Health on Reroll
-17. Keep Absorbed Stats
-18. Reveal Pills with Rerolled PHD
-19. Esau Jr. Pickup Effects
-20. TMTRAINER Reroll Chance
-21. Double Soul Charges
-22. Soul Charge Shield
-23. Shield Effects
-24. Gello Wisp Orbit Fix
+11. Show Zodiac's Floor Item
+12. Eden Starting Passive Choice
+13. Eden's Blessing Choice
+14. Starting Wooden Cross
+15. Blue Baby Deal Prices
+16. Poop Queue Overflow Fix
+17. Keep Health on Reroll
+18. Keep Absorbed Stats
+19. Reveal Pills with Rerolled PHD
+20. Esau Jr. Pickup Effects
+21. TMTRAINER Reroll Chance
+22. Double Soul Charges
+23. Soul Charge Shield
+24. Shield Effects
+25. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `Eden`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu

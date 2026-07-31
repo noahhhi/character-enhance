@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.15.0"
+local VERSION = "1.16.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -23,6 +23,7 @@ local DEFAULT_SETTINGS = {
     kidsDrawingFormFix = true,
     ocularRiftSoundFix = true,
     pillRewindIdentification = true,
+    zodiacFloorItemDisplay = true,
     edenStartingItemChoice = true,
     edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
@@ -199,6 +200,9 @@ local OcularRiftSoundModule = include("scripts/ocular_rift_sound")
 local PillRewindIdentificationModule = include(
     "scripts/pill_rewind_identification"
 )
+local ZodiacFloorItemDisplayModule = include(
+    "scripts/zodiac_floor_item_display"
+)
 local EdenBlessingDuplicatesModule = include(
     "scripts/eden_blessing_duplicates"
 )
@@ -290,6 +294,10 @@ Context:RegisterModule(
     "pillRewindIdentification",
     PillRewindIdentificationModule.New(Context)
 )
+Context:RegisterModule(
+    "zodiacFloorItemDisplay",
+    ZodiacFloorItemDisplayModule.New(Context)
+)
 local edenChoicesModule = EdenBlessingDuplicatesModule.New(Context)
 Context:RegisterModule(
     "edenBlessingDuplicateFix",
@@ -309,6 +317,7 @@ if Game():GetFrameCount() > 0 then
         "familiarCapacity",
         "kidsDrawingFormFix",
         "pillRewindIdentification",
+        "zodiacFloorItemDisplay",
     }) do
         local module = Context.Modules[moduleKey]
 
