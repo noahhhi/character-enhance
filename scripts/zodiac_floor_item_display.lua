@@ -3,7 +3,6 @@ ZodiacFloorItemDisplayModule.__index = ZodiacFloorItemDisplayModule
 
 local SETTING_KEY = "zodiacFloorItemDisplay"
 local ZODIAC = CollectibleType.COLLECTIBLE_ZODIAC
-local D4 = CollectibleType.COLLECTIBLE_D4
 local PRIMARY_SLOT = ActiveSlot.SLOT_PRIMARY
 local PASSIVE = ItemType.ITEM_PASSIVE
 local FAMILIAR = ItemType.ITEM_FAMILIAR
@@ -79,6 +78,24 @@ local function CopyCounts(source)
     return result
 end
 
+local function CopySequence(source, maximumLength)
+    local result = {}
+
+    for _, entry in ipairs(source or {}) do
+        if maximumLength and #result >= maximumLength then
+            break
+        end
+
+        result[#result + 1] = {
+            kind = entry.kind,
+            id = entry.id,
+            pool = entry.pool,
+        }
+    end
+
+    return result
+end
+
 local function CountZodiacEntries(sequence)
     local count = 0
 
@@ -98,17 +115,15 @@ function ZodiacFloorItemDisplayModule.New(context)
         RunSeed = nil,
         RunActive = false,
         Players = {},
+        PendingPlayers = {},
         TrackedCollectibles = nil,
         ProxyByEffect = {},
         EffectByProxy = {},
         ProxyIdsReady = false,
         RecentPools = {},
         MutationDepth = 0,
-        NativeReplacement = nil,
-        NativeRerollPlayerKey = nil,
         LastInventoryScanFrame = -1,
         MissingProxyWarningLogged = false,
-        NativeRerollWarningLogged = false,
     }, ZodiacFloorItemDisplayModule)
 
     context.Mod:AddCallback(
@@ -385,6 +400,76 @@ function ZodiacFloorItemDisplayModule:CaptureCounts(player)
     return counts
 end
 
+function ZodiacFloorItemDisplayModule:NormalizeSequence(state)
+    local baseline = state.baseline or {}
+
+    if next(baseline) == nil then
+        state.baseline = {}
+        return
+    end
+
+    self:BuildTrackedCollectibles()
+    local sequence = {}
+    local originalSequence = state.sequence or {}
+    local prefixLimit = math.max(
+        0,
+        MAX_SEQUENCE_LENGTH - #originalSequence
+    )
+
+    -- Older saves only stored counts for items owned before Zodiac. Their
+    -- native History order is not exposed by the current standard API, so
+    -- migrate them once in stable collectible order ahead of the marker.
+    for _, collectible in ipairs(self.TrackedCollectibles) do
+        for _ = 1, baseline[collectible] or 0 do
+            if #sequence < prefixLimit then
+                sequence[#sequence + 1] = {
+                    kind = "item",
+                    id = collectible,
+                    pool = TREASURE_POOL,
+                }
+            end
+        end
+    end
+
+    for _, entry in ipairs(originalSequence) do
+        if #sequence < MAX_SEQUENCE_LENGTH then
+            sequence[#sequence + 1] = entry
+        end
+    end
+
+    state.sequence = sequence
+    state.baseline = {}
+end
+
+function ZodiacFloorItemDisplayModule:CreatePendingState(
+    player,
+    playerIndex
+)
+    local state = {
+        playerIndex = playerIndex,
+        sequence = {},
+        baseline = {},
+        suspendedForReroll = false,
+        lastInventoryScanFrame = -1,
+    }
+    local counts = self:CaptureCounts(player)
+
+    for _, collectible in ipairs(self.TrackedCollectibles) do
+        for _ = 1, counts[collectible] or 0 do
+            if #state.sequence < MAX_SEQUENCE_LENGTH then
+                state.sequence[#state.sequence + 1] = {
+                    kind = "item",
+                    id = collectible,
+                    pool = TREASURE_POOL,
+                }
+            end
+        end
+    end
+
+    state.lastCounts = counts
+    return state
+end
+
 function ZodiacFloorItemDisplayModule:CaptureConsumables(player)
     return {
         coins = player:GetNumCoins(),
@@ -444,13 +529,6 @@ function ZodiacFloorItemDisplayModule:OnPostGetCollectible(
     _,
     seed
 )
-    local nativeReplacement = self.NativeReplacement
-
-    if nativeReplacement and nativeReplacement.remaining > 0 then
-        nativeReplacement.remaining = nativeReplacement.remaining - 1
-        return nativeReplacement.collectible
-    end
-
     if not self.RunActive or self.MutationDepth > 0
         or type(selectedCollectible) ~= "number"
         or selectedCollectible <= 0
@@ -777,11 +855,24 @@ function ZodiacFloorItemDisplayModule:CreateStateFromZodiac(
         return nil
     end
 
+    local playerKey = self:GetPlayerKey(player)
+    local pendingState = self.PendingPlayers[playerKey]
+
+    if pendingState then
+        self:UpdateQueuedItem(player, pendingState)
+        self:SyncSequence(player, pendingState)
+    end
+
     local state = {
         playerIndex = playerIndex,
         effect = effect,
-        sequence = {},
-        baseline = self:CaptureCounts(player),
+        sequence = pendingState
+            and CopySequence(
+                pendingState.sequence,
+                math.max(0, MAX_SEQUENCE_LENGTH - zodiacCount)
+            )
+            or {},
+        baseline = {},
         storageMode = "zodiac",
         managedEffectCount = 0,
         suspendedForReroll = false,
@@ -794,6 +885,8 @@ function ZodiacFloorItemDisplayModule:CreateStateFromZodiac(
             pool = self:ConsumeRecentPool(ZODIAC),
         }
     end
+
+    self.PendingPlayers[playerKey] = nil
 
     return state
 end
@@ -810,6 +903,10 @@ function ZodiacFloorItemDisplayModule:AdoptZodiac(player, state)
 
     if playerIndex == nil then
         return false
+    end
+
+    if state then
+        self:NormalizeSequence(state)
     end
 
     if not state then
@@ -882,168 +979,7 @@ function ZodiacFloorItemDisplayModule:GetProxyCount(player, state)
 end
 
 function ZodiacFloorItemDisplayModule:IsInternalNativeReroll(player)
-    return player ~= nil
-        and self.NativeRerollPlayerKey == self:GetPlayerKey(player)
-end
-
-function ZodiacFloorItemDisplayModule:BuildRestorePools(state, counts)
-    local pools = {}
-
-    for collectible, count in pairs(counts) do
-        pools[collectible] = {}
-
-        for _ = 1, count do
-            pools[collectible][#pools[collectible] + 1] = TREASURE_POOL
-        end
-    end
-
-    local seen = {}
-
-    for _, entry in ipairs(state.sequence) do
-        if entry.kind == "item" and pools[entry.id] then
-            seen[entry.id] = (seen[entry.id] or 0) + 1
-            local baselineCount = state.baseline[entry.id] or 0
-            local poolIndex = baselineCount + seen[entry.id]
-
-            if pools[entry.id][poolIndex] then
-                pools[entry.id][poolIndex] = entry.pool
-            end
-        end
-    end
-
-    return pools
-end
-
-function ZodiacFloorItemDisplayModule:RemoveTrueItems(player, counts)
-    for index = #self.TrackedCollectibles, 1, -1 do
-        local collectible = self.TrackedCollectibles[index]
-
-        for _ = 1, counts[collectible] or 0 do
-            if player:GetCollectibleNum(collectible, true) > 0 then
-                self:RemoveOwnedCollectible(player, collectible)
-            end
-        end
-    end
-end
-
-function ZodiacFloorItemDisplayModule:RestoreTrueItems(
-    player,
-    counts,
-    pools
-)
-    for _, collectible in ipairs(self.TrackedCollectibles) do
-        for copy = 1, counts[collectible] or 0 do
-            self:AddOwnedCollectible(
-                player,
-                collectible,
-                pools[collectible] and pools[collectible][copy]
-            )
-        end
-    end
-end
-
-function ZodiacFloorItemDisplayModule:RemoveAllProxyItems(player)
-    for proxyId in pairs(self.EffectByProxy) do
-        local count = player:GetCollectibleNum(proxyId, true)
-
-        for _ = 1, count do
-            self:RemoveOwnedCollectible(player, proxyId)
-        end
-    end
-end
-
-function ZodiacFloorItemDisplayModule:ReplaceProxyWithNativeReroll(
-    player,
-    state,
-    targetEffect
-)
-    local targetProxy = self.ProxyByEffect[targetEffect]
-    local zodiacCount = CountZodiacEntries(state.sequence)
-
-    if not targetProxy or zodiacCount <= 0 then
-        return false
-    end
-
-    self:SyncSequence(player, state)
-    local trueItems = self:CaptureCounts(player)
-    local restorePools = self:BuildRestorePools(state, trueItems)
-    local consumables = self:CaptureConsumables(player)
-    local health, rerollModule = self:CaptureHealth(player)
-    local effects = player:GetEffects()
-    local d4EffectBefore = effects:GetCollectibleEffectNum(D4)
-
-    self:RemoveManagedEffect(player, state)
-    self.MutationDepth = self.MutationDepth + 1
-    self:RemoveTrueItems(player, trueItems)
-    local internalStats = rerollModule
-        and rerollModule.CaptureInternalRerollStats
-        and rerollModule:CaptureInternalRerollStats(player)
-    self.NativeReplacement = {
-        collectible = targetProxy,
-        remaining = zodiacCount,
-    }
-    self.NativeRerollPlayerKey = self:GetPlayerKey(player)
-
-    local ok = pcall(
-        player.UseActiveItem,
-        player,
-        D4,
-        false,
-        true,
-        true,
-        false,
-        -1,
-        0
-    )
-
-    self.NativeReplacement = nil
-    self.NativeRerollPlayerKey = nil
-    local d4EffectAfter = effects:GetCollectibleEffectNum(D4)
-
-    if d4EffectAfter > d4EffectBefore then
-        effects:RemoveCollectibleEffect(
-            D4,
-            d4EffectAfter - d4EffectBefore
-        )
-    end
-
-    if rerollModule and rerollModule.RestoreInternalRerollStats then
-        rerollModule:RestoreInternalRerollStats(player, internalStats)
-    end
-
-    local replacedInPlace = ok
-        and player:GetCollectibleNum(targetProxy, true) == zodiacCount
-
-    if not replacedInPlace then
-        -- If another mod cancels the internal D4 or the native reroll rejects
-        -- the marker, keep gameplay correct even though History cannot be
-        -- guaranteed to retain the old slot on that floor.
-        self:RemoveTrueItems(player, self:CaptureCounts(player))
-        self:RemoveAllProxyItems(player)
-
-        for _, entry in ipairs(state.sequence) do
-            if entry.kind == "zodiac" then
-                self:AddOwnedCollectible(player, targetProxy, entry.pool)
-            end
-        end
-
-        if not self.NativeRerollWarningLogged then
-            Isaac.DebugString(
-                "Character Enhance: native Zodiac marker reroll fell back"
-            )
-            self.NativeRerollWarningLogged = true
-        end
-    end
-
-    self:RestoreTrueItems(player, trueItems, restorePools)
-    self.MutationDepth = self.MutationDepth - 1
-    self:RestoreConsumables(player, consumables)
-    self:RestoreHealth(player, health, rerollModule)
-    state.effect = targetEffect
-    state.storageMode = "proxy"
-    self:ApplyManagedEffect(player, state)
-    state.lastCounts = self:CaptureCounts(player)
-    return true
+    return false
 end
 
 function ZodiacFloorItemDisplayModule:RestoreStateToZodiac(player, state)
@@ -1077,9 +1013,13 @@ function ZodiacFloorItemDisplayModule:RotateFloorEffect(player, state)
     end
 
     if effect ~= state.effect then
-        if not self:ReplaceProxyWithNativeReroll(player, state, effect) then
+        self:RemoveManagedEffect(player, state)
+
+        if not self:RebuildSequence(player, state, "proxy", effect) then
             return false
         end
+
+        self:ApplyManagedEffect(player, state)
     else
         self:ApplyManagedEffect(player, state)
     end
@@ -1178,6 +1118,8 @@ function ZodiacFloorItemDisplayModule:RestoreSavedState(
         lastInventoryScanFrame = -1,
     }
 
+    self:NormalizeSequence(state)
+
     self.Players[self:GetPlayerKey(player)] = state
     self:ApplyManagedEffect(player, state)
     state.lastCounts = self:CaptureCounts(player)
@@ -1188,6 +1130,7 @@ function ZodiacFloorItemDisplayModule:OnGameStarted(isContinued)
     self.RunSeed = self:GetRunSeed()
     self.RunActive = true
     self.Players = {}
+    self.PendingPlayers = {}
     self.RecentPools = {}
     self.TrackedCollectibles = nil
     self.LastInventoryScanFrame = Game():GetFrameCount()
@@ -1215,7 +1158,10 @@ function ZodiacFloorItemDisplayModule:OnGameStarted(isContinued)
             self:RecoverStrayProxies(player)
 
             if self.Context:IsEnabled(SETTING_KEY) then
-                self:AdoptZodiac(player, nil)
+                if not self:AdoptZodiac(player, nil) then
+                    self.PendingPlayers[self:GetPlayerKey(player)]
+                        = self:CreatePendingState(player, playerIndex)
+                end
             end
         end
     end
@@ -1252,6 +1198,7 @@ function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
             self.Players[key] = nil
             self.Context:Save()
         end
+        self.PendingPlayers[key] = nil
         return
     end
 
@@ -1261,11 +1208,44 @@ function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
     end
 
     if player:GetCollectibleNum(ZODIAC, true) > 0 then
+        local pendingState = self.PendingPlayers[key]
+
+        if not state and pendingState then
+            self:UpdateQueuedItem(player, pendingState)
+            self:SyncSequence(player, pendingState)
+        end
+
         self:AdoptZodiac(player, state)
         state = self.Players[key]
     end
 
     if not state then
+        local pendingState = self.PendingPlayers[key]
+
+        if not pendingState then
+            local playerIndex = self:GetPlayerIndex(player)
+
+            if playerIndex ~= nil then
+                pendingState = self:CreatePendingState(
+                    player,
+                    playerIndex
+                )
+                self.PendingPlayers[key] = pendingState
+            end
+        end
+
+        if pendingState then
+            self:UpdateQueuedItem(player, pendingState)
+            local frame = Game():GetFrameCount()
+
+            if frame ~= pendingState.lastInventoryScanFrame
+                and frame % INVENTORY_SCAN_INTERVAL == 0
+            then
+                pendingState.lastInventoryScanFrame = frame
+                self:SyncSequence(player, pendingState)
+            end
+        end
+
         return
     end
 
@@ -1357,9 +1337,16 @@ function ZodiacFloorItemDisplayModule:OnSettingChanged(value)
             else
                 self:RecoverStrayProxies(player)
             end
+            self.PendingPlayers[key] = nil
         else
             self:RecoverStrayProxies(player)
-            self:AdoptZodiac(player, nil)
+
+            if not self:AdoptZodiac(player, nil) then
+                self.PendingPlayers[key] = self:CreatePendingState(
+                    player,
+                    playerIndex
+                )
+            end
         end
     end
 
