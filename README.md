@@ -162,6 +162,9 @@
 - White Fire Places (entity 33.4.0) cannot damage the Lost Soul familiar
   (entity 3.211.0). Players still enter the Lost form normally when touching
   the fire.
+- The enabled-by-default child option grants Lost Soul a one-use Holy Mantle
+  when it touches white fire. White fire does not consume that shield; the
+  next other damaging hit does.
 
 <a id="held-item-protection"></a>
 ## Pickup Animation Fix
@@ -199,30 +202,31 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All twenty-two gameplay settings remain independently configurable:
+All twenty-three gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. Small Player Pickup Range Fix
 3. Clog Creep Damage Fix
 4. Lost Soul White Fire Fix
-5. Pickup Animation Fix
-6. Kid's Drawing Form Fix
-7. Ocular Rift Sound Fix
-8. Pill Rewind Fix
-9. Eden Starting Passive Choice
-10. Eden's Blessing Choice
-11. Starting Wooden Cross
-12. Blue Baby Deal Prices
-13. Poop Queue Overflow Fix
-14. Keep Health on Reroll
-15. Keep Absorbed Stats
-16. Reveal Pills with Rerolled PHD
-17. Esau Jr. Pickup Effects
-18. TMTRAINER Reroll Chance
-19. Double Soul Charges
-20. Soul Charge Shield
-21. Shield Effects
-22. Gello Wisp Orbit Fix
+5. White Fire Grants Mantle
+6. Pickup Animation Fix
+7. Kid's Drawing Form Fix
+8. Ocular Rift Sound Fix
+9. Pill Rewind Fix
+10. Eden Starting Passive Choice
+11. Eden's Blessing Choice
+12. Starting Wooden Cross
+13. Blue Baby Deal Prices
+14. Poop Queue Overflow Fix
+15. Keep Health on Reroll
+16. Keep Absorbed Stats
+17. Reveal Pills with Rerolled PHD
+18. Esau Jr. Pickup Effects
+19. TMTRAINER Reroll Chance
+20. Double Soul Charges
+21. Soul Charge Shield
+22. Shield Effects
+23. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `Eden`, `T-Lost`, `T-Blue Baby`,
 `T-Eden`, and `Bethany`. The integration supports both Mod Config Menu

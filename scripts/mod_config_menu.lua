@@ -333,6 +333,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "lostSoulWhiteFireMantle",
+        group = "general",
+        zhName = "  白火给予神圣屏障",
+        enName = "  White Fire Grants Mantle",
+        zhInfo = {
+            "接触白火时，迷失幽魂获得一次神圣屏障。",
+            "下一次其他伤害会消耗；白火不会。",
+        },
+        enInfo = {
+            "White fire grants Lost Soul one Holy Mantle.",
+            "Next other hit uses it; white fire does not.",
+        },
+    },
+    {
         key = "heldItemProtection",
         group = "general",
         zhName = "拾取动画修复",

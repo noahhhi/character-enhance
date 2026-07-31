@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.13.1"
+local VERSION = "1.14.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     taintedLostWoodenCross = true,
@@ -17,6 +17,7 @@ local DEFAULT_SETTINGS = {
     smallPlayerPickupRange = true,
     clogGroundDamage = true,
     lostSoulWhiteFireFix = true,
+    lostSoulWhiteFireMantle = true,
     heldItemProtection = true,
     kidsDrawingFormFix = true,
     ocularRiftSoundFix = true,
@@ -258,6 +259,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "lostSoulWhiteFireFix",
     LostSoulWhiteFireModule.New(Context)
+)
+Context:RegisterSettingHandler(
+    "lostSoulWhiteFireMantle",
+    Context.Modules.lostSoulWhiteFireFix
 )
 Context:RegisterModule(
     "heldItemProtection",
