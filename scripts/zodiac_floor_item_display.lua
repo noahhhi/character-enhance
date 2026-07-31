@@ -18,6 +18,8 @@ local NO_ENTITY_COLLISION = EntityCollisionClass
 local NO_GRID_COLLISION = EntityGridCollisionClass
     and EntityGridCollisionClass.GRIDCOLL_NONE
 local WISP_FIRE_COOLDOWN = 2147483647
+local SACRIFICIAL_ALTAR = CollectibleType.COLLECTIBLE_SACRIFICIAL_ALTAR
+local SACRIFICIAL_ALTAR_REPLAY_DELAY = 2
 
 local EFFECT_DEFINITIONS = {
     {
@@ -179,6 +181,27 @@ function ZodiacFloorItemDisplayModule.New(context)
         )
     end
 
+    context.Mod:AddCallback(
+        ModCallbacks.MC_PRE_USE_ITEM,
+        function(
+            _,
+            collectibleType,
+            _,
+            player,
+            useFlags,
+            activeSlot,
+            varData
+        )
+            return self:OnPreUseItem(
+                collectibleType,
+                player,
+                useFlags,
+                activeSlot,
+                varData
+            )
+        end
+    )
+
     local poolCallback = function(
         _,
         selectedCollectible,
@@ -298,6 +321,30 @@ function ZodiacFloorItemDisplayModule:SanitizeBaseline(baseline)
     return result
 end
 
+function ZodiacFloorItemDisplayModule:SanitizeWispSeeds(seeds)
+    local result = {}
+    local seen = {}
+
+    if type(seeds) ~= "table" then
+        return result
+    end
+
+    for _, savedSeed in ipairs(seeds) do
+        if #result >= 99 then
+            break
+        end
+
+        local seed = self:SanitizeInteger(savedSeed, 0, 0xFFFFFFFF)
+
+        if seed and not seen[seed] then
+            seen[seed] = true
+            result[#result + 1] = seed
+        end
+    end
+
+    return result
+end
+
 function ZodiacFloorItemDisplayModule:SanitizeSavedData(savedData)
     local result = { players = {} }
 
@@ -336,6 +383,9 @@ function ZodiacFloorItemDisplayModule:SanitizeSavedData(savedData)
                     effectCarrier = savedState.effectCarrier == "wisp"
                         and "wisp"
                         or nil,
+                    wispSeeds = self:SanitizeWispSeeds(
+                        savedState.wispSeeds
+                    ),
                 }
             end
         end
@@ -732,7 +782,7 @@ function ZodiacFloorItemDisplayModule:RemoveManagedEffect(player, state)
 
     for _, wisp in ipairs(self:FindManagedWisps(player, state)) do
         if self:EntityExists(wisp) then
-            wisp:Remove()
+            self:RetireManagedWisp(wisp)
         end
     end
 
@@ -746,24 +796,57 @@ function ZodiacFloorItemDisplayModule:EntityExists(entity)
         and (type(entity.Exists) ~= "function" or entity:Exists())
 end
 
-function ZodiacFloorItemDisplayModule:IsManagedWisp(wisp, player)
+function ZodiacFloorItemDisplayModule:RetireManagedWisp(wisp)
+    if type(wisp.Kill) == "function" then
+        -- Remove() deletes a restored item-wisp entity but leaves its modified
+        -- collectible registered on Repentance+ 1.9.7.15. Kill() follows the
+        -- native wisp retirement path and immediately reconciles ownership.
+        -- Sacrificial Altar creates the half Soul Heart itself; a direct Kill()
+        -- does not create that pickup.
+        wisp:Kill()
+    else
+        wisp:Remove()
+    end
+end
+
+function ZodiacFloorItemDisplayModule:IsWispOwner(wisp, player)
+    if not player then
+        return true
+    end
+
+    local owner = wisp and wisp.Player
+    return owner ~= nil
+        and self:GetPlayerKey(owner) == self:GetPlayerKey(player)
+end
+
+function ZodiacFloorItemDisplayModule:IsManagedWisp(
+    wisp,
+    player,
+    state
+)
     if not wisp or type(wisp.GetData) ~= "function" then
         return false
     end
 
     local data = wisp:GetData()
 
-    if not data or data[MANAGED_WISP_TAG] ~= true then
+    if data and data[MANAGED_WISP_TAG] == true then
+        return self:IsWispOwner(wisp, player)
+    end
+
+    if not state or not self:IsWispOwner(wisp, player) then
         return false
     end
 
-    if not player then
-        return true
+    local seed = self:SanitizeInteger(wisp.InitSeed, 0, 0xFFFFFFFF)
+
+    for _, managedSeed in ipairs(state.managedWispSeeds or {}) do
+        if seed == managedSeed then
+            return true
+        end
     end
 
-    local owner = wisp.Player
-    return owner ~= nil
-        and self:GetPlayerKey(owner) == self:GetPlayerKey(player)
+    return false
 end
 
 function ZodiacFloorItemDisplayModule:FindManagedWisps(player, state)
@@ -772,7 +855,7 @@ function ZodiacFloorItemDisplayModule:FindManagedWisps(player, state)
 
     local function append(wisp)
         if not self:EntityExists(wisp)
-            or not self:IsManagedWisp(wisp, player)
+            or not self:IsManagedWisp(wisp, player, state)
         then
             return
         end
@@ -805,6 +888,104 @@ function ZodiacFloorItemDisplayModule:FindManagedWisps(player, state)
     end
 
     return result
+end
+
+function ZodiacFloorItemDisplayModule:UpdateManagedWispSeeds(state, wisps)
+    local seeds = {}
+    local seen = {}
+
+    for _, wisp in ipairs(wisps or {}) do
+        local seed = self:EntityExists(wisp)
+            and self:SanitizeInteger(wisp.InitSeed, 0, 0xFFFFFFFF)
+            or nil
+
+        if seed and not seen[seed] then
+            seen[seed] = true
+            seeds[#seeds + 1] = seed
+        end
+    end
+
+    local previous = state.managedWispSeeds or {}
+    local changed = #previous ~= #seeds
+
+    if not changed then
+        for index, seed in ipairs(seeds) do
+            if previous[index] ~= seed then
+                changed = true
+                break
+            end
+        end
+    end
+
+    state.managedWispSeeds = seeds
+    return changed
+end
+
+function ZodiacFloorItemDisplayModule:FindOwnedEffectWisps(player, effect)
+    local result = {}
+
+    if not Isaac.FindByType or not ENTITY_FAMILIAR or not ITEM_WISP then
+        return result
+    end
+
+    for _, entity in ipairs(Isaac.FindByType(
+        ENTITY_FAMILIAR,
+        ITEM_WISP,
+        effect,
+        false,
+        false
+    )) do
+        local familiar = type(entity.ToFamiliar) == "function"
+            and entity:ToFamiliar()
+            or entity
+
+        if self:EntityExists(familiar)
+            and self:IsWispOwner(familiar, player)
+        then
+            result[#result + 1] = familiar
+        end
+    end
+
+    return result
+end
+
+function ZodiacFloorItemDisplayModule:RecoverLegacyManagedWisps(
+    player,
+    state
+)
+    if not state.needsLegacyWispRecovery then
+        return
+    end
+
+    state.needsLegacyWispRecovery = false
+    local desiredCount = CountZodiacEntries(state.sequence)
+    local candidates = self:FindOwnedEffectWisps(player, state.effect)
+
+    table.sort(candidates, function(left, right)
+        local leftManaged = self:IsManagedWisp(left, player) and 1 or 0
+        local rightManaged = self:IsManagedWisp(right, player) and 1 or 0
+
+        if leftManaged ~= rightManaged then
+            return leftManaged > rightManaged
+        end
+
+        return (left.InitSeed or 0) < (right.InitSeed or 0)
+    end)
+
+    local managed = {}
+
+    for _, wisp in ipairs(candidates) do
+        if #managed < desiredCount then
+            self:TagManagedWisp(wisp, player, state.effect)
+            managed[#managed + 1] = wisp
+        else
+            self:RetireManagedWisp(wisp)
+        end
+    end
+
+    state.managedWisps = managed
+    self:UpdateManagedWispSeeds(state, managed)
+    self:RefreshPlayerItems(player)
 end
 
 
@@ -881,10 +1062,10 @@ function ZodiacFloorItemDisplayModule:ApplyManagedEffect(player, state)
         local effect = data.CharacterEnhanceZodiacEffect or wisp.SubType
 
         if effect == state.effect and #matching < desiredCount then
-            self:StabilizeManagedWisp(wisp)
+            self:TagManagedWisp(wisp, player, state.effect)
             matching[#matching + 1] = wisp
         else
-            wisp:Remove()
+            self:RetireManagedWisp(wisp)
             removedWrongEffect = removedWrongEffect or effect ~= state.effect
         end
     end
@@ -920,7 +1101,13 @@ function ZodiacFloorItemDisplayModule:ApplyManagedEffect(player, state)
 
     state.managedWisps = matching
     state.pendingWispFrame = #matching == desiredCount and nil or frame + 1
+    local seedsChanged = self:UpdateManagedWispSeeds(state, matching)
     self:RefreshPlayerItems(player)
+
+    if seedsChanged and self.RunActive and not self.RestoringGame then
+        self.Context:Save()
+    end
+
     return #matching == desiredCount
 end
 
@@ -1105,6 +1292,7 @@ function ZodiacFloorItemDisplayModule:CreateStateFromZodiac(
         storageMode = "zodiac",
         managedEffectCount = 0,
         managedWisps = {},
+        managedWispSeeds = {},
         suspendedForReroll = false,
         lastInventoryScanFrame = -1,
         lastWispScanFrame = -1,
@@ -1211,6 +1399,82 @@ end
 
 function ZodiacFloorItemDisplayModule:IsInternalNativeReroll(player)
     return false
+end
+
+function ZodiacFloorItemDisplayModule:OnPreUseItem(
+    collectibleType,
+    player,
+    useFlags,
+    activeSlot,
+    varData
+)
+    if collectibleType ~= SACRIFICIAL_ALTAR
+        or not player
+        or not self.RunActive
+        or not self.Context:IsEnabled(SETTING_KEY)
+    then
+        return
+    end
+
+    local state = self.Players[self:GetPlayerKey(player)]
+
+    if state and not state.suspendedForReroll
+        and state.storageMode == "proxy"
+    then
+        if state.replayingSacrificialAltar then
+            return
+        end
+
+        if state.pendingSacrificialAltar then
+            return true
+        end
+
+        -- Sacrificial Altar has already cached item-wisp ownership by the time
+        -- MC_PRE_USE_ITEM runs. Cancel this invocation, retire only our hidden
+        -- sign carriers through the native Kill path, then replay the same
+        -- vanilla use on the next frame after ownership has settled.
+        self:ScheduleManagedEffect(player, state)
+        state.pendingSacrificialAltar = {
+            frame = Game():GetFrameCount(),
+            useFlags = tonumber(useFlags) or 0,
+            activeSlot = tonumber(activeSlot) or -1,
+            varData = tonumber(varData) or 0,
+        }
+        return true
+    end
+end
+
+function ZodiacFloorItemDisplayModule:ReplaySacrificialAltar(player, state)
+    local pending = state.pendingSacrificialAltar
+
+    if not pending then
+        return false
+    end
+
+    if Game():GetFrameCount()
+        < (pending.frame or -1) + SACRIFICIAL_ALTAR_REPLAY_DELAY
+    then
+        -- Keep normal reconciliation from recreating the carrier during the
+        -- ownership-cleanup frame.
+        return true
+    end
+
+    state.pendingSacrificialAltar = nil
+    state.replayingSacrificialAltar = true
+    player:UseActiveItem(
+        SACRIFICIAL_ALTAR,
+        pending.useFlags,
+        pending.activeSlot,
+        pending.varData
+    )
+    state.replayingSacrificialAltar = false
+
+    -- A killed item wisp remains in vanilla's modified-collectible ownership
+    -- until the following entity cleanup. Do not replay during that cleanup
+    -- frame, and do not recreate the carrier in the later altar frame. It
+    -- returns on the following player-effect update.
+    state.pendingWispFrame = Game():GetFrameCount() + 1
+    return true
 end
 
 function ZodiacFloorItemDisplayModule:RestoreStateToZodiac(player, state)
@@ -1346,6 +1610,9 @@ function ZodiacFloorItemDisplayModule:RestoreSavedState(
             and 0
             or expectedProxyCount,
         managedWisps = {},
+        managedWispSeeds = savedState.wispSeeds or {},
+        needsLegacyWispRecovery = savedState.effectCarrier == "wisp"
+            and #(savedState.wispSeeds or {}) == 0,
         suspendedForReroll = false,
         lastInventoryScanFrame = -1,
         lastWispScanFrame = -1,
@@ -1354,12 +1621,14 @@ function ZodiacFloorItemDisplayModule:RestoreSavedState(
     self:NormalizeSequence(state)
 
     self.Players[self:GetPlayerKey(player)] = state
+    self:RecoverLegacyManagedWisps(player, state)
     self:ApplyManagedEffect(player, state)
     state.lastCounts = self:CaptureCounts(player)
     return state
 end
 
 function ZodiacFloorItemDisplayModule:OnGameStarted(isContinued)
+    self.RestoringGame = true
     self.RunSeed = self:GetRunSeed()
     self.RunActive = true
     self.Players = {}
@@ -1369,6 +1638,7 @@ function ZodiacFloorItemDisplayModule:OnGameStarted(isContinued)
     self.LastInventoryScanFrame = Game():GetFrameCount()
 
     if not self:ResolveProxyIds() then
+        self.RestoringGame = false
         return
     end
 
@@ -1399,6 +1669,7 @@ function ZodiacFloorItemDisplayModule:OnGameStarted(isContinued)
         end
     end
 
+    self.RestoringGame = false
     self.Context:Save()
 end
 
@@ -1437,6 +1708,10 @@ function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
 
     if state and state.suspendedForReroll then
         self:FinishFullInventoryReroll(player, state)
+        return
+    end
+
+    if state and self:ReplaySacrificialAltar(player, state) then
         return
     end
 
@@ -1608,6 +1883,7 @@ function ZodiacFloorItemDisplayModule:GetSaveData()
                 sequence = state.sequence,
                 baseline = state.baseline,
                 effectCarrier = "wisp",
+                wispSeeds = state.managedWispSeeds,
             }
         end
     end
