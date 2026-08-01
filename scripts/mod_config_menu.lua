@@ -118,12 +118,12 @@ local MENU_SETTINGS = {
         zhName = "低红心持续激活死鸟",
         enName = "Keep Dead Bird Active",
         zhInfo = {
-            "红心不高于半颗时，死鸟持续激活。",
-            "普通夏娃的阈值为一整颗红心。",
+            "红心不高于半颗时持续激活；夏娃阈值为一颗。",
+            "同一只死鸟跨房保留，受伤不会生成第二只。",
         },
         enInfo = {
-            "Dead Bird stays active at half a Red Heart or less.",
-            "Normal Eve's threshold is one full Red Heart.",
+            "Active at half a Red Heart; normal Eve at one.",
+            "The same bird crosses rooms; damage adds no copy.",
         },
     },
     {

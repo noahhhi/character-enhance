@@ -52,8 +52,9 @@
   flat damage and speed bonuses remain unchanged.
 - Dead Bird stays active whenever its owner has half a filled Red Heart or
   less, even with Soul or Black Hearts protecting that health. Normal Eve uses
-  her one-full-Red-Heart threshold. The vanilla bird triggered by taking
-  damage remains unchanged, and multiplayer checks each owner separately.
+  her one-full-Red-Heart threshold. The same attacking bird persists between
+  rooms, taking damage does not create a duplicate while the rule is active,
+  and multiplayer checks each owner separately.
 
 <a id="eden"></a>
 ## Eden
