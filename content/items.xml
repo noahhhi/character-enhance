@@ -1,14 +1,14 @@
 <items gfxroot="gfx/items/" version="1">
-    <passive id="1" name="Zodiac: Taurus" description="Speed up, then charge" gfx="ce_zodiac_taurus.png" quality="0" tags="noeden nogreed" />
-    <passive id="2" name="Zodiac: Aries" description="Ramming speed" gfx="ce_zodiac_aries.png" quality="0" tags="noeden nogreed" />
-    <passive id="3" name="Zodiac: Cancer" description="Damage reduction" gfx="ce_zodiac_cancer.png" quality="0" tags="noeden nogreed" />
-    <passive id="4" name="Zodiac: Leo" description="Stompy" gfx="ce_zodiac_leo.png" quality="0" tags="noeden nogreed" />
-    <passive id="5" name="Zodiac: Virgo" description="Shield and good pills" gfx="ce_zodiac_virgo.png" quality="0" tags="noeden nogreed" />
-    <passive id="6" name="Zodiac: Libra" description="Balanced stats" gfx="ce_zodiac_libra.png" quality="0" tags="noeden nogreed" />
-    <passive id="7" name="Zodiac: Scorpio" description="Poison tears" gfx="ce_zodiac_scorpio.png" quality="0" tags="noeden nogreed" />
-    <passive id="8" name="Zodiac: Sagittarius" description="Piercing tears" gfx="ce_zodiac_sagittarius.png" quality="0" tags="noeden nogreed" />
-    <passive id="9" name="Zodiac: Capricorn" description="All stats up" gfx="ce_zodiac_capricorn.png" quality="0" tags="noeden nogreed" />
-    <passive id="10" name="Zodiac: Aquarius" description="Creep trail" gfx="ce_zodiac_aquarius.png" quality="0" tags="noeden nogreed" />
-    <passive id="11" name="Zodiac: Pisces" description="Tears up and knockback" gfx="ce_zodiac_pisces.png" quality="0" tags="noeden nogreed" />
-    <passive id="12" name="Zodiac: Gemini" description="Close-range familiar" gfx="ce_zodiac_gemini.png" quality="0" tags="noeden nogreed" />
+    <passive id="1" name="Zodiac: Taurus" description="Speed up, then charge" gfx="ce_zodiac_taurus.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="2" name="Zodiac: Aries" description="Ramming speed" gfx="ce_zodiac_aries.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="3" name="Zodiac: Cancer" description="Damage reduction" gfx="ce_zodiac_cancer.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="4" name="Zodiac: Leo" description="Stompy" gfx="ce_zodiac_leo.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="5" name="Zodiac: Virgo" description="Shield and good pills" gfx="ce_zodiac_virgo.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="6" name="Zodiac: Libra" description="Balanced stats" gfx="ce_zodiac_libra.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="7" name="Zodiac: Scorpio" description="Poison tears" gfx="ce_zodiac_scorpio.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="8" name="Zodiac: Sagittarius" description="Piercing tears" gfx="ce_zodiac_sagittarius.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="9" name="Zodiac: Capricorn" description="All stats up" gfx="ce_zodiac_capricorn.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="10" name="Zodiac: Aquarius" description="Creep trail" gfx="ce_zodiac_aquarius.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="11" name="Zodiac: Pisces" description="Tears up and knockback" gfx="ce_zodiac_pisces.png" quality="0" tags="noeden nogreed" hidden="true" />
+    <passive id="12" name="Zodiac: Gemini" description="Close-range familiar" gfx="ce_zodiac_gemini.png" quality="0" tags="noeden nogreed" hidden="true" />
 </items>

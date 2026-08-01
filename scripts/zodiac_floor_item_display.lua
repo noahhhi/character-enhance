@@ -14,8 +14,6 @@ local MANAGED_WISP_TAG = "CharacterEnhanceZodiacWisp"
 local ITEM_WISP = FamiliarVariant and FamiliarVariant.ITEM_WISP
 local ENTITY_FAMILIAR = EntityType and EntityType.ENTITY_FAMILIAR
 local REVERSE_STARS = Card and Card.CARD_REVERSE_STARS
-local COLLECTIBLE_PICKUP = PickupVariant
-    and PickupVariant.PICKUP_COLLECTIBLE
 
 local EFFECT_DEFINITIONS = {
     {
@@ -156,16 +154,6 @@ function ZodiacFloorItemDisplayModule.New(context)
             self:OnNewRoom()
         end
     )
-
-    if ModCallbacks.MC_POST_PICKUP_INIT and COLLECTIBLE_PICKUP then
-        context.Mod:AddCallback(
-            ModCallbacks.MC_POST_PICKUP_INIT,
-            function(_, pickup)
-                self:OnCollectiblePickupInit(pickup)
-            end,
-            COLLECTIBLE_PICKUP
-        )
-    end
 
     if ModCallbacks.MC_USE_CARD and REVERSE_STARS then
         context.Mod:AddCallback(
@@ -416,33 +404,6 @@ function ZodiacFloorItemDisplayModule:ResolveProxyIds()
     end
 
     return self.ProxyIdsReady
-end
-
-function ZodiacFloorItemDisplayModule:IsDeathCertificateDimension()
-    local level = Game():GetLevel()
-
-    if not level or type(level.GetRoomByIdx) ~= "function" then
-        return false
-    end
-
-    local roomIndex = level:GetCurrentRoomIndex()
-    local currentRoom = level:GetRoomByIdx(roomIndex, -1)
-    local certificateRoom = level:GetRoomByIdx(roomIndex, 2)
-
-    return currentRoom ~= nil
-        and certificateRoom ~= nil
-        and GetPtrHash(currentRoom) == GetPtrHash(certificateRoom)
-end
-
-function ZodiacFloorItemDisplayModule:OnCollectiblePickupInit(pickup)
-    if not pickup or not self.ProxyIdsReady
-        or not self.EffectByProxy[pickup.SubType]
-        or not self:IsDeathCertificateDimension()
-    then
-        return
-    end
-
-    pickup:Remove()
 end
 
 function ZodiacFloorItemDisplayModule:IsTrackedConfig(config)
