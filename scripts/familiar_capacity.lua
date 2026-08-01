@@ -25,6 +25,8 @@ function FamiliarCapacityModule.New(context)
             expendable = {},
             reservedSeeds = {},
         },
+        OverflowProxyFrame = -1,
+        OverflowProxyQueues = {},
         AnimationFrames = {},
         NextReleaseFrame = 0,
         ReleaseRetryInterval = BANK_RELEASE_INTERVAL,
@@ -93,6 +95,13 @@ function FamiliarCapacityModule.New(context)
         end
     )
     context.Mod:AddCallback(
+        ModCallbacks.MC_POST_EFFECT_INIT,
+        function(_, effect)
+            self:OnEffectInit(effect)
+        end,
+        EffectVariant.POOF01
+    )
+    context.Mod:AddCallback(
         ModCallbacks.MC_POST_NEW_ROOM,
         function()
             self:OnNewRoom()
@@ -157,6 +166,11 @@ function FamiliarCapacityModule:ResetSnapshot()
     self.Snapshot.total = 0
     self.Snapshot.expendable = {}
     self.Snapshot.reservedSeeds = {}
+end
+
+function FamiliarCapacityModule:ResetOverflowProxies()
+    self.OverflowProxyFrame = -1
+    self.OverflowProxyQueues = {}
 end
 
 function FamiliarCapacityModule:IsBankableVariant(variant)
@@ -373,6 +387,63 @@ function FamiliarCapacityModule:PlayBankAnimation(
     )
 end
 
+function FamiliarCapacityModule:QueueOverflowProxy(seed, discard)
+    if type(seed) ~= "number" then
+        return false
+    end
+
+    local frame = Game():GetFrameCount()
+
+    if self.OverflowProxyFrame ~= frame then
+        self.OverflowProxyFrame = frame
+        self.OverflowProxyQueues = {}
+    end
+
+    local queue = self.OverflowProxyQueues[seed]
+
+    if not queue then
+        queue = { head = 1, tail = 0 }
+        self.OverflowProxyQueues[seed] = queue
+    end
+
+    queue.tail = queue.tail + 1
+    queue[queue.tail] = discard
+
+    return true
+end
+
+function FamiliarCapacityModule:ConsumeOverflowProxy(seed)
+    local queue = type(seed) == "number"
+        and self.OverflowProxyQueues[seed]
+        or nil
+
+    if not queue or queue.head > queue.tail then
+        return nil
+    end
+
+    local discard = queue[queue.head]
+    queue[queue.head] = nil
+    queue.head = queue.head + 1
+
+    if queue.head > queue.tail then
+        self.OverflowProxyQueues[seed] = nil
+    end
+
+    return discard
+end
+
+function FamiliarCapacityModule:OnEffectInit(effect)
+    if not effect or effect.Variant ~= EffectVariant.POOF01 then
+        return
+    end
+
+    local discard = self:ConsumeOverflowProxy(effect.InitSeed)
+
+    if discard then
+        effect:Remove()
+    end
+end
+
 function FamiliarCapacityModule:OnPreEntitySpawn(
     entityType,
     variant,
@@ -410,18 +481,17 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
         return nil
     end
 
-    local effectVariant = EffectVariant.EFFECT_NULL
-
-    if self:ShouldPlayBankAnimation(playerIndex, variant) then
-        effectVariant = EffectVariant.POOF01
-    end
+    local showAnimation = self:ShouldPlayBankAnimation(playerIndex, variant)
+    self:QueueOverflowProxy(seed, not showAnimation)
 
     -- MC_PRE_ENTITY_SPAWN cannot cancel a spawn. Redirecting to an effect keeps
-    -- the attempt out of the fixed familiar pool; EFFECT_NULL coalesces the
-    -- visual spam between the deliberately throttled POOF01 replacements.
+    -- the attempt out of the fixed familiar pool. EFFECT_NULL has no entity
+    -- config in Repentance+ 1.9.7.15 and crashes native initialization, so use
+    -- a valid POOF01 proxy and immediately remove throttled copies in its init
+    -- callback. The retained copies provide the coalesced overflow animation.
     return {
         EntityType.ENTITY_EFFECT,
-        effectVariant,
+        EffectVariant.POOF01,
         0,
         seed,
     }
@@ -660,6 +730,7 @@ function FamiliarCapacityModule:OnGameStarted(isContinued)
     self.ReleaseSpiderNext = false
     self.AnimationFrames = {}
     self:ResetSnapshot()
+    self:ResetOverflowProxies()
     self:LoadBank(isContinued)
 
     if self.Context:IsEnabled(SETTING_KEY) then
@@ -684,6 +755,7 @@ function FamiliarCapacityModule:OnNewRoom()
     end
 
     self:ResetSnapshot()
+    self:ResetOverflowProxies()
     self.AnimationFrames = {}
     self.NeedsRebalance = self.Context:IsEnabled(SETTING_KEY)
     self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
@@ -692,6 +764,7 @@ end
 
 function FamiliarCapacityModule:OnSettingChanged(enabled)
     self:ResetSnapshot()
+    self:ResetOverflowProxies()
     self.AnimationFrames = {}
     self.NeedsRebalance = enabled and self.RunActive
 
@@ -721,6 +794,7 @@ function FamiliarCapacityModule:OnPreGameExit()
     self.RunActive = false
     self.NeedsRebalance = false
     self:ResetSnapshot()
+    self:ResetOverflowProxies()
 end
 
 return FamiliarCapacityModule
