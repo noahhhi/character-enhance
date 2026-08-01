@@ -225,7 +225,7 @@
   Zodiac alone supplies the matching ability. The gray marker updates in place
   on every new floor, including console `stage` transitions, while the passive
   inventory keeps its recorded pickup order without replaying first-pickup
-  rewards.
+  rewards. Display-only markers are excluded from Death Certificate rooms.
 - The marker's pause-menu **My Stuff** page lists the current sign's effects,
   followed by a blank line and Zodiac's random-effect/floor-reroll explanation.
   Repentance+ currently mispositions custom death-item thumbnails in the left
