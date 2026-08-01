@@ -564,9 +564,10 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
         return nil
     end
 
-    -- The soft limit can consist entirely of important familiars. Record this
-    -- overflow now, keep the four-slot reserve, and remove the new same-class
-    -- fly/spider from its init fallback. No cross-type proxy is constructed.
+    -- The current limit can consist entirely of important familiars. Record
+    -- this overflow now, use the idle/combat reserve, and remove the new
+    -- same-class fly/spider from its init fallback. No cross-type proxy is
+    -- constructed.
     if not self:AddToBank(playerIndex, variant, 1) then
         self:ReserveFamiliarSpawn(seed)
         return nil
