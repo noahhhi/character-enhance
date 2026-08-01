@@ -23,6 +23,7 @@ function FamiliarCapacityModule.New(context)
             frame = -1,
             total = 0,
             expendable = {},
+            reservedSeeds = {},
         },
         AnimationFrames = {},
         NextReleaseFrame = 0,
@@ -46,6 +47,45 @@ function FamiliarCapacityModule.New(context)
             self:OnGameStarted(isContinued)
         end
     )
+    local preSpawnCallback = function(
+        _,
+        entityType,
+        variant,
+        subtype,
+        position,
+        velocity,
+        spawner,
+        seed
+    )
+        return self:OnPreEntitySpawn(
+            entityType,
+            variant,
+            subtype,
+            position,
+            velocity,
+            spawner,
+            seed
+        )
+    end
+
+    -- Removing overflow in MC_FAMILIAR_INIT is too late for the engine's fixed
+    -- 64-entry familiar pool: allocation and destructive slot overwrite have
+    -- already happened. Run late in the pre-spawn chain so owned expendable
+    -- familiars can be redirected before they ever request a familiar slot.
+    if type(context.Mod.AddPriorityCallback) == "function" then
+        context.Mod:AddPriorityCallback(
+            ModCallbacks.MC_PRE_ENTITY_SPAWN,
+            CallbackPriority.LATE,
+            preSpawnCallback,
+            EntityType.ENTITY_FAMILIAR
+        )
+    else
+        context.Mod:AddCallback(
+            ModCallbacks.MC_PRE_ENTITY_SPAWN,
+            preSpawnCallback,
+            EntityType.ENTITY_FAMILIAR
+        )
+    end
     context.Mod:AddCallback(
         ModCallbacks.MC_FAMILIAR_INIT,
         function(_, familiar)
@@ -116,6 +156,7 @@ function FamiliarCapacityModule:ResetSnapshot()
     self.Snapshot.frame = -1
     self.Snapshot.total = 0
     self.Snapshot.expendable = {}
+    self.Snapshot.reservedSeeds = {}
 end
 
 function FamiliarCapacityModule:IsBankableVariant(variant)
@@ -139,13 +180,7 @@ function FamiliarCapacityModule:GetPlayerIndex(player)
     return nil
 end
 
-function FamiliarCapacityModule:ResolveOwner(familiar)
-    if familiar.Player then
-        return familiar.Player
-    end
-
-    local source = familiar.SpawnerEntity or familiar.Parent
-
+function FamiliarCapacityModule:ResolveOwnerFromSource(source)
     for _ = 1, 6 do
         if not source then
             break
@@ -171,6 +206,16 @@ function FamiliarCapacityModule:ResolveOwner(familiar)
     end
 
     return nil
+end
+
+function FamiliarCapacityModule:ResolveOwner(familiar)
+    if familiar.Player then
+        return familiar.Player
+    end
+
+    return self:ResolveOwnerFromSource(
+        familiar.SpawnerEntity or familiar.Parent
+    )
 end
 
 function FamiliarCapacityModule:GetPlayerBank(playerIndex)
@@ -240,10 +285,41 @@ function FamiliarCapacityModule:RefreshSnapshot(force)
     self.Snapshot.frame = frame
     self.Snapshot.total = total
     self.Snapshot.expendable = expendable
+    self.Snapshot.reservedSeeds = {}
 
     return self.Snapshot
 end
 
+function FamiliarCapacityModule:ReserveFamiliarSpawn(seed)
+    if type(seed) ~= "number" then
+        return false
+    end
+
+    self.Snapshot.reservedSeeds[seed] =
+        (self.Snapshot.reservedSeeds[seed] or 0) + 1
+    self.Snapshot.total = self.Snapshot.total + 1
+
+    return true
+end
+
+function FamiliarCapacityModule:ConsumeFamiliarReservation(familiar)
+    local seed = familiar.InitSeed
+    local reserved = type(seed) == "number"
+        and self.Snapshot.reservedSeeds[seed]
+        or 0
+
+    if reserved <= 0 then
+        return false
+    end
+
+    if reserved == 1 then
+        self.Snapshot.reservedSeeds[seed] = nil
+    else
+        self.Snapshot.reservedSeeds[seed] = reserved - 1
+    end
+
+    return true
+end
 
 function FamiliarCapacityModule:RegisterInitializedFamiliar(familiar)
     local frame = Game():GetFrameCount()
@@ -252,7 +328,9 @@ function FamiliarCapacityModule:RegisterInitializedFamiliar(familiar)
         return self:RefreshSnapshot(true)
     end
 
-    self.Snapshot.total = self.Snapshot.total + 1
+    if not self:ConsumeFamiliarReservation(familiar) then
+        self.Snapshot.total = self.Snapshot.total + 1
+    end
 
     if self:IsBankableVariant(familiar.Variant) then
         self.Snapshot.expendable[#self.Snapshot.expendable + 1] = familiar
@@ -261,21 +339,30 @@ function FamiliarCapacityModule:RegisterInitializedFamiliar(familiar)
     return self.Snapshot
 end
 
+function FamiliarCapacityModule:ShouldPlayBankAnimation(playerIndex, variant)
+    local frame = Game():GetFrameCount()
+    local animationKey = tostring(playerIndex) .. ":" .. tostring(variant)
+    local previousFrame = self.AnimationFrames[animationKey]
+
+    if previousFrame and frame - previousFrame < BANK_ANIMATION_INTERVAL then
+        return false
+    end
+
+    self.AnimationFrames[animationKey] = frame
+
+    return true
+end
+
 function FamiliarCapacityModule:PlayBankAnimation(
     playerIndex,
     variant,
     position,
     player
 )
-    local frame = Game():GetFrameCount()
-    local animationKey = tostring(playerIndex) .. ":" .. tostring(variant)
-    local previousFrame = self.AnimationFrames[animationKey]
-
-    if previousFrame and frame - previousFrame < BANK_ANIMATION_INTERVAL then
+    if not self:ShouldPlayBankAnimation(playerIndex, variant) then
         return
     end
 
-    self.AnimationFrames[animationKey] = frame
     Isaac.Spawn(
         EntityType.ENTITY_EFFECT,
         EffectVariant.POOF01,
@@ -284,6 +371,60 @@ function FamiliarCapacityModule:PlayBankAnimation(
         Vector.Zero,
         player
     )
+end
+
+function FamiliarCapacityModule:OnPreEntitySpawn(
+    entityType,
+    variant,
+    _subtype,
+    _position,
+    _velocity,
+    spawner,
+    seed
+)
+    if not self:IsEnabled()
+        or entityType ~= EntityType.ENTITY_FAMILIAR
+    then
+        return nil
+    end
+
+    local snapshot = self:RefreshSnapshot(false)
+
+    if not self:IsBankableVariant(variant)
+        or snapshot.total < FAMILIAR_SOFT_LIMIT
+    then
+        -- Pre-spawn callbacks can be grouped before familiar initialization.
+        -- Reserve this same-frame slot now so a burst cannot admit multiple
+        -- expendable familiars through the final open slot.
+        self:ReserveFamiliarSpawn(seed)
+        return nil
+    end
+
+    local player = self:ResolveOwnerFromSource(spawner)
+    local playerIndex = self:GetPlayerIndex(player)
+
+    -- Multiplayer ownership can be ambiguous. Preserve the original spawn
+    -- rather than banking it under a guessed player.
+    if not self:AddToBank(playerIndex, variant, 1) then
+        self:ReserveFamiliarSpawn(seed)
+        return nil
+    end
+
+    local effectVariant = EffectVariant.EFFECT_NULL
+
+    if self:ShouldPlayBankAnimation(playerIndex, variant) then
+        effectVariant = EffectVariant.POOF01
+    end
+
+    -- MC_PRE_ENTITY_SPAWN cannot cancel a spawn. Redirecting to an effect keeps
+    -- the attempt out of the fixed familiar pool; EFFECT_NULL coalesces the
+    -- visual spam between the deliberately throttled POOF01 replacements.
+    return {
+        EntityType.ENTITY_EFFECT,
+        effectVariant,
+        0,
+        seed,
+    }
 end
 
 function FamiliarCapacityModule:BankFamiliar(familiar, showAnimation)
