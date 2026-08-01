@@ -7,14 +7,16 @@ local LANGUAGE_ZH = 1
 local LANGUAGE_EN = 2
 local SUBCATEGORY = {
     general = 1,
-    eden = 2,
-    taintedLost = 3,
-    taintedBlueBaby = 4,
-    taintedEden = 5,
-    bethany = 6,
+    eve = 2,
+    eden = 3,
+    taintedLost = 4,
+    taintedBlueBaby = 5,
+    taintedEden = 6,
+    bethany = 7,
 }
 local SUBCATEGORY_ORDER = {
     "general",
+    "eve",
     "eden",
     "taintedLost",
     "taintedBlueBaby",
@@ -61,6 +63,7 @@ local TEXT = {
         version = "版本",
         subcategories = {
             general = "通用",
+            eve = "夏娃",
             eden = "伊甸",
             taintedLost = "里游魂",
             taintedBlueBaby = "里蓝人",
@@ -80,6 +83,7 @@ local TEXT = {
         version = "Version",
         subcategories = {
             general = "General",
+            eve = "Eve",
             eden = "Eden",
             taintedLost = "T-Lost",
             taintedBlueBaby = "T-Blue Baby",
@@ -94,6 +98,20 @@ local TEXT = {
 }
 
 local MENU_SETTINGS = {
+    {
+        key = "eveDamageMultiplier",
+        group = "eve",
+        zhName = "保持100%攻击倍率",
+        enName = "Keep 1.00x Damage Multiplier",
+        zhInfo = {
+            "夏娃始终使用100%攻击倍率。",
+            "巴比伦大淫妇仍提供伤害与移速加成。",
+        },
+        enInfo = {
+            "Eve always uses a 1.00x damage multiplier.",
+            "Whore of Babylon keeps its damage and speed.",
+        },
+    },
     {
         key = "edenStartingItemChoice",
         group = "eden",
