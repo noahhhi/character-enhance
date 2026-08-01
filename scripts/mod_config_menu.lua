@@ -113,6 +113,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "eveDeadBirdRedHeartTrigger",
+        group = "eve",
+        zhName = "低红心持续激活死鸟",
+        enName = "Keep Dead Bird Active",
+        zhInfo = {
+            "红心不高于半颗时，死鸟持续激活。",
+            "普通夏娃的阈值为一整颗红心。",
+        },
+        enInfo = {
+            "Dead Bird stays active at half a Red Heart or less.",
+            "Normal Eve's threshold is one full Red Heart.",
+        },
+    },
+    {
         key = "edenStartingItemChoice",
         group = "eden",
         zhName = "初始被动三选一",
