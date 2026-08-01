@@ -1,8 +1,9 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.16.0"
+local VERSION = "1.17.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
+    eveDamageMultiplier = true,
     taintedLostWoodenCross = true,
     taintedBlueBabyDevilDeals = true,
     taintedBlueBabyPoopCapacity = true,
@@ -174,6 +175,7 @@ function Context:SetSetting(settingKey, value)
 end
 
 local TaintedLostModule = include("scripts/tainted_lost")
+local EveDamageMultiplierModule = include("scripts/eve_damage_multiplier")
 local TaintedBlueBabyDealsModule = include("scripts/tainted_bluebaby_deals")
 local TaintedBlueBabyPoopCapacityModule = include(
     "scripts/tainted_bluebaby_poop_capacity"
@@ -213,6 +215,10 @@ Context:RegisterModule("rerollHealthProtection", rerollHealthModule)
 Context:RegisterSettingHandler("rerollAbsorbedStats", rerollHealthModule)
 Context:RegisterSettingHandler("esauJrFirstPickup", rerollHealthModule)
 Context:RegisterSettingHandler("rerollTmtrainerChance", rerollHealthModule)
+Context:RegisterModule(
+    "eveDamageMultiplier",
+    EveDamageMultiplierModule.New(Context)
+)
 Context:RegisterModule(
     "taintedLostWoodenCross",
     TaintedLostModule.New(Context)
@@ -312,6 +318,7 @@ ModConfigMenuModule.New(Context)
 if Game():GetFrameCount() > 0 then
     for _, moduleKey in ipairs({
         "rerollHealthProtection",
+        "eveDamageMultiplier",
         "taintedLostWoodenCross",
         "bethanySoulCharge",
         "familiarCapacity",
