@@ -4,17 +4,12 @@ EveDeadBirdModule.__index = EveDeadBirdModule
 local SETTING_KEY = "eveDeadBirdRedHeartTrigger"
 local EVE = PlayerType.PLAYER_EVE
 local DEAD_BIRD = CollectibleType.COLLECTIBLE_DEAD_BIRD
-local ACTIVE_DEAD_BIRD_VARIANT = FamiliarVariant.DEAD_BIRD
-local PERMANENT_DEAD_BIRD_VARIANT = 219
+local ATTACKING_DEAD_BIRD_VARIANT = FamiliarVariant.DEAD_BIRD
+local NATIVE_PERMANENT_DEAD_BIRD_VARIANT = 219
 local MANAGED_DATA_KEY = "CharacterEnhanceRedHeartDeadBirdOwner"
 local HALF_RED_HEART = 1
 local EVE_RED_HEART_THRESHOLD = 2
 local RNG_SHIFT_INDEX = 35
-local TARGET_DISTANCE = 1000
-local TARGET_INTERVAL = 13
-local MOVE_SPEED = 6
-local MOVE_ACCELERATION = 0.25
-local IDLE_FRICTION = 0.8
 local MISSING_BIRD_RETRY_INTERVAL = 30
 
 function EveDeadBirdModule.New(context)
@@ -41,13 +36,6 @@ function EveDeadBirdModule.New(context)
         function(_, familiar)
             self:OnFamiliarInit(familiar)
         end
-    )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_FAMILIAR_UPDATE,
-        function(_, familiar)
-            self:OnPermanentBirdUpdate(familiar)
-        end,
-        PERMANENT_DEAD_BIRD_VARIANT
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
@@ -146,16 +134,25 @@ function EveDeadBirdModule:IsEntityAlive(entity)
     return type(entity.IsDead) ~= "function" or not entity:IsDead()
 end
 
+function EveDeadBirdModule:IsSameEntity(left, right)
+    return left
+        and right
+        and (left == right or GetPtrHash(left) == GetPtrHash(right))
+end
+
 function EveDeadBirdModule:CreateFamiliarRNG(player)
     local rng = RNG()
     rng:SetSeed(math.max(1, player.InitSeed or 1), RNG_SHIFT_INDEX)
     return rng
 end
 
-function EveDeadBirdModule:FindOwnedBird(player, variant)
+function EveDeadBirdModule:FindOwnedBird(player, managedOnly)
+    local fallback = nil
+    local playerHash = GetPtrHash(player)
+
     for _, entity in ipairs(Isaac.FindByType(
         EntityType.ENTITY_FAMILIAR,
-        variant,
+        ATTACKING_DEAD_BIRD_VARIANT,
         -1,
         false,
         false
@@ -166,28 +163,35 @@ function EveDeadBirdModule:FindOwnedBird(player, variant)
             and self:IsEntityAlive(familiar)
             and self:IsOwnedBy(familiar, player)
         then
-            return familiar
+            if self:GetData(familiar)[MANAGED_DATA_KEY] == playerHash then
+                return familiar
+            end
+
+            if not managedOnly and not fallback then
+                fallback = familiar
+            end
         end
     end
 
-    return nil
+    return fallback
 end
 
-function EveDeadBirdModule:ManagePermanentBird(player, familiar)
+function EveDeadBirdModule:ManageAttackingBird(player, familiar)
     if not familiar then
         return nil
     end
 
     local playerHash = GetPtrHash(player)
+    familiar:AddEntityFlags(EntityFlag.FLAG_PERSISTENT)
     self:GetData(familiar)[MANAGED_DATA_KEY] = playerHash
     self:GetPlayerState(player).Bird = familiar
     return familiar
 end
 
-function EveDeadBirdModule:AdoptPermanentBird(player)
-    return self:ManagePermanentBird(
+function EveDeadBirdModule:AdoptAttackingBird(player)
+    return self:ManageAttackingBird(
         player,
-        self:FindOwnedBird(player, PERMANENT_DEAD_BIRD_VARIANT)
+        self:FindOwnedBird(player, false)
     )
 end
 
@@ -201,7 +205,7 @@ function EveDeadBirdModule:RemoveManagedBirds(player)
 
     for _, entity in ipairs(Isaac.FindByType(
         EntityType.ENTITY_FAMILIAR,
-        PERMANENT_DEAD_BIRD_VARIANT,
+        ATTACKING_DEAD_BIRD_VARIANT,
         -1,
         false,
         false
@@ -227,22 +231,22 @@ function EveDeadBirdModule:OnEvaluateFamiliars(player)
     local itemConfig = Isaac.GetItemConfig():GetCollectible(DEAD_BIRD)
     local rng = self:CreateFamiliarRNG(player)
 
-    -- Variant 219 is Repentance+'s persistent Dead Bird. Keeping it at one
-    -- lets the same entity cross room boundaries, while variant 14 is the
-    -- room-only bird created by taking damage and would otherwise duplicate it.
+    -- Variant 14 contains the complete vanilla attacking, following, and
+    -- animation state machine. Mark that original entity persistent instead of
+    -- emulating variant 219's engine-private activation state in Lua.
     player:CheckFamiliar(
-        ACTIVE_DEAD_BIRD_VARIANT,
+        NATIVE_PERMANENT_DEAD_BIRD_VARIANT,
         0,
         rng,
         itemConfig
     )
     player:CheckFamiliar(
-        PERMANENT_DEAD_BIRD_VARIANT,
+        ATTACKING_DEAD_BIRD_VARIANT,
         1,
         rng,
         itemConfig
     )
-    self:AdoptPermanentBird(player)
+    self:AdoptAttackingBird(player)
 end
 
 function EveDeadBirdModule:EvaluateFamiliarCache(player)
@@ -263,9 +267,9 @@ function EveDeadBirdModule:RefreshPlayer(player, force)
     end
 
     if not active then
-        -- A managed 219 may be dormant outside the Red-Heart rule. Remove it
-        -- before reevaluation so the engine can recreate any legitimately
-        -- native bird, such as Eve's Birthright bird, with its own AI state.
+        -- Remove only the persistent attacking bird owned by this rule. Cache
+        -- reevaluation then recreates any legitimate native damage, low-health,
+        -- or Birthright bird with its unmodified lifetime and state.
         self:RemoveManagedBirds(player)
     end
 
@@ -274,7 +278,7 @@ function EveDeadBirdModule:RefreshPlayer(player, force)
     self:EvaluateFamiliarCache(player)
 
     if active then
-        self:AdoptPermanentBird(player)
+        self:AdoptAttackingBird(player)
     end
 end
 
@@ -286,7 +290,7 @@ function EveDeadBirdModule:RefreshPlayers(force)
     end
 end
 
-function EveDeadBirdModule:EnsurePermanentBird(player, forceRetry)
+function EveDeadBirdModule:EnsureAttackingBird(player, forceRetry)
     local state = self:GetPlayerState(player)
 
     if not state.Active then
@@ -299,7 +303,7 @@ function EveDeadBirdModule:EnsurePermanentBird(player, forceRetry)
         return
     end
 
-    if self:AdoptPermanentBird(player) then
+    if self:AdoptAttackingBird(player) then
         return
     end
 
@@ -311,7 +315,7 @@ function EveDeadBirdModule:EnsurePermanentBird(player, forceRetry)
 
     state.NextRetryFrame = frameCount + MISSING_BIRD_RETRY_INTERVAL
     self:EvaluateFamiliarCache(player)
-    self:AdoptPermanentBird(player)
+    self:AdoptAttackingBird(player)
 end
 
 function EveDeadBirdModule:OnPlayerEffectUpdate(player)
@@ -328,7 +332,7 @@ function EveDeadBirdModule:OnPlayerEffectUpdate(player)
     end
 
     if active then
-        self:EnsurePermanentBird(player, false)
+        self:EnsureAttackingBird(player, false)
     end
 end
 
@@ -339,8 +343,8 @@ function EveDeadBirdModule:OnFamiliarInit(familiar)
 
     local variant = familiar.Variant
 
-    if variant ~= ACTIVE_DEAD_BIRD_VARIANT
-        and variant ~= PERMANENT_DEAD_BIRD_VARIANT
+    if variant ~= ATTACKING_DEAD_BIRD_VARIANT
+        and variant ~= NATIVE_PERMANENT_DEAD_BIRD_VARIANT
     then
         return
     end
@@ -351,80 +355,24 @@ function EveDeadBirdModule:OnFamiliarInit(familiar)
         return
     end
 
-    if variant == ACTIVE_DEAD_BIRD_VARIANT then
-        -- Damage can still ask the closed-source item code for its room bird.
-        -- Remove it during initialization, before it can render or attack, so
-        -- it never becomes a second Dead Bird beside the persistent one.
+    if variant == NATIVE_PERMANENT_DEAD_BIRD_VARIANT then
         familiar:Remove()
         return
     end
 
-    self:ManagePermanentBird(player, familiar)
-end
+    local existing = self:GetPlayerState(player).Bird
 
-function EveDeadBirdModule:IsValidTarget(target)
-    if not self:IsEntityAlive(target) or not target.Position then
-        return false
-    end
-
-    return type(target.IsVulnerableEnemy) ~= "function"
-        or target:IsVulnerableEnemy()
-end
-
-function EveDeadBirdModule:EnsureFlyingAnimation(familiar)
-    if type(familiar.GetSprite) ~= "function" then
-        return
-    end
-
-    local sprite = familiar:GetSprite()
-
-    if not sprite then
-        return
-    end
-
-    local animation = sprite:GetAnimation()
-
-    if animation == "Flying" or animation == "FlyingTransparent" then
-        return
-    end
-
-    local flyingAnimation = animation == "IdleTransparent"
-        and "FlyingTransparent"
-        or "Flying"
-    sprite:Play(flyingAnimation, true)
-end
-
-function EveDeadBirdModule:OnPermanentBirdUpdate(familiar)
-    local player = self:ResolveOwner(familiar)
-
-    if not player
-        or not self:ShouldKeepDeadBirdActive(player)
-        or not self:IsManagedBird(familiar, player)
+    if self:IsEntityAlive(existing)
+        and self:IsManagedBird(existing, player)
+        and not self:IsSameEntity(existing, familiar)
     then
+        -- Native damage may request another room bird. Remove the new entity
+        -- during initialization and retain the already-active original bird.
+        familiar:Remove()
         return
     end
 
-    self:GetPlayerState(player).Bird = familiar
-    self:EnsureFlyingAnimation(familiar)
-    familiar:PickEnemyTarget(TARGET_DISTANCE, TARGET_INTERVAL)
-
-    local target = familiar.Target
-
-    if not self:IsValidTarget(target) then
-        familiar.Velocity = familiar.Velocity * IDLE_FRICTION
-        return
-    end
-
-    local offset = target.Position - familiar.Position
-
-    if offset:Length() <= 0 then
-        familiar.Velocity = familiar.Velocity * IDLE_FRICTION
-        return
-    end
-
-    local targetVelocity = offset:Resized(MOVE_SPEED)
-    familiar.Velocity = familiar.Velocity * (1 - MOVE_ACCELERATION)
-        + targetVelocity * MOVE_ACCELERATION
+    self:ManageAttackingBird(player, familiar)
 end
 
 function EveDeadBirdModule:OnGameStarted()
@@ -443,9 +391,10 @@ function EveDeadBirdModule:OnNewRoom()
         if state.Active ~= active then
             self:RefreshPlayer(player, true)
         elseif active then
-            -- Usually this only reuses the same 219. Cache reevaluation is a
-            -- recovery path for an entity removed by a familiar cap or mod.
-            self:EnsurePermanentBird(player, true)
+            -- FLAG_PERSISTENT normally preserves this exact variant-14 entity.
+            -- Cache reevaluation remains a recovery path if another system
+            -- deliberately removed it.
+            self:EnsureAttackingBird(player, true)
         end
     end
 end
