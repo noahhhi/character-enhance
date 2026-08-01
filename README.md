@@ -50,6 +50,11 @@
 - Uses a `1.00x` damage multiplier at all times instead of her normal `0.75x`
   multiplier. Activating Whore of Babylon does not add another multiplier; its
   flat damage and speed bonuses remain unchanged.
+- Dead Bird stays active whenever its owner has half a filled Red Heart or
+  less, even with Soul or Black Hearts protecting that health. Normal Eve uses
+  her one-full-Red-Heart threshold. The same attacking bird persists between
+  rooms, taking damage does not create a duplicate while the rule is active,
+  and multiplayer checks each owner separately.
 
 <a id="eden"></a>
 ## Eden
@@ -237,7 +242,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All twenty-six gameplay settings remain independently configurable:
+All twenty-seven gameplay settings remain independently configurable:
 
 1. Familiar Limit Fix
 2. C Section Incubus Animation Fix
@@ -251,20 +256,21 @@ All twenty-six gameplay settings remain independently configurable:
 10. Pill Rewind Fix
 11. Show Zodiac's Floor Item
 12. Keep 1.00x Damage Multiplier
-13. Eden Starting Passive Choice
-14. Eden's Blessing Choice
-15. Starting Wooden Cross
-16. Blue Baby Deal Prices
-17. Poop Queue Overflow Fix
-18. Keep Health on Reroll
-19. Keep Absorbed Stats
-20. Reveal Pills with Rerolled PHD
-21. Esau Jr. Pickup Effects
-22. TMTRAINER Reroll Chance
-23. Double Soul Charges
-24. Soul Charge Shield
-25. Shield Effects
-26. Gello Wisp Orbit Fix
+13. Keep Dead Bird Active
+14. Eden Starting Passive Choice
+15. Eden's Blessing Choice
+16. Starting Wooden Cross
+17. Blue Baby Deal Prices
+18. Poop Queue Overflow Fix
+19. Keep Health on Reroll
+20. Keep Absorbed Stats
+21. Reveal Pills with Rerolled PHD
+22. Esau Jr. Pickup Effects
+23. TMTRAINER Reroll Chance
+24. Double Soul Charges
+25. Soul Charge Shield
+26. Shield Effects
+27. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. The integration supports both Mod

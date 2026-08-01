@@ -113,6 +113,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "eveDeadBirdRedHeartTrigger",
+        group = "eve",
+        zhName = "低红心持续激活死鸟",
+        enName = "Keep Dead Bird Active",
+        zhInfo = {
+            "红心不高于半颗时持续激活；夏娃阈值为一颗。",
+            "同一只死鸟跨房保留，受伤不会生成第二只。",
+        },
+        enInfo = {
+            "Active at half a Red Heart; normal Eve at one.",
+            "The same bird crosses rooms; damage adds no copy.",
+        },
+    },
+    {
         key = "edenStartingItemChoice",
         group = "eden",
         zhName = "初始被动三选一",
