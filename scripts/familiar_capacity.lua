@@ -5,7 +5,9 @@ local SETTING_KEY = "familiarCapacity"
 local BLUE_FLY = FamiliarVariant.BLUE_FLY
 local BLUE_SPIDER = FamiliarVariant.BLUE_SPIDER
 local FAMILIAR_SOFT_LIMIT = 60
+local FAMILIAR_COMBAT_LIMIT = 32
 local FAMILIAR_HARD_LIMIT = 64
+local DEBUG_DUMMY_TYPE = 964
 local BANK_RELEASE_INTERVAL = 3
 local BANK_BLOCKED_RETRY_MAX = 30
 local BANK_RELEASE_BATCH_SIZE = 2
@@ -25,8 +27,10 @@ function FamiliarCapacityModule.New(context)
             expendable = {},
             reservedSeeds = {},
         },
-        OverflowProxyFrame = -1,
-        OverflowProxyQueues = {},
+        PendingOverflowSpawns = {},
+        PendingOverflowCount = 0,
+        TargetLimitFrame = -1,
+        CachedTargetLimit = FAMILIAR_SOFT_LIMIT,
         AnimationFrames = {},
         NextReleaseFrame = 0,
         ReleaseRetryInterval = BANK_RELEASE_INTERVAL,
@@ -70,10 +74,8 @@ function FamiliarCapacityModule.New(context)
         )
     end
 
-    -- Removing overflow in MC_FAMILIAR_INIT is too late for the engine's fixed
-    -- 64-entry familiar pool: allocation and destructive slot overwrite have
-    -- already happened. Run late in the pre-spawn chain so owned expendable
-    -- familiars can be redirected before they ever request a familiar slot.
+    -- Run late in the pre-spawn chain so an initialized expendable familiar can
+    -- be banked before the replacement request reaches the fixed familiar pool.
     if type(context.Mod.AddPriorityCallback) == "function" then
         context.Mod:AddPriorityCallback(
             ModCallbacks.MC_PRE_ENTITY_SPAWN,
@@ -95,16 +97,15 @@ function FamiliarCapacityModule.New(context)
         end
     )
     context.Mod:AddCallback(
-        ModCallbacks.MC_POST_EFFECT_INIT,
-        function(_, effect)
-            self:OnEffectInit(effect)
-        end,
-        EffectVariant.POOF01
-    )
-    context.Mod:AddCallback(
         ModCallbacks.MC_POST_NEW_ROOM,
         function()
             self:OnNewRoom()
+        end
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_NPC_INIT,
+        function()
+            self:OnNPCInit()
         end
     )
 
@@ -168,13 +169,55 @@ function FamiliarCapacityModule:ResetSnapshot()
     self.Snapshot.reservedSeeds = {}
 end
 
-function FamiliarCapacityModule:ResetOverflowProxies()
-    self.OverflowProxyFrame = -1
-    self.OverflowProxyQueues = {}
+function FamiliarCapacityModule:ResetPendingOverflowSpawns()
+    self.PendingOverflowSpawns = {}
+    self.PendingOverflowCount = 0
 end
 
 function FamiliarCapacityModule:IsBankableVariant(variant)
     return variant == BLUE_FLY or variant == BLUE_SPIDER
+end
+
+function FamiliarCapacityModule:HasCombatPressure()
+    local room = Game():GetRoom()
+
+    if room:GetAliveEnemiesCount() > 0 then
+        return true
+    end
+
+    -- Debug dummies do not consistently contribute to AliveEnemiesCount, but
+    -- the same burst reserve is required for the documented stress test.
+    for _, dummy in ipairs(Isaac.FindByType(
+        DEBUG_DUMMY_TYPE,
+        -1,
+        -1,
+        false,
+        false
+    )) do
+        if dummy:Exists() then
+            return true
+        end
+    end
+
+    return false
+end
+
+function FamiliarCapacityModule:GetTargetFamiliarLimit()
+    local frame = Game():GetFrameCount()
+
+    if self.TargetLimitFrame == frame then
+        return self.CachedTargetLimit
+    end
+
+    self.TargetLimitFrame = frame
+
+    if self:HasCombatPressure() then
+        self.CachedTargetLimit = FAMILIAR_COMBAT_LIMIT
+    else
+        self.CachedTargetLimit = FAMILIAR_SOFT_LIMIT
+    end
+
+    return self.CachedTargetLimit
 end
 
 function FamiliarCapacityModule:GetPlayerIndex(player)
@@ -377,6 +420,10 @@ function FamiliarCapacityModule:PlayBankAnimation(
         return
     end
 
+    self:SpawnBankAnimation(position, player)
+end
+
+function FamiliarCapacityModule:SpawnBankAnimation(position, player)
     Isaac.Spawn(
         EntityType.ENTITY_EFFECT,
         EffectVariant.POOF01,
@@ -387,61 +434,70 @@ function FamiliarCapacityModule:PlayBankAnimation(
     )
 end
 
-function FamiliarCapacityModule:QueueOverflowProxy(seed, discard)
-    if type(seed) ~= "number" then
+function FamiliarCapacityModule:QueuePendingOverflowSpawn(
+    seed,
+    variant,
+    showAnimation,
+    player
+)
+    if type(seed) ~= "number" or not self:IsBankableVariant(variant) then
         return false
     end
 
-    local frame = Game():GetFrameCount()
-
-    if self.OverflowProxyFrame ~= frame then
-        self.OverflowProxyFrame = frame
-        self.OverflowProxyQueues = {}
-    end
-
-    local queue = self.OverflowProxyQueues[seed]
+    local queue = self.PendingOverflowSpawns[seed]
 
     if not queue then
         queue = { head = 1, tail = 0 }
-        self.OverflowProxyQueues[seed] = queue
+        self.PendingOverflowSpawns[seed] = queue
     end
 
     queue.tail = queue.tail + 1
-    queue[queue.tail] = discard
+    queue[queue.tail] = {
+        variant = variant,
+        showAnimation = showAnimation,
+        player = player,
+    }
+    self.PendingOverflowCount = self.PendingOverflowCount + 1
 
     return true
 end
 
-function FamiliarCapacityModule:ConsumeOverflowProxy(seed)
+function FamiliarCapacityModule:DiscardUninitializedOverflowSpawns()
+    if self.PendingOverflowCount > 0 then
+        -- Native familiar initialization is synchronous with allocation. Any
+        -- request still queued by MC_POST_UPDATE was rejected by the engine and
+        -- must not suppress later fallback accounting through a stale count.
+        self:ResetPendingOverflowSpawns()
+    end
+end
+
+function FamiliarCapacityModule:ConsumePendingOverflowSpawn(seed, variant)
     local queue = type(seed) == "number"
-        and self.OverflowProxyQueues[seed]
+        and self.PendingOverflowSpawns[seed]
         or nil
 
     if not queue or queue.head > queue.tail then
         return nil
     end
 
-    local discard = queue[queue.head]
+    local pending = queue[queue.head]
+
+    if pending.variant ~= variant then
+        return nil
+    end
+
     queue[queue.head] = nil
     queue.head = queue.head + 1
+    self.PendingOverflowCount = math.max(
+        0,
+        self.PendingOverflowCount - 1
+    )
 
     if queue.head > queue.tail then
-        self.OverflowProxyQueues[seed] = nil
+        self.PendingOverflowSpawns[seed] = nil
     end
 
-    return discard
-end
-
-function FamiliarCapacityModule:OnEffectInit(effect)
-    if not effect or effect.Variant ~= EffectVariant.POOF01 then
-        return
-    end
-
-    local discard = self:ConsumeOverflowProxy(effect.InitSeed)
-
-    if discard then
-        effect:Remove()
-    end
+    return pending
 end
 
 function FamiliarCapacityModule:OnPreEntitySpawn(
@@ -461,9 +517,24 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
 
     local snapshot = self:RefreshSnapshot(false)
 
-    if not self:IsBankableVariant(variant)
-        or snapshot.total < FAMILIAR_SOFT_LIMIT
-    then
+    if not self:IsBankableVariant(variant) then
+        -- Important familiars stay in their original native class. At the hard
+        -- edge, free an already initialized expendable slot before allocation.
+        if snapshot.total >= FAMILIAR_HARD_LIMIT then
+            local expendable = self:FindExpendableFamiliar()
+
+            if expendable then
+                self:BankFamiliar(expendable, false)
+            end
+        end
+
+        self:ReserveFamiliarSpawn(seed)
+        return nil
+    end
+
+    local targetLimit = self:GetTargetFamiliarLimit()
+
+    if snapshot.total < targetLimit then
         -- Pre-spawn callbacks can be grouped before familiar initialization.
         -- Reserve this same-frame slot now so a burst cannot admit multiple
         -- expendable familiars through the final open slot.
@@ -476,25 +547,41 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
 
     -- Multiplayer ownership can be ambiguous. Preserve the original spawn
     -- rather than banking it under a guessed player.
+    if playerIndex == nil or type(seed) ~= "number" then
+        self:ReserveFamiliarSpawn(seed)
+        return nil
+    end
+
+    -- Repentance+ 1.9.7.15 selects native object storage before applying a
+    -- cross-type pre-spawn replacement. Turning a familiar request into an
+    -- effect therefore corrupts effect initialization and crashes. Instead,
+    -- bank one fully initialized expendable familiar before allowing the new
+    -- same-class request to replace it.
+    local expendable = self:FindExpendableFamiliar()
+
+    if expendable and self:BankFamiliar(expendable, true) then
+        self:ReserveFamiliarSpawn(seed)
+        return nil
+    end
+
+    -- The soft limit can consist entirely of important familiars. Record this
+    -- overflow now, keep the four-slot reserve, and remove the new same-class
+    -- fly/spider from its init fallback. No cross-type proxy is constructed.
     if not self:AddToBank(playerIndex, variant, 1) then
         self:ReserveFamiliarSpawn(seed)
         return nil
     end
 
     local showAnimation = self:ShouldPlayBankAnimation(playerIndex, variant)
-    self:QueueOverflowProxy(seed, not showAnimation)
-
-    -- MC_PRE_ENTITY_SPAWN cannot cancel a spawn. Redirecting to an effect keeps
-    -- the attempt out of the fixed familiar pool. EFFECT_NULL has no entity
-    -- config in Repentance+ 1.9.7.15 and crashes native initialization, so use
-    -- a valid POOF01 proxy and immediately remove throttled copies in its init
-    -- callback. The retained copies provide the coalesced overflow animation.
-    return {
-        EntityType.ENTITY_EFFECT,
-        EffectVariant.POOF01,
-        0,
+    self:QueuePendingOverflowSpawn(
         seed,
-    }
+        variant,
+        showAnimation,
+        player
+    )
+    self:ReserveFamiliarSpawn(seed)
+
+    return nil
 end
 
 function FamiliarCapacityModule:BankFamiliar(familiar, showAnimation)
@@ -550,10 +637,33 @@ function FamiliarCapacityModule:OnFamiliarInit(familiar)
         return
     end
 
+    local pending = self:IsBankableVariant(familiar.Variant)
+        and self:ConsumePendingOverflowSpawn(
+            familiar.InitSeed,
+            familiar.Variant
+        )
+        or nil
     self:RegisterInitializedFamiliar(familiar)
 
+    if pending then
+        local position = familiar.Position
+        familiar:Remove()
+        self.Snapshot.total = math.max(0, self.Snapshot.total - 1)
+
+        if pending.showAnimation then
+            self:SpawnBankAnimation(position, pending.player)
+        end
+
+        return
+    end
+
     if self:IsBankableVariant(familiar.Variant) then
-        if self.Snapshot.total > FAMILIAR_SOFT_LIMIT then
+        -- Reservations for queued overflow are already included in total and
+        -- will be removed by their own init callbacks. Exclude those future
+        -- removals so an earlier allowed familiar is not banked as well.
+        if self.Snapshot.total - self.PendingOverflowCount
+            > self:GetTargetFamiliarLimit()
+        then
             self:BankFamiliar(familiar, true)
         end
 
@@ -565,8 +675,9 @@ end
 
 function FamiliarCapacityModule:RebalanceCapacity()
     self:RefreshSnapshot(true)
+    local targetLimit = self:GetTargetFamiliarLimit()
 
-    while self.Snapshot.total > FAMILIAR_SOFT_LIMIT do
+    while self.Snapshot.total > targetLimit do
         local expendable = self:FindExpendableFamiliar()
 
         if not expendable or not self:BankFamiliar(expendable, false) then
@@ -617,7 +728,8 @@ function FamiliarCapacityModule:ReleaseBankedFamiliars()
     end
 
     local snapshot = self:RefreshSnapshot(true)
-    local availableSlots = FAMILIAR_SOFT_LIMIT - snapshot.total
+    local targetLimit = self:GetTargetFamiliarLimit()
+    local availableSlots = targetLimit - snapshot.total
 
     if availableSlots <= 0 then
         self.ReleaseRetryInterval = math.min(
@@ -729,8 +841,9 @@ function FamiliarCapacityModule:OnGameStarted(isContinued)
     self.ReleasePlayerCursor = 0
     self.ReleaseSpiderNext = false
     self.AnimationFrames = {}
+    self.TargetLimitFrame = -1
     self:ResetSnapshot()
-    self:ResetOverflowProxies()
+    self:ResetPendingOverflowSpawns()
     self:LoadBank(isContinued)
 
     if self.Context:IsEnabled(SETTING_KEY) then
@@ -744,6 +857,7 @@ function FamiliarCapacityModule:OnUpdate()
     if self:IsEnabled() then
         self:ReleaseBankedFamiliars()
         self:SaveBankIfDue()
+        self:DiscardUninitializedOverflowSpawns()
     end
 
     self:RefreshUpdateCallback()
@@ -755,17 +869,31 @@ function FamiliarCapacityModule:OnNewRoom()
     end
 
     self:ResetSnapshot()
-    self:ResetOverflowProxies()
+    self:ResetPendingOverflowSpawns()
     self.AnimationFrames = {}
+    self.TargetLimitFrame = -1
     self.NeedsRebalance = self.Context:IsEnabled(SETTING_KEY)
     self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
     self:RefreshUpdateCallback()
 end
 
+function FamiliarCapacityModule:OnNPCInit()
+    if not self:IsEnabled() then
+        return
+    end
+
+    -- New combat pressure can appear after MC_POST_NEW_ROOM (including debug
+    -- dummies). Rebalance on the next normal update before attacks begin.
+    self.TargetLimitFrame = -1
+    self.NeedsRebalance = true
+    self:RefreshUpdateCallback()
+end
+
 function FamiliarCapacityModule:OnSettingChanged(enabled)
     self:ResetSnapshot()
-    self:ResetOverflowProxies()
+    self:ResetPendingOverflowSpawns()
     self.AnimationFrames = {}
+    self.TargetLimitFrame = -1
     self.NeedsRebalance = enabled and self.RunActive
 
     if enabled and self.RunActive then
@@ -794,7 +922,7 @@ function FamiliarCapacityModule:OnPreGameExit()
     self.RunActive = false
     self.NeedsRebalance = false
     self:ResetSnapshot()
-    self:ResetOverflowProxies()
+    self:ResetPendingOverflowSpawns()
 end
 
 return FamiliarCapacityModule
