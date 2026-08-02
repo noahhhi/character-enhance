@@ -20,7 +20,8 @@
   <a href="#tainted-blue-baby">Tainted Blue Baby</a> •
   <a href="#tainted-eden">Tainted Eden</a> •
   <a href="#bethany">Bethany</a> •
-  <a href="#familiar-capacity">Familiar Limit Fix</a> •
+  <a href="#coupon-full-shop-discount">Coupon Full-Shop Discount</a> •
+  <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
@@ -142,13 +143,26 @@
   play her hurt voice. Turning Shield Effects off fades the shield away with
   its selected disappearance sound.
 
-<a id="familiar-capacity"></a>
-## Familiar Limit Fix
+<a id="coupon-full-shop-discount"></a>
+## Coupon Full-Shop Discount
 
+- Coupon recharges in three rooms instead of six. While held, every Coupon
+  discounts all shop merchandise as one complete Steam Sale effect instead of
+  guaranteeing a discount on only one random product.
+- Multiple Coupons and real Steam Sales all stack through Repentance+'s normal
+  discount rule, including copies held by different players.
+
+<a id="familiar-capacity"></a>
+## Protect Wisps from Temporary Familiars
+
+- When Guppy, Parasitoid, and similar effects generate large numbers of Blue
+  Flies and Blue Spiders, wisps and other important familiars will not be
+  displaced by temporary familiars. Extra temporary familiars are banked and
+  respawned when slots become available.
 - Preserves the vanilla 64-real-familiar hard limit without REPENTOGON.
-- Blue Flies and Blue Spiders occupy real slots only up to a soft total of 60.
-  Overflow is stored by player and type, then restored at most 2 every 3 frames
-  when slots reopen.
+- Blue Flies and Blue Spiders occupy real slots only up to a soft total of 55.
+  Overflow is stored by player and type, then restored up to 7 per frame as
+  slots reopen.
 - Permanent and quest familiars, wisps, Bone Spurs, and other important
   familiars are never deliberately banked. At the hard edge, an owned Blue Fly
   or Blue Spider is banked to reserve space for an important familiar.
@@ -242,35 +256,36 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All twenty-seven gameplay settings remain independently configurable:
+All twenty-eight gameplay settings remain independently configurable:
 
-1. Familiar Limit Fix
-2. C Section Incubus Animation Fix
-3. Small Player Pickup Range Fix
-4. Clog Creep Damage Fix
-5. Lost Soul White Fire Fix
-6. White Fire Grants Mantle
-7. Pickup Animation Fix
-8. Kid's Drawing Form Fix
-9. Ocular Rift Sound Fix
-10. Pill Rewind Fix
-11. Show Zodiac's Floor Item
-12. Keep 1.00x Damage Multiplier
-13. Keep Dead Bird Active
-14. Eden Starting Passive Choice
-15. Eden's Blessing Choice
-16. Starting Wooden Cross
-17. Blue Baby Deal Prices
-18. Poop Queue Overflow Fix
-19. Keep Health on Reroll
-20. Keep Absorbed Stats
-21. Reveal Pills with Rerolled PHD
-22. Esau Jr. Pickup Effects
-23. TMTRAINER Reroll Chance
-24. Double Soul Charges
-25. Soul Charge Shield
-26. Shield Effects
-27. Gello Wisp Orbit Fix
+1. Coupon Full-Shop Discount
+2. Protect Wisps from Temporary Familiars
+3. C Section Incubus Animation Fix
+4. Small Player Pickup Range Fix
+5. Clog Creep Damage Fix
+6. Lost Soul White Fire Fix
+7. White Fire Grants Mantle
+8. Pickup Animation Fix
+9. Kid's Drawing Form Fix
+10. Ocular Rift Sound Fix
+11. Pill Rewind Fix
+12. Show Zodiac's Floor Item
+13. Keep 1.00x Damage Multiplier
+14. Keep Dead Bird Active
+15. Eden Starting Passive Choice
+16. Eden's Blessing Choice
+17. Starting Wooden Cross
+18. Blue Baby Deal Prices
+19. Poop Queue Overflow Fix
+20. Keep Health on Reroll
+21. Keep Absorbed Stats
+22. Reveal Pills with Rerolled PHD
+23. Esau Jr. Pickup Effects
+24. TMTRAINER Reroll Chance
+25. Double Soul Charges
+26. Soul Charge Shield
+27. Shield Effects
+28. Gello Wisp Orbit Fix
 
 Options are grouped under the tabs `General`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. The integration supports both Mod
