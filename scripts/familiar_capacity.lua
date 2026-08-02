@@ -11,9 +11,10 @@ local POOL_GUARD_TAG = "CharacterEnhanceFamiliarCapacityPoolGuard"
 local BANK_RELEASE_INTERVAL = 3
 local BANK_BLOCKED_RETRY_MAX = 30
 local BANK_RELEASE_BATCH_SIZE = 2
-local BANK_ANIMATION_INTERVAL = 5
 local BANK_SAVE_DELAY = 60
 local MAX_BANKED_PER_TYPE = 2147483647
+local RELEASE_TARGET_DISTANCE = 10000
+local SPIDER_TARGET_GAP = 20
 
 function FamiliarCapacityModule.New(context)
     local self = setmetatable({
@@ -30,7 +31,6 @@ function FamiliarCapacityModule.New(context)
         PendingOverflowSpawns = {},
         PendingOverflowCount = 0,
         ActiveReleaseRequest = nil,
-        AnimationFrames = {},
         NextReleaseFrame = 0,
         ReleaseRetryInterval = BANK_RELEASE_INTERVAL,
         ReleasePlayerCursor = 0,
@@ -402,60 +402,7 @@ function FamiliarCapacityModule:RegisterInitializedFamiliar(familiar)
     return self.Snapshot
 end
 
-function FamiliarCapacityModule:ShouldPlayBankAnimation(playerIndex, variant)
-    local frame = Game():GetFrameCount()
-    local animationKey = tostring(playerIndex) .. ":" .. tostring(variant)
-    local previousFrame = self.AnimationFrames[animationKey]
-
-    if previousFrame and frame - previousFrame < BANK_ANIMATION_INTERVAL then
-        return false
-    end
-
-    self.AnimationFrames[animationKey] = frame
-
-    return true
-end
-
-function FamiliarCapacityModule:PlayBankAnimation(
-    playerIndex,
-    variant,
-    position
-)
-    if not self:ShouldPlayBankAnimation(playerIndex, variant) then
-        return
-    end
-
-    self:SpawnBankAnimation(position, playerIndex)
-end
-
-function FamiliarCapacityModule:SpawnBankAnimation(position, playerIndex)
-    local player = nil
-
-    if type(playerIndex) == "number"
-        and playerIndex >= 0
-        and playerIndex < Game():GetNumPlayers()
-    then
-        -- MC_PRE_ENTITY_SPAWN exposes a const spawner. Reacquire the mutable
-        -- player userdata before passing it back to Isaac.Spawn.
-        player = Isaac.GetPlayer(playerIndex)
-    end
-
-    Isaac.Spawn(
-        EntityType.ENTITY_EFFECT,
-        EffectVariant.POOF01,
-        0,
-        position,
-        Vector.Zero,
-        player
-    )
-end
-
-function FamiliarCapacityModule:QueuePendingOverflowSpawn(
-    seed,
-    variant,
-    showAnimation,
-    playerIndex
-)
+function FamiliarCapacityModule:QueuePendingOverflowSpawn(seed, variant)
     if type(seed) ~= "number" or not self:IsBankableVariant(variant) then
         return false
     end
@@ -468,11 +415,7 @@ function FamiliarCapacityModule:QueuePendingOverflowSpawn(
     end
 
     queue.tail = queue.tail + 1
-    queue[queue.tail] = {
-        variant = variant,
-        showAnimation = showAnimation,
-        playerIndex = playerIndex,
-    }
+    queue[queue.tail] = { variant = variant }
     self.PendingOverflowCount = self.PendingOverflowCount + 1
 
     return true
@@ -555,10 +498,13 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
         -- Important familiars stay in their original native class. At the hard
         -- edge, free an already initialized expendable slot before allocation.
         if snapshot.total >= FAMILIAR_HARD_LIMIT then
-            local expendable = self:FindExpendableFamiliar()
+            local owner = self:ResolveOwnerFromSource(spawner)
+            local expendable = self:FindExpendableFamiliar(
+                self:GetPlayerIndex(owner)
+            )
 
             if expendable then
-                self:BankFamiliar(expendable, false)
+                self:BankFamiliar(expendable)
             end
         end
 
@@ -589,9 +535,9 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
     -- effect therefore corrupts effect initialization and crashes. Instead,
     -- bank one fully initialized expendable familiar before allowing the new
     -- same-class request to replace it.
-    local expendable = self:FindExpendableFamiliar()
+    local expendable = self:FindExpendableFamiliar(playerIndex)
 
-    if expendable and self:BankFamiliar(expendable, true) then
+    if expendable and self:BankFamiliar(expendable) then
         self:ReserveFamiliarSpawn(seed)
         return nil
     end
@@ -605,19 +551,13 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
         return nil
     end
 
-    local showAnimation = self:ShouldPlayBankAnimation(playerIndex, variant)
-    self:QueuePendingOverflowSpawn(
-        seed,
-        variant,
-        showAnimation,
-        playerIndex
-    )
+    self:QueuePendingOverflowSpawn(seed, variant)
     self:ReserveFamiliarSpawn(seed)
 
     return nil
 end
 
-function FamiliarCapacityModule:BankFamiliar(familiar, showAnimation)
+function FamiliarCapacityModule:BankFamiliar(familiar)
     if not familiar or not familiar:Exists()
         or not self:IsBankableVariant(familiar.Variant)
     then
@@ -631,36 +571,72 @@ function FamiliarCapacityModule:BankFamiliar(familiar, showAnimation)
         return false
     end
 
-    local variant = familiar.Variant
-    local position = familiar.Position
     self:ReleaseFamiliarPoolSlot(familiar)
     familiar:Remove()
     self.Snapshot.total = math.max(0, self.Snapshot.total - 1)
 
-    if showAnimation then
-        self:PlayBankAnimation(playerIndex, variant, position)
-    end
-
     return true
 end
 
-function FamiliarCapacityModule:FindExpendableFamiliar()
+function FamiliarCapacityModule:GetSquaredDistance(first, second)
+    if not first or not second then
+        return math.huge
+    end
+
+    local deltaX = first.X - second.X
+    local deltaY = first.Y - second.Y
+
+    return deltaX * deltaX + deltaY * deltaY
+end
+
+function FamiliarCapacityModule:FindExpendableFamiliar(
+    preferredPlayerIndex
+)
+    local selected = nil
+    local selectedOwnerRank = math.huge
+    local selectedDistance = math.huge
+
     for _, familiar in ipairs(self.Snapshot.expendable) do
         if familiar and familiar:Exists()
             and self:IsBankableVariant(familiar.Variant)
         then
-            return familiar
+            local owner = self:ResolveOwner(familiar)
+            local ownerIndex = self:GetPlayerIndex(owner)
+
+            if ownerIndex ~= nil then
+                local ownerRank = preferredPlayerIndex ~= nil
+                    and (ownerIndex == preferredPlayerIndex and 0 or 1)
+                    or 0
+                local distance = self:GetSquaredDistance(
+                    familiar.Position,
+                    owner.Position
+                )
+
+                -- Newly generated flies and spiders begin beside their owner.
+                -- Prefer banking those nearby entities so distant familiars
+                -- already travelling toward an enemy keep their attack.
+                if ownerRank < selectedOwnerRank
+                    or (ownerRank == selectedOwnerRank
+                        and distance < selectedDistance)
+                then
+                    selected = familiar
+                    selectedOwnerRank = ownerRank
+                    selectedDistance = distance
+                end
+            end
         end
     end
 
-    return nil
+    return selected
 end
 
-function FamiliarCapacityModule:ProtectImportantSlots()
+function FamiliarCapacityModule:ProtectImportantSlots(preferredPlayerIndex)
     while self.Snapshot.total >= FAMILIAR_HARD_LIMIT do
-        local expendable = self:FindExpendableFamiliar()
+        local expendable = self:FindExpendableFamiliar(
+            preferredPlayerIndex
+        )
 
-        if not expendable or not self:BankFamiliar(expendable, false) then
+        if not expendable or not self:BankFamiliar(expendable) then
             break
         end
     end
@@ -689,14 +665,9 @@ function FamiliarCapacityModule:OnFamiliarInit(familiar)
     self:RegisterInitializedFamiliar(familiar)
 
     if pending then
-        local position = familiar.Position
         self:ReleaseFamiliarPoolSlot(familiar)
         familiar:Remove()
         self.Snapshot.total = math.max(0, self.Snapshot.total - 1)
-
-        if pending.showAnimation then
-            self:SpawnBankAnimation(position, pending.playerIndex)
-        end
 
         return
     end
@@ -707,7 +678,7 @@ function FamiliarCapacityModule:OnFamiliarInit(familiar)
         -- removals so an earlier allowed familiar is not banked as well.
         if self.Snapshot.total - self.PendingOverflowCount
                 > FAMILIAR_SOFT_LIMIT
-            and self:BankFamiliar(familiar, true)
+            and self:BankFamiliar(familiar)
         then
             return
         end
@@ -717,7 +688,8 @@ function FamiliarCapacityModule:OnFamiliarInit(familiar)
     end
 
     self:GuardFamiliarPoolSlot(familiar)
-    self:ProtectImportantSlots()
+    local owner = self:ResolveOwner(familiar)
+    self:ProtectImportantSlots(self:GetPlayerIndex(owner))
 end
 
 function FamiliarCapacityModule:OnEntityRemove(entity)
@@ -749,12 +721,83 @@ function FamiliarCapacityModule:RebalanceCapacity()
     while self.Snapshot.total > FAMILIAR_SOFT_LIMIT do
         local expendable = self:FindExpendableFamiliar()
 
-        if not expendable or not self:BankFamiliar(expendable, false) then
+        if not expendable or not self:BankFamiliar(expendable) then
             break
         end
     end
 
     self.NeedsRebalance = false
+end
+
+function FamiliarCapacityModule:IsValidReleaseTarget(entity)
+    return entity
+        and entity:Exists()
+        and entity:IsActiveEnemy(false)
+        and entity:IsVulnerableEnemy()
+        and not entity:HasEntityFlags(EntityFlag.FLAG_NO_TARGET)
+        and not entity:HasEntityFlags(EntityFlag.FLAG_FRIENDLY)
+end
+
+function FamiliarCapacityModule:FindNearestReleaseTarget(player)
+    local selected = nil
+    local selectedDistance = math.huge
+
+    for _, entity in ipairs(Isaac.GetRoomEntities()) do
+        if self:IsValidReleaseTarget(entity) then
+            local distance = self:GetSquaredDistance(
+                player.Position,
+                entity.Position
+            )
+
+            if distance < selectedDistance then
+                selected = entity
+                selectedDistance = distance
+            end
+        end
+    end
+
+    return selected
+end
+
+
+function FamiliarCapacityModule:GetSpiderReleasePosition(player, target)
+    if not target then
+        return player.Position
+    end
+
+    local deltaX = player.Position.X - target.Position.X
+    local deltaY = player.Position.Y - target.Position.Y
+    local length = math.sqrt(deltaX * deltaX + deltaY * deltaY)
+    local distance = math.max(0, target.Size or 0) + SPIDER_TARGET_GAP
+
+    if length <= 0 then
+        deltaX = 1
+        deltaY = 0
+        length = 1
+    end
+
+    local desiredPosition = Vector(
+        target.Position.X + deltaX / length * distance,
+        target.Position.Y + deltaY / length * distance
+    )
+    local room = Game():GetRoom()
+    local clampedPosition = room:GetClampedPosition(desiredPosition, 20)
+
+    return room:FindFreeTilePosition(clampedPosition, 40)
+end
+
+function FamiliarCapacityModule:AssignReleaseTarget(entity, target)
+    local familiar = entity and entity:ToFamiliar()
+
+    if not familiar or not self:IsValidReleaseTarget(target) then
+        return
+    end
+
+    -- Blue Spider has no target argument on AddBlueSpider. Search the whole
+    -- room once, then pin the selected enemy after native target selection so
+    -- a cached familiar does not idle beside the player in a large room.
+    familiar:PickEnemyTarget(RELEASE_TARGET_DISTANCE, 1)
+    familiar.Target = target
 end
 
 function FamiliarCapacityModule:TryRelease(playerIndex, player, variant)
@@ -772,12 +815,22 @@ function FamiliarCapacityModule:TryRelease(playerIndex, player, variant)
         confirmed = false,
     }
     self.ActiveReleaseRequest = releaseRequest
+    local target = self:FindNearestReleaseTarget(player)
+    local releasedEntity = nil
 
     if variant == BLUE_FLY then
-        player:AddBlueFlies(1, player.Position, nil)
+        releasedEntity = player:AddBlueFlies(
+            1,
+            player.Position,
+            target
+        )
     else
-        player:AddBlueSpider(player.Position)
+        releasedEntity = player:AddBlueSpider(
+            self:GetSpiderReleasePosition(player, target)
+        )
     end
+
+    self:AssignReleaseTarget(releasedEntity, target)
 
     self.ActiveReleaseRequest = nil
 
@@ -922,7 +975,6 @@ function FamiliarCapacityModule:OnGameStarted(isContinued)
     self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
     self.ReleasePlayerCursor = 0
     self.ReleaseSpiderNext = false
-    self.AnimationFrames = {}
     self:ResetSnapshot()
     self:ResetPendingOverflowSpawns()
     self:LoadBank(isContinued)
@@ -951,7 +1003,6 @@ function FamiliarCapacityModule:OnNewRoom()
 
     self:ResetSnapshot()
     self:ResetPendingOverflowSpawns()
-    self.AnimationFrames = {}
     self.NeedsRebalance = self.Context:IsEnabled(SETTING_KEY)
     self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
     self:RefreshUpdateCallback()
@@ -964,7 +1015,6 @@ function FamiliarCapacityModule:OnSettingChanged(enabled)
 
     self:ResetSnapshot()
     self:ResetPendingOverflowSpawns()
-    self.AnimationFrames = {}
     self.NeedsRebalance = enabled and self.RunActive
 
     if enabled and self.RunActive then
