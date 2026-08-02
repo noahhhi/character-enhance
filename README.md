@@ -133,6 +133,9 @@
 - While Gello is active, Book of Virtues wisps keep orbiting their owning
   player instead of moving their orbit center to Gello. Wisp and Gello stats,
   count, and lifetime remain unchanged.
+- Book of Virtues and Lemegeton wisps become immune to explosion damage while
+  their owner holds Pyromaniac or Host Hat. A Pyromaniac or Host Hat wisp from
+  Lemegeton grants the same protection to all wisps owned by that player.
 - Shield Effects offers a legacy translucent Soul Veil, a blue
   energy-pane Particle Wall, and a dense Frosted Soul shell, plus five
   bright-to-afterglow hit effects and three original Soul Shield sound sets.
@@ -256,7 +259,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All twenty-eight gameplay settings remain independently configurable:
+All twenty-nine gameplay settings remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Protect Wisps from Temporary Familiars
@@ -286,6 +289,7 @@ All twenty-eight gameplay settings remain independently configurable:
 26. Soul Charge Shield
 27. Shield Effects
 28. Gello Wisp Orbit Fix
+29. Explosion-proof Wisps
 
 Options are grouped under the tabs `General`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. The integration supports both Mod
