@@ -150,9 +150,9 @@
   displaced by temporary familiars. Extra temporary familiars are banked and
   respawned when slots become available.
 - Preserves the vanilla 64-real-familiar hard limit without REPENTOGON.
-- Blue Flies and Blue Spiders occupy real slots only up to a soft total of 52.
-  Overflow is stored by player and type, then restored up to two per frame as
-  slots reopen so sustained attacks resume quickly.
+- Blue Flies and Blue Spiders occupy real slots only up to a soft total of 60.
+  Overflow is stored by player and type, then restored one per frame as slots
+  reopen so sustained attacks resume as a continuous stream.
 - Permanent and quest familiars, wisps, Bone Spurs, and other important
   familiars are never deliberately banked. At the hard edge, an owned Blue Fly
   or Blue Spider is banked to reserve space for an important familiar.
