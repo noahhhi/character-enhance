@@ -311,15 +311,15 @@ local MENU_SETTINGS = {
     {
         key = "familiarCapacity",
         group = "general",
-        zhName = "跟班上限修复",
-        enName = "Familiar Limit Fix",
+        zhName = "保护魂火跟班不被临时跟班挤占",
+        enName = "Protect Wisps from Temporary Familiars",
         zhInfo = {
-            "接近64个跟班上限时，暂存蓝苍蝇和蓝蜘蛛。",
-            "有空位时自动补回；其他跟班不会被移除。",
+            "嗝屁猫！套装、拟寄生物虫海不会挤占魂火等重要跟班。",
+            "多余蓝苍蝇、蓝蜘蛛会暂存，有空位时重新生成。",
         },
         enInfo = {
-            "Banks extra flies/spiders before the 64 limit.",
-            "Restores them later; other familiars stay safe.",
+            "Guppy/Parasitoid swarms cannot displace wisps.",
+            "Extra Blue Flies/Spiders return when slots open.",
         },
     },
     {

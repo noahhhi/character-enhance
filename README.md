@@ -20,7 +20,7 @@
   <a href="#tainted-blue-baby">Tainted Blue Baby</a> •
   <a href="#tainted-eden">Tainted Eden</a> •
   <a href="#bethany">Bethany</a> •
-  <a href="#familiar-capacity">Familiar Limit Fix</a> •
+  <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
@@ -143,8 +143,12 @@
   its selected disappearance sound.
 
 <a id="familiar-capacity"></a>
-## Familiar Limit Fix
+## Protect Wisps from Temporary Familiars
 
+- When Guppy, Parasitoid, and similar effects generate large numbers of Blue
+  Flies and Blue Spiders, wisps and other important familiars will not be
+  displaced by temporary familiars. Extra temporary familiars are banked and
+  respawned when slots become available.
 - Preserves the vanilla 64-real-familiar hard limit without REPENTOGON.
 - Blue Flies and Blue Spiders occupy real slots only up to a soft total of 60.
   Overflow is stored by player and type, then restored at most 2 every 3 frames
@@ -244,7 +248,7 @@ gameplay settings.
 
 All twenty-seven gameplay settings remain independently configurable:
 
-1. Familiar Limit Fix
+1. Protect Wisps from Temporary Familiars
 2. C Section Incubus Animation Fix
 3. Small Player Pickup Range Fix
 4. Clog Creep Damage Fix
