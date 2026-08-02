@@ -45,7 +45,9 @@ function FamiliarCapacityModule.New(context)
         RunActive = false,
         NeedsRebalance = false,
         ReleaseTargetCache = {},
+        DeadReleaseTargetHashes = {},
         TrackedReleasedFamiliars = {},
+        TrackedReleaseTargetCounts = {},
         TrackedReleasedCount = 0,
         NextRetargetFrame = 0,
         UpdateCallbackRegistered = false,
@@ -110,6 +112,12 @@ function FamiliarCapacityModule.New(context)
             self:OnEntityRemove(entity)
         end,
         EntityType.ENTITY_FAMILIAR
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_NPC_DEATH,
+        function(_, npc)
+            self:OnReleaseTargetDeath(npc)
+        end
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_NEW_ROOM,
@@ -845,30 +853,42 @@ function FamiliarCapacityModule:IsValidReleaseTarget(entity)
         and not entity:HasEntityFlags(EntityFlag.FLAG_FRIENDLY)
 end
 
-function FamiliarCapacityModule:FindNearestReleaseTarget(player)
-    local selected = nil
-    local selectedDistance = math.huge
+function FamiliarCapacityModule:FindReleaseTargets(player)
+    local targets = {}
 
-    for _, entity in ipairs(Isaac.GetRoomEntities()) do
+    for order, entity in ipairs(Isaac.GetRoomEntities()) do
         if self:IsValidReleaseTarget(entity) then
-            local distance = self:GetSquaredDistance(
-                player.Position,
-                entity.Position
-            )
-
-            if distance < selectedDistance then
-                selected = entity
-                selectedDistance = distance
-            end
+            targets[#targets + 1] = {
+                entity = entity,
+                distance = self:GetSquaredDistance(
+                    player.Position,
+                    entity.Position
+                ),
+                order = order,
+            }
         end
     end
 
-    return selected
+    table.sort(targets, function(first, second)
+        if first.distance == second.distance then
+            return first.order < second.order
+        end
+
+        return first.distance < second.distance
+    end)
+
+    for index, target in ipairs(targets) do
+        targets[index] = target.entity
+    end
+
+    return targets
 end
 
 function FamiliarCapacityModule:ResetReleaseTracking()
     self.ReleaseTargetCache = {}
+    self.DeadReleaseTargetHashes = {}
     self.TrackedReleasedFamiliars = {}
+    self.TrackedReleaseTargetCounts = {}
     self.TrackedReleasedCount = 0
     self.NextRetargetFrame = 0
 end
@@ -881,21 +901,67 @@ function FamiliarCapacityModule:GetReleaseTarget(playerIndex, player)
     local frame = Game():GetFrameCount()
     local cached = self.ReleaseTargetCache[playerIndex]
 
-    if cached and self:IsValidReleaseTarget(cached.target) then
-        return cached.target
+    if not cached or frame >= cached.nextSearchFrame then
+        local cursor = cached and cached.cursor or 1
+        local targets = self:FindReleaseTargets(player)
+
+        if #targets > 0 then
+            cursor = (cursor - 1) % #targets + 1
+        else
+            cursor = 1
+        end
+
+        cached = {
+            targets = targets,
+            cursor = cursor,
+            nextSearchFrame = frame + RELEASE_TARGET_RETRY_INTERVAL,
+        }
+        self.ReleaseTargetCache[playerIndex] = cached
     end
 
-    if cached and frame < cached.nextSearchFrame then
-        return nil
+    local targetCount = #cached.targets
+
+    for _ = 1, targetCount do
+        local targetIndex = cached.cursor
+        local target = cached.targets[targetIndex]
+
+        cached.cursor = targetIndex % targetCount + 1
+
+        if self:IsValidReleaseTarget(target) then
+            return target
+        end
     end
 
-    local target = self:FindNearestReleaseTarget(player)
-    self.ReleaseTargetCache[playerIndex] = {
-        target = target,
-        nextSearchFrame = frame + RELEASE_TARGET_RETRY_INTERVAL,
-    }
+    return nil
+end
 
-    return target
+function FamiliarCapacityModule:SetTrackedReleaseTarget(
+    tracked,
+    target
+)
+    local oldHash = tracked.targetHash
+    local targetHash = target and GetPtrHash(target) or nil
+
+    if oldHash == targetHash then
+        return
+    end
+
+    if oldHash then
+        local oldCount = self.TrackedReleaseTargetCounts[oldHash] or 0
+
+        if oldCount <= 1 then
+            self.TrackedReleaseTargetCounts[oldHash] = nil
+        else
+            self.TrackedReleaseTargetCounts[oldHash] = oldCount - 1
+        end
+    end
+
+    tracked.targetHash = targetHash
+
+    if targetHash then
+        self.TrackedReleaseTargetCounts[targetHash] =
+            (self.TrackedReleaseTargetCounts[targetHash] or 0) + 1
+    end
 end
 
 function FamiliarCapacityModule:TrackReleasedFamiliar(
@@ -911,16 +977,21 @@ function FamiliarCapacityModule:TrackReleasedFamiliar(
     end
 
     local familiarHash = GetPtrHash(familiar)
+    local previous = self.TrackedReleasedFamiliars[familiarHash]
 
-    if not self.TrackedReleasedFamiliars[familiarHash] then
+    if not previous then
         self.TrackedReleasedCount = self.TrackedReleasedCount + 1
+    else
+        self:SetTrackedReleaseTarget(previous, nil)
     end
 
-    self.TrackedReleasedFamiliars[familiarHash] = {
+    local tracked = {
         familiar = familiar,
         playerIndex = playerIndex,
-        needsReacquire = false,
+        needsReacquire = not self:IsValidReleaseTarget(familiar.Target),
     }
+    self.TrackedReleasedFamiliars[familiarHash] = tracked
+    self:SetTrackedReleaseTarget(tracked, familiar.Target)
 end
 
 function FamiliarCapacityModule:UntrackReleasedFamiliar(familiar)
@@ -930,13 +1001,32 @@ function FamiliarCapacityModule:UntrackReleasedFamiliar(familiar)
 
     local familiarHash = GetPtrHash(familiar)
 
-    if self.TrackedReleasedFamiliars[familiarHash] then
+    local tracked = self.TrackedReleasedFamiliars[familiarHash]
+
+    if tracked then
+        self:SetTrackedReleaseTarget(tracked, nil)
         self.TrackedReleasedFamiliars[familiarHash] = nil
         self.TrackedReleasedCount = math.max(
             0,
             self.TrackedReleasedCount - 1
         )
     end
+end
+
+function FamiliarCapacityModule:OnReleaseTargetDeath(npc)
+    if self.TrackedReleasedCount <= 0 or not npc then
+        return
+    end
+
+    local targetHash = GetPtrHash(npc)
+
+    if not self.TrackedReleaseTargetCounts[targetHash] then
+        return
+    end
+
+    self.DeadReleaseTargetHashes[targetHash] = true
+    self:ResetReleaseTargetCache()
+    self.NextRetargetFrame = 0
 end
 
 function FamiliarCapacityModule:RetargetReleasedFamiliars()
@@ -951,6 +1041,8 @@ function FamiliarCapacityModule:RetargetReleasedFamiliars()
     end
 
     self.NextRetargetFrame = frame + RELEASE_RETARGET_INTERVAL
+    local deadTargetHashes = self.DeadReleaseTargetHashes
+    self.DeadReleaseTargetHashes = {}
 
     for familiarHash, tracked in pairs(self.TrackedReleasedFamiliars) do
         local familiar = tracked.familiar
@@ -958,13 +1050,19 @@ function FamiliarCapacityModule:RetargetReleasedFamiliars()
         if not familiar or not familiar:Exists()
             or not self:IsBankableVariant(familiar.Variant)
         then
+            self:SetTrackedReleaseTarget(tracked, nil)
             self.TrackedReleasedFamiliars[familiarHash] = nil
             self.TrackedReleasedCount = math.max(
                 0,
                 self.TrackedReleasedCount - 1
             )
         else
-            local hasValidTarget = self:IsValidReleaseTarget(familiar.Target)
+            self:SetTrackedReleaseTarget(tracked, familiar.Target)
+            local targetHash = tracked.targetHash
+            local targetDied = targetHash
+                and deadTargetHashes[targetHash] == true
+            local hasValidTarget = not targetDied
+                and self:IsValidReleaseTarget(familiar.Target)
 
             if not hasValidTarget then
                 tracked.needsReacquire = true
@@ -979,8 +1077,9 @@ function FamiliarCapacityModule:RetargetReleasedFamiliars()
                         player
                     )
                     self:AssignReleaseTarget(familiar, target, true)
+                    self:SetTrackedReleaseTarget(tracked, familiar.Target)
 
-                    if self:IsValidReleaseTarget(target) then
+                    if self:IsValidReleaseTarget(familiar.Target) then
                         tracked.needsReacquire = false
                     end
                 end
@@ -1018,20 +1117,22 @@ end
 function FamiliarCapacityModule:AssignReleaseTarget(
     entity,
     target,
-    isRetarget
+    refreshNativeState
 )
     local familiar = entity and entity:ToFamiliar()
 
-    if not familiar or not self:IsValidReleaseTarget(target) then
+    if not familiar
+        or not self:IsValidReleaseTarget(target)
+    then
         return
     end
 
-    -- Blue Spider has no target argument on AddBlueSpider. A Blue Fly already
-    -- receives the native target argument on initial release, so avoid a
-    -- duplicate engine-wide search in that high-frequency path. Reacquisition
-    -- deliberately refreshes native AI state after a boss burrows or changes
-    -- phase, then pins the shared room target.
-    if familiar.Variant == BLUE_SPIDER or isRetarget then
+    -- Refresh native attack state only when a spider is first restored or an
+    -- old target became invalid. The target comes from a shared round-robin
+    -- room cache, so restored attackers split across enemies without one room
+    -- scan per familiar. Stable targets are never rewritten and remain under
+    -- vanilla AI control.
+    if refreshNativeState then
         familiar:PickEnemyTarget(RELEASE_TARGET_DISTANCE, 1)
     end
 
@@ -1066,9 +1167,8 @@ function FamiliarCapacityModule:TryRelease(playerIndex, player, variant)
         releasedEntity = player:AddBlueSpider(
             self:GetSpiderReleasePosition(player, target)
         )
+        self:AssignReleaseTarget(releasedEntity, target, true)
     end
-
-    self:AssignReleaseTarget(releasedEntity, target)
 
     self.ActiveReleaseRequest = nil
 
