@@ -8,9 +8,9 @@ local FAMILIAR_SOFT_LIMIT = 60
 local FAMILIAR_HARD_LIMIT = 64
 local DONT_OVERWRITE = EntityFlag.FLAG_DONT_OVERWRITE
 local POOL_GUARD_TAG = "CharacterEnhanceFamiliarCapacityPoolGuard"
-local BANK_RELEASE_INTERVAL = 3
+local BANK_RELEASE_INTERVAL = 1
 local BANK_BLOCKED_RETRY_MAX = 30
-local BANK_RELEASE_BATCH_SIZE = 2
+local BANK_RELEASE_BATCH_SIZE = 1
 local BANK_SAVE_DELAY = 60
 local MAX_BANKED_PER_TYPE = 2147483647
 local RELEASE_TARGET_DISTANCE = 10000
@@ -827,6 +827,14 @@ function FamiliarCapacityModule:OnEntityRemove(entity)
     -- live entities instead of treating the released slot as occupied.
     if wasModuleGuarded then
         self:ResetSnapshot()
+    end
+
+    -- A removed familiar has just opened a native slot. Wake a backed-off
+    -- refill immediately so sustained attackers are replaced on the next
+    -- update instead of leaving a visible gap in the swarm.
+    if self:IsEnabled() and self.BankedCount > 0 then
+        self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
+        self.NextReleaseFrame = Game():GetFrameCount()
     end
 end
 
