@@ -8,6 +8,7 @@ local FAMILIAR_SOFT_LIMIT = 52
 local FAMILIAR_HARD_LIMIT = 64
 local DONT_OVERWRITE = EntityFlag.FLAG_DONT_OVERWRITE
 local POOL_GUARD_TAG = "CharacterEnhanceFamiliarCapacityPoolGuard"
+local POOL_DISCARD_TAG = "CharacterEnhanceFamiliarCapacityDiscard"
 local BANK_RELEASE_INTERVAL = 1
 local BANK_BLOCKED_RETRY_MAX = 30
 local BANK_RELEASE_BATCH_SIZE = 2
@@ -225,6 +226,19 @@ function FamiliarCapacityModule:ReleaseFamiliarPoolSlot(familiar)
         familiar:ClearEntityFlags(DONT_OVERWRITE)
         data[POOL_GUARD_TAG] = nil
     end
+end
+
+function FamiliarCapacityModule:ReleaseDiscardedFamiliarPoolSlot(familiar)
+    if not familiar then
+        return
+    end
+
+    -- A removed entity no longer owns gameplay flags, but its native array
+    -- entry can survive until EntityFactory reuses the slot. Clear the guard
+    -- even when it predated this module so dead wisps and other familiars
+    -- cannot permanently exhaust the fixed 64-entry pool.
+    familiar:ClearEntityFlags(DONT_OVERWRITE)
+    familiar:GetData()[POOL_GUARD_TAG] = nil
 end
 
 function FamiliarCapacityModule:ReleaseAllFamiliarPoolSlots()
@@ -693,7 +707,8 @@ function FamiliarCapacityModule:BankFamiliar(familiar)
     end
 
     self:InvalidateExpendableCandidate(familiar)
-    self:ReleaseFamiliarPoolSlot(familiar)
+    self:ReleaseDiscardedFamiliarPoolSlot(familiar)
+    familiar:GetData()[POOL_DISCARD_TAG] = true
     familiar:Remove()
     self.Snapshot.total = math.max(0, self.Snapshot.total - 1)
 
@@ -778,7 +793,8 @@ function FamiliarCapacityModule:OnFamiliarInit(familiar)
     self:RegisterInitializedFamiliar(familiar, pending ~= nil)
 
     if pending then
-        self:ReleaseFamiliarPoolSlot(familiar)
+        self:ReleaseDiscardedFamiliarPoolSlot(familiar)
+        familiar:GetData()[POOL_DISCARD_TAG] = true
         familiar:Remove()
         self.Snapshot.total = math.max(0, self.Snapshot.total - 1)
 
@@ -811,8 +827,12 @@ function FamiliarCapacityModule:OnEntityRemove(entity)
     end
 
     local familiar = entity:ToFamiliar()
-    local wasModuleGuarded = familiar
-        and familiar:GetData()[POOL_GUARD_TAG] == true
+    local discardedByModule = familiar
+        and familiar:GetData()[POOL_DISCARD_TAG] == true
+
+    if discardedByModule then
+        familiar:GetData()[POOL_DISCARD_TAG] = nil
+    end
 
     self:UntrackReleasedFamiliar(familiar)
 
@@ -820,12 +840,12 @@ function FamiliarCapacityModule:OnEntityRemove(entity)
     -- that slot is reused. Leaving FLAG_DONT_OVERWRITE on the dead entity
     -- makes the slot permanently ineligible for reuse and eventually exhausts
     -- the pool even when only a few live familiars remain in the room.
-    self:ReleaseFamiliarPoolSlot(familiar)
+    self:ReleaseDiscardedFamiliarPoolSlot(familiar)
 
     -- Natural removals do not pass through BankFamiliar's explicit snapshot
     -- accounting. Invalidate the same-frame count so the next spawn rescans
     -- live entities instead of treating the released slot as occupied.
-    if wasModuleGuarded then
+    if familiar and not discardedByModule then
         self:ResetSnapshot()
     end
 
