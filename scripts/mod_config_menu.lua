@@ -24,6 +24,7 @@ local SUBCATEGORY_ORDER = {
     "bethany",
 }
 local TMTRAINER_CHANCE_KEY = "rerollTmtrainerChance"
+local FAMILIAR_REFILL_RATE_KEY = "familiarCapacityRefillRate"
 local SHIELD_VISUAL_STYLE_KEY = "bethanyShieldVisualStyle"
 local SHIELD_SOUND_STYLE_KEY = "bethanyShieldSoundStyle"
 local SHIELD_HIT_STYLE_KEY = "bethanyShieldHitStyle"
@@ -661,6 +662,47 @@ function ModConfigMenuModule:AddTmtrainerChance(menu)
     self:RememberSubcategory(menu, "taintedEden")
 end
 
+function ModConfigMenuModule:AddFamiliarRefillRate(menu)
+    self.CreatedGroups.general = true
+    menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "general"), {
+        Type = menu.OptionType.NUMBER,
+        Minimum = 2,
+        Maximum = 6,
+        ModifyBy = 1,
+        Default = 2,
+        CurrentSetting = function()
+            return self.Context.Settings[FAMILIAR_REFILL_RATE_KEY] or 2
+        end,
+        Display = function()
+            local rate = self.Context.Settings[FAMILIAR_REFILL_RATE_KEY] or 2
+
+            if self:GetLanguage() == "en" then
+                return "Temporary Familiar Refill (Test): "
+                    .. rate .. "/frame"
+            end
+
+            return "临时跟班补回（测试）: 每帧" .. rate .. "个"
+        end,
+        OnChange = function(rate)
+            self.Context:SetSetting(FAMILIAR_REFILL_RATE_KEY, rate)
+        end,
+        Info = function()
+            if self:GetLanguage() == "en" then
+                return {
+                    "Choose 2-6 cached Blue Flies/Spiders per frame.",
+                    "Only works while familiar protection is enabled.",
+                }
+            end
+
+            return {
+                "选择每帧补回2～6个缓存蓝苍蝇/蓝蜘蛛。",
+                "仅在跟班保护开启时生效。",
+            }
+        end,
+    })
+    self:RememberSubcategory(menu, "general")
+end
+
 function ModConfigMenuModule:AddShieldStyle(menu, kind)
     self.CreatedGroups.bethany = true
     local settingKey = kind == "visual" and SHIELD_VISUAL_STYLE_KEY
@@ -898,6 +940,10 @@ function ModConfigMenuModule:TrySetup()
 
     for _, setting in ipairs(MENU_SETTINGS) do
         self:AddBoolean(menu, setting)
+
+        if setting.key == "familiarCapacity" then
+            self:AddFamiliarRefillRate(menu)
+        end
     end
 
     self:AddShieldStyle(menu, "visual")

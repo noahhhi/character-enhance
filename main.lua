@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.18.1"
+local VERSION = "1.18.2"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     eveDamageMultiplier = true,
@@ -16,6 +16,7 @@ local DEFAULT_SETTINGS = {
     bethanyShieldHitStyle = 1,
     bethanyGelloWispOrbit = true,
     familiarCapacity = true,
+    familiarCapacityRefillRate = 2,
     incubusCSectionAnimation = true,
     smallPlayerPickupRange = true,
     clogGroundDamage = true,
@@ -132,7 +133,15 @@ function Context:SetSetting(settingKey, value)
         return
     end
 
-    if settingKey == "rerollTmtrainerChance" then
+    if settingKey == "familiarCapacityRefillRate" then
+        if value ~= value or value == math.huge or value == -math.huge
+            or value < 2 or value > 6
+        then
+            return
+        end
+
+        value = math.floor(value + 0.5)
+    elseif settingKey == "rerollTmtrainerChance" then
         if value ~= value or value == math.huge or value == -math.huge
             or value < 0 or value > 100
         then
@@ -266,9 +275,11 @@ Context:RegisterModule(
     "bethanyGelloWispOrbit",
     BethanyGelloWispsModule.New(Context)
 )
-Context:RegisterModule(
-    "familiarCapacity",
-    FamiliarCapacityModule.New(Context)
+local familiarCapacityModule = FamiliarCapacityModule.New(Context)
+Context:RegisterModule("familiarCapacity", familiarCapacityModule)
+Context:RegisterSettingHandler(
+    "familiarCapacityRefillRate",
+    familiarCapacityModule
 )
 Context:RegisterModule(
     "incubusCSectionAnimation",

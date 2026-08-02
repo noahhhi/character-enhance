@@ -1,5 +1,6 @@
 local Config = {}
 local NUMBER_RANGES = {
+    familiarCapacityRefillRate = { minimum = 2, maximum = 6 },
     bethanyShieldVisualStyle = { minimum = 1, maximum = 3 },
     bethanyShieldSoundStyle = { minimum = 1, maximum = 3 },
     bethanyShieldHitStyle = { minimum = 1, maximum = 5 },

@@ -12,7 +12,7 @@ Independently configurable enhancements for Eve, Eden, Tainted Lost, Tainted Blu
 Supports English and Simplified Chinese Mod Config Menu labels. / 支持英文与简体中文 Mod Config Menu。
 
 [url=https://github.com/noahhhi/character-enhance]Source code / 源码[/url]</description>
-    <version>1.18.1</version>
+    <version>1.18.2</version>
     <visibility>Public</visibility>
     <tag id="Lua"/>
     <tag id="Tweaks"/>

@@ -2,6 +2,7 @@ local FamiliarCapacityModule = {}
 FamiliarCapacityModule.__index = FamiliarCapacityModule
 
 local SETTING_KEY = "familiarCapacity"
+local REFILL_RATE_SETTING_KEY = "familiarCapacityRefillRate"
 local BLUE_FLY = FamiliarVariant.BLUE_FLY
 local BLUE_SPIDER = FamiliarVariant.BLUE_SPIDER
 local FAMILIAR_SOFT_LIMIT = 60
@@ -10,7 +11,9 @@ local DONT_OVERWRITE = EntityFlag.FLAG_DONT_OVERWRITE
 local POOL_GUARD_TAG = "CharacterEnhanceFamiliarCapacityPoolGuard"
 local BANK_RELEASE_INTERVAL = 1
 local BANK_BLOCKED_RETRY_MAX = 30
-local BANK_RELEASE_BATCH_SIZE = 1
+local DEFAULT_BANK_RELEASE_BATCH_SIZE = 2
+local MIN_BANK_RELEASE_BATCH_SIZE = 2
+local MAX_BANK_RELEASE_BATCH_SIZE = 6
 local BANK_SAVE_DELAY = 60
 local MAX_BANKED_PER_TYPE = 2147483647
 local RELEASE_TARGET_DISTANCE = 10000
@@ -131,6 +134,21 @@ function FamiliarCapacityModule.New(context)
     self:LoadBank(true)
 
     return self
+end
+
+function FamiliarCapacityModule:GetReleaseBatchSize()
+    local settings = self.Context.Settings or {}
+    local value = settings[REFILL_RATE_SETTING_KEY]
+
+    if type(value) ~= "number" or value ~= value
+        or value == math.huge or value == -math.huge
+        or value < MIN_BANK_RELEASE_BATCH_SIZE
+        or value > MAX_BANK_RELEASE_BATCH_SIZE
+    then
+        return DEFAULT_BANK_RELEASE_BATCH_SIZE
+    end
+
+    return math.floor(value + 0.5)
 end
 
 function FamiliarCapacityModule:RefreshUpdateCallback()
@@ -1231,7 +1249,10 @@ function FamiliarCapacityModule:ReleaseBankedFamiliars()
         return
     end
 
-    local releaseBudget = math.min(BANK_RELEASE_BATCH_SIZE, availableSlots)
+    local releaseBudget = math.min(
+        self:GetReleaseBatchSize(),
+        availableSlots
+    )
     local attemptsWithoutRelease = 0
 
     while releaseBudget > 0 and attemptsWithoutRelease < playerCount * 2 do
@@ -1360,7 +1381,19 @@ function FamiliarCapacityModule:OnNewRoom()
     self:RefreshUpdateCallback()
 end
 
-function FamiliarCapacityModule:OnSettingChanged(enabled)
+function FamiliarCapacityModule:OnSettingChanged(value, settingKey)
+    if settingKey == REFILL_RATE_SETTING_KEY then
+        if self.RunActive and self.Context:IsEnabled(SETTING_KEY) then
+            self.NextReleaseFrame = Game():GetFrameCount()
+            self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
+        end
+
+        self:RefreshUpdateCallback()
+        return
+    end
+
+    local enabled = value
+
     if not enabled and self.RunActive then
         self:ReleaseAllFamiliarPoolSlots()
     end
