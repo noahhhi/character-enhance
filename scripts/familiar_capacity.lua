@@ -4,13 +4,13 @@ FamiliarCapacityModule.__index = FamiliarCapacityModule
 local SETTING_KEY = "familiarCapacity"
 local BLUE_FLY = FamiliarVariant.BLUE_FLY
 local BLUE_SPIDER = FamiliarVariant.BLUE_SPIDER
-local FAMILIAR_SOFT_LIMIT = 60
+local FAMILIAR_SOFT_LIMIT = 56
 local FAMILIAR_HARD_LIMIT = 64
 local DONT_OVERWRITE = EntityFlag.FLAG_DONT_OVERWRITE
 local POOL_GUARD_TAG = "CharacterEnhanceFamiliarCapacityPoolGuard"
 local BANK_RELEASE_INTERVAL = 1
 local BANK_BLOCKED_RETRY_MAX = 30
-local BANK_RELEASE_BATCH_SIZE = 1
+local BANK_RELEASE_BATCH_SIZE = 4
 local BANK_SAVE_DELAY = 60
 local MAX_BANKED_PER_TYPE = 2147483647
 local RELEASE_TARGET_DISTANCE = 10000
@@ -659,7 +659,7 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
     end
 
     -- The current limit can consist entirely of important familiars. Record
-    -- this overflow now, use the four-slot reserve, and remove the new
+    -- this overflow now, use the eight-slot reserve, and remove the new
     -- same-class fly/spider from its init fallback. No cross-type proxy is
     -- constructed.
     if not self:AddToBank(playerIndex, variant, 1) then
