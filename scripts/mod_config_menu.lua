@@ -99,6 +99,20 @@ local TEXT = {
 
 local MENU_SETTINGS = {
     {
+        key = "couponSteamSale",
+        group = "general",
+        zhName = "代金券全面半价",
+        enName = "Coupon Full-Shop Discount",
+        zhInfo = {
+            "代金券清理3个房间充满，并使全部商品降价。",
+            "每个代金券与Steam大促都可继续叠加。",
+        },
+        enInfo = {
+            "Coupon recharges in 3 rooms and discounts all goods.",
+            "Each Coupon stacks with Steam Sale and other copies.",
+        },
+    },
+    {
         key = "eveDamageMultiplier",
         group = "eve",
         zhName = "保持100%攻击倍率",

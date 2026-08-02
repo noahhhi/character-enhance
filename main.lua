@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.18.4"
+local VERSION = "1.19.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     eveDamageMultiplier = true,
@@ -26,6 +26,7 @@ local DEFAULT_SETTINGS = {
     ocularRiftSoundFix = true,
     pillRewindIdentification = true,
     zodiacFloorItemDisplay = true,
+    couponSteamSale = true,
     edenStartingItemChoice = true,
     edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
@@ -207,6 +208,7 @@ local PillRewindIdentificationModule = include(
 local ZodiacFloorItemDisplayModule = include(
     "scripts/zodiac_floor_item_display"
 )
+local CouponSteamSaleModule = include("scripts/coupon_steam_sale")
 local EdenBlessingDuplicatesModule = include(
     "scripts/eden_blessing_duplicates"
 )
@@ -310,6 +312,10 @@ Context:RegisterModule(
     "zodiacFloorItemDisplay",
     ZodiacFloorItemDisplayModule.New(Context)
 )
+Context:RegisterModule(
+    "couponSteamSale",
+    CouponSteamSaleModule.New(Context)
+)
 local edenChoicesModule = EdenBlessingDuplicatesModule.New(Context)
 Context:RegisterModule(
     "edenBlessingDuplicateFix",
@@ -332,6 +338,7 @@ if Game():GetFrameCount() > 0 then
         "kidsDrawingFormFix",
         "pillRewindIdentification",
         "zodiacFloorItemDisplay",
+        "couponSteamSale",
     }) do
         local module = Context.Modules[moduleKey]
 
