@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.19.0"
+local VERSION = "1.20.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     eveDamageMultiplier = true,
@@ -15,6 +15,7 @@ local DEFAULT_SETTINGS = {
     bethanyShieldSoundStyle = 1,
     bethanyShieldHitStyle = 1,
     bethanyGelloWispOrbit = true,
+    bethanyWispExplosionProtection = true,
     familiarCapacity = true,
     incubusCSectionAnimation = true,
     smallPlayerPickupRange = true,
@@ -190,6 +191,9 @@ local BethanyShieldFeedbackModule = include(
     "scripts/bethany_shield_feedback"
 )
 local BethanyGelloWispsModule = include("scripts/bethany_gello_wisps")
+local BethanyWispExplosionProtectionModule = include(
+    "scripts/bethany_wisp_explosion_protection"
+)
 local FamiliarCapacityModule = include("scripts/familiar_capacity")
 local IncubusCSectionAnimationModule = include(
     "scripts/incubus_c_section_animation"
@@ -267,6 +271,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "bethanyGelloWispOrbit",
     BethanyGelloWispsModule.New(Context)
+)
+Context:RegisterModule(
+    "bethanyWispExplosionProtection",
+    BethanyWispExplosionProtectionModule.New(Context)
 )
 Context:RegisterModule(
     "familiarCapacity",

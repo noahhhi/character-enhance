@@ -323,6 +323,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "bethanyWispExplosionProtection",
+        group = "bethany",
+        zhName = "魂火防爆",
+        enName = "Explosion-proof Wisps",
+        zhInfo = {
+            "持有纵火狂或寄居骷髅帽时，魂火免疫爆炸。",
+            "对应的所罗门之书魂火也会保护同伴。",
+        },
+        enInfo = {
+            "Pyromaniac or Host Hat makes wisps explosion-proof.",
+            "Matching Lemegeton wisps also protect their group.",
+        },
+    },
+    {
         key = "familiarCapacity",
         group = "general",
         zhName = "保护魂火跟班不被临时跟班挤占",
