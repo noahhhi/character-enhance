@@ -5,9 +5,9 @@ local SETTING_KEY = "familiarCapacity"
 local BLUE_FLY = FamiliarVariant.BLUE_FLY
 local BLUE_SPIDER = FamiliarVariant.BLUE_SPIDER
 local FAMILIAR_SOFT_LIMIT = 60
-local FAMILIAR_COMBAT_LIMIT = 32
 local FAMILIAR_HARD_LIMIT = 64
-local DEBUG_DUMMY_TYPE = 964
+local DONT_OVERWRITE = EntityFlag.FLAG_DONT_OVERWRITE
+local POOL_GUARD_TAG = "CharacterEnhanceFamiliarCapacityPoolGuard"
 local BANK_RELEASE_INTERVAL = 3
 local BANK_BLOCKED_RETRY_MAX = 30
 local BANK_RELEASE_BATCH_SIZE = 2
@@ -29,8 +29,7 @@ function FamiliarCapacityModule.New(context)
         },
         PendingOverflowSpawns = {},
         PendingOverflowCount = 0,
-        TargetLimitFrame = -1,
-        CachedTargetLimit = FAMILIAR_SOFT_LIMIT,
+        ActiveReleaseRequest = nil,
         AnimationFrames = {},
         NextReleaseFrame = 0,
         ReleaseRetryInterval = BANK_RELEASE_INTERVAL,
@@ -97,18 +96,18 @@ function FamiliarCapacityModule.New(context)
         end
     )
     context.Mod:AddCallback(
+        ModCallbacks.MC_POST_ENTITY_REMOVE,
+        function(_, entity)
+            self:OnEntityRemove(entity)
+        end,
+        EntityType.ENTITY_FAMILIAR
+    )
+    context.Mod:AddCallback(
         ModCallbacks.MC_POST_NEW_ROOM,
         function()
             self:OnNewRoom()
         end
     )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_NPC_INIT,
-        function()
-            self:OnNPCInit()
-        end
-    )
-
     -- Keep previously saved overflow available even while sitting in the main
     -- menu. Changing an MCM option before continuing a run must not overwrite
     -- that saved bank with an empty table.
@@ -172,52 +171,53 @@ end
 function FamiliarCapacityModule:ResetPendingOverflowSpawns()
     self.PendingOverflowSpawns = {}
     self.PendingOverflowCount = 0
+    self.ActiveReleaseRequest = nil
 end
 
 function FamiliarCapacityModule:IsBankableVariant(variant)
     return variant == BLUE_FLY or variant == BLUE_SPIDER
 end
 
-function FamiliarCapacityModule:HasCombatPressure()
-    local room = Game():GetRoom()
-
-    if room:GetAliveEnemiesCount() > 0 then
-        return true
+function FamiliarCapacityModule:GuardFamiliarPoolSlot(familiar)
+    if not familiar or not familiar:Exists() then
+        return
     end
 
-    -- Debug dummies do not consistently contribute to AliveEnemiesCount, but
-    -- the same burst reserve is required for the documented stress test.
-    for _, dummy in ipairs(Isaac.FindByType(
-        DEBUG_DUMMY_TYPE,
+    local data = familiar:GetData()
+
+    if not familiar:HasEntityFlags(DONT_OVERWRITE) then
+        familiar:AddEntityFlags(DONT_OVERWRITE)
+        data[POOL_GUARD_TAG] = true
+    end
+end
+
+function FamiliarCapacityModule:ReleaseFamiliarPoolSlot(familiar)
+    if not familiar then
+        return
+    end
+
+    local data = familiar:GetData()
+
+    if data[POOL_GUARD_TAG] then
+        familiar:ClearEntityFlags(DONT_OVERWRITE)
+        data[POOL_GUARD_TAG] = nil
+    end
+end
+
+function FamiliarCapacityModule:ReleaseAllFamiliarPoolSlots()
+    for _, entity in ipairs(Isaac.FindByType(
+        EntityType.ENTITY_FAMILIAR,
         -1,
         -1,
         false,
         false
     )) do
-        if dummy:Exists() then
-            return true
+        local familiar = entity:ToFamiliar()
+
+        if familiar and familiar:Exists() then
+            self:ReleaseFamiliarPoolSlot(familiar)
         end
     end
-
-    return false
-end
-
-function FamiliarCapacityModule:GetTargetFamiliarLimit()
-    local frame = Game():GetFrameCount()
-
-    if self.TargetLimitFrame == frame then
-        return self.CachedTargetLimit
-    end
-
-    self.TargetLimitFrame = frame
-
-    if self:HasCombatPressure() then
-        self.CachedTargetLimit = FAMILIAR_COMBAT_LIMIT
-    else
-        self.CachedTargetLimit = FAMILIAR_SOFT_LIMIT
-    end
-
-    return self.CachedTargetLimit
 end
 
 function FamiliarCapacityModule:GetPlayerIndex(player)
@@ -331,10 +331,16 @@ function FamiliarCapacityModule:RefreshSnapshot(force)
 
     for _, entity in ipairs(familiars) do
         if entity:Exists() then
+            local familiar = entity:ToFamiliar()
             total = total + 1
 
+            -- EntityFactory consults FLAG_DONT_OVERWRITE when its native
+            -- familiar array is full. Guard every occupied slot so a burst can
+            -- recycle only the expendable slot explicitly released below.
+            self:GuardFamiliarPoolSlot(familiar)
+
             if self:IsBankableVariant(entity.Variant) then
-                expendable[#expendable + 1] = entity:ToFamiliar()
+                expendable[#expendable + 1] = familiar
             end
         end
     end
@@ -413,17 +419,27 @@ end
 function FamiliarCapacityModule:PlayBankAnimation(
     playerIndex,
     variant,
-    position,
-    player
+    position
 )
     if not self:ShouldPlayBankAnimation(playerIndex, variant) then
         return
     end
 
-    self:SpawnBankAnimation(position, player)
+    self:SpawnBankAnimation(position, playerIndex)
 end
 
-function FamiliarCapacityModule:SpawnBankAnimation(position, player)
+function FamiliarCapacityModule:SpawnBankAnimation(position, playerIndex)
+    local player = nil
+
+    if type(playerIndex) == "number"
+        and playerIndex >= 0
+        and playerIndex < Game():GetNumPlayers()
+    then
+        -- MC_PRE_ENTITY_SPAWN exposes a const spawner. Reacquire the mutable
+        -- player userdata before passing it back to Isaac.Spawn.
+        player = Isaac.GetPlayer(playerIndex)
+    end
+
     Isaac.Spawn(
         EntityType.ENTITY_EFFECT,
         EffectVariant.POOF01,
@@ -438,7 +454,7 @@ function FamiliarCapacityModule:QueuePendingOverflowSpawn(
     seed,
     variant,
     showAnimation,
-    player
+    playerIndex
 )
     if type(seed) ~= "number" or not self:IsBankableVariant(variant) then
         return false
@@ -455,7 +471,7 @@ function FamiliarCapacityModule:QueuePendingOverflowSpawn(
     queue[queue.tail] = {
         variant = variant,
         showAnimation = showAnimation,
-        player = player,
+        playerIndex = playerIndex,
     }
     self.PendingOverflowCount = self.PendingOverflowCount + 1
 
@@ -517,6 +533,24 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
 
     local snapshot = self:RefreshSnapshot(false)
 
+    local releaseRequest = self.ActiveReleaseRequest
+    local releaseOwner = releaseRequest
+        and self:ResolveOwnerFromSource(spawner)
+        or nil
+
+    if releaseRequest
+        and releaseRequest.variant == variant
+        and self:IsBankableVariant(variant)
+        and self:GetPlayerIndex(releaseOwner) == releaseRequest.playerIndex
+    then
+        -- A refill is committed only after its synchronous familiar-init
+        -- callback confirms that EntityFactory really allocated the slot.
+        -- Bypass normal overflow banking for this already-accounted request.
+        releaseRequest.seed = seed
+        self:ReserveFamiliarSpawn(seed)
+        return nil
+    end
+
     if not self:IsBankableVariant(variant) then
         -- Important familiars stay in their original native class. At the hard
         -- edge, free an already initialized expendable slot before allocation.
@@ -532,9 +566,7 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
         return nil
     end
 
-    local targetLimit = self:GetTargetFamiliarLimit()
-
-    if snapshot.total < targetLimit then
+    if snapshot.total < FAMILIAR_SOFT_LIMIT then
         -- Pre-spawn callbacks can be grouped before familiar initialization.
         -- Reserve this same-frame slot now so a burst cannot admit multiple
         -- expendable familiars through the final open slot.
@@ -565,7 +597,7 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
     end
 
     -- The current limit can consist entirely of important familiars. Record
-    -- this overflow now, use the idle/combat reserve, and remove the new
+    -- this overflow now, use the four-slot reserve, and remove the new
     -- same-class fly/spider from its init fallback. No cross-type proxy is
     -- constructed.
     if not self:AddToBank(playerIndex, variant, 1) then
@@ -578,7 +610,7 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
         seed,
         variant,
         showAnimation,
-        player
+        playerIndex
     )
     self:ReserveFamiliarSpawn(seed)
 
@@ -601,11 +633,12 @@ function FamiliarCapacityModule:BankFamiliar(familiar, showAnimation)
 
     local variant = familiar.Variant
     local position = familiar.Position
+    self:ReleaseFamiliarPoolSlot(familiar)
     familiar:Remove()
     self.Snapshot.total = math.max(0, self.Snapshot.total - 1)
 
     if showAnimation then
-        self:PlayBankAnimation(playerIndex, variant, position, player)
+        self:PlayBankAnimation(playerIndex, variant, position)
     end
 
     return true
@@ -638,6 +671,15 @@ function FamiliarCapacityModule:OnFamiliarInit(familiar)
         return
     end
 
+    local releaseRequest = self.ActiveReleaseRequest
+
+    if releaseRequest
+        and releaseRequest.variant == familiar.Variant
+        and releaseRequest.seed == familiar.InitSeed
+    then
+        releaseRequest.confirmed = true
+    end
+
     local pending = self:IsBankableVariant(familiar.Variant)
         and self:ConsumePendingOverflowSpawn(
             familiar.InitSeed,
@@ -648,11 +690,12 @@ function FamiliarCapacityModule:OnFamiliarInit(familiar)
 
     if pending then
         local position = familiar.Position
+        self:ReleaseFamiliarPoolSlot(familiar)
         familiar:Remove()
         self.Snapshot.total = math.max(0, self.Snapshot.total - 1)
 
         if pending.showAnimation then
-            self:SpawnBankAnimation(position, pending.player)
+            self:SpawnBankAnimation(position, pending.playerIndex)
         end
 
         return
@@ -663,22 +706,47 @@ function FamiliarCapacityModule:OnFamiliarInit(familiar)
         -- will be removed by their own init callbacks. Exclude those future
         -- removals so an earlier allowed familiar is not banked as well.
         if self.Snapshot.total - self.PendingOverflowCount
-            > self:GetTargetFamiliarLimit()
+                > FAMILIAR_SOFT_LIMIT
+            and self:BankFamiliar(familiar, true)
         then
-            self:BankFamiliar(familiar, true)
+            return
         end
 
+        self:GuardFamiliarPoolSlot(familiar)
         return
     end
 
+    self:GuardFamiliarPoolSlot(familiar)
     self:ProtectImportantSlots()
+end
+
+function FamiliarCapacityModule:OnEntityRemove(entity)
+    if not entity or entity.Type ~= EntityType.ENTITY_FAMILIAR then
+        return
+    end
+
+    local familiar = entity:ToFamiliar()
+    local wasModuleGuarded = familiar
+        and familiar:GetData()[POOL_GUARD_TAG] == true
+
+    -- Removed familiars can remain in EntityFactory's native storage until
+    -- that slot is reused. Leaving FLAG_DONT_OVERWRITE on the dead entity
+    -- makes the slot permanently ineligible for reuse and eventually exhausts
+    -- the pool even when only a few live familiars remain in the room.
+    self:ReleaseFamiliarPoolSlot(familiar)
+
+    -- Natural removals do not pass through BankFamiliar's explicit snapshot
+    -- accounting. Invalidate the same-frame count so the next spawn rescans
+    -- live entities instead of treating the released slot as occupied.
+    if wasModuleGuarded then
+        self:ResetSnapshot()
+    end
 end
 
 function FamiliarCapacityModule:RebalanceCapacity()
     self:RefreshSnapshot(true)
-    local targetLimit = self:GetTargetFamiliarLimit()
 
-    while self.Snapshot.total > targetLimit do
+    while self.Snapshot.total > FAMILIAR_SOFT_LIMIT do
         local expendable = self:FindExpendableFamiliar()
 
         if not expendable or not self:BankFamiliar(expendable, false) then
@@ -697,15 +765,29 @@ function FamiliarCapacityModule:TryRelease(playerIndex, player, variant)
         return false
     end
 
-    bank[field] = bank[field] - 1
-    self.BankedCount = math.max(0, self.BankedCount - 1)
-    self:MarkBankDirty()
+    local releaseRequest = {
+        playerIndex = playerIndex,
+        variant = variant,
+        seed = nil,
+        confirmed = false,
+    }
+    self.ActiveReleaseRequest = releaseRequest
 
     if variant == BLUE_FLY then
         player:AddBlueFlies(1, player.Position, nil)
     else
         player:AddBlueSpider(player.Position)
     end
+
+    self.ActiveReleaseRequest = nil
+
+    if not releaseRequest.confirmed then
+        return false
+    end
+
+    bank[field] = bank[field] - 1
+    self.BankedCount = math.max(0, self.BankedCount - 1)
+    self:MarkBankDirty()
 
     return true
 end
@@ -729,8 +811,7 @@ function FamiliarCapacityModule:ReleaseBankedFamiliars()
     end
 
     local snapshot = self:RefreshSnapshot(true)
-    local targetLimit = self:GetTargetFamiliarLimit()
-    local availableSlots = targetLimit - snapshot.total
+    local availableSlots = FAMILIAR_SOFT_LIMIT - snapshot.total
 
     if availableSlots <= 0 then
         self.ReleaseRetryInterval = math.min(
@@ -842,7 +923,6 @@ function FamiliarCapacityModule:OnGameStarted(isContinued)
     self.ReleasePlayerCursor = 0
     self.ReleaseSpiderNext = false
     self.AnimationFrames = {}
-    self.TargetLimitFrame = -1
     self:ResetSnapshot()
     self:ResetPendingOverflowSpawns()
     self:LoadBank(isContinued)
@@ -872,29 +952,19 @@ function FamiliarCapacityModule:OnNewRoom()
     self:ResetSnapshot()
     self:ResetPendingOverflowSpawns()
     self.AnimationFrames = {}
-    self.TargetLimitFrame = -1
     self.NeedsRebalance = self.Context:IsEnabled(SETTING_KEY)
     self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
     self:RefreshUpdateCallback()
 end
 
-function FamiliarCapacityModule:OnNPCInit()
-    if not self:IsEnabled() then
-        return
+function FamiliarCapacityModule:OnSettingChanged(enabled)
+    if not enabled and self.RunActive then
+        self:ReleaseAllFamiliarPoolSlots()
     end
 
-    -- New combat pressure can appear after MC_POST_NEW_ROOM (including debug
-    -- dummies). Rebalance on the next normal update before attacks begin.
-    self.TargetLimitFrame = -1
-    self.NeedsRebalance = true
-    self:RefreshUpdateCallback()
-end
-
-function FamiliarCapacityModule:OnSettingChanged(enabled)
     self:ResetSnapshot()
     self:ResetPendingOverflowSpawns()
     self.AnimationFrames = {}
-    self.TargetLimitFrame = -1
     self.NeedsRebalance = enabled and self.RunActive
 
     if enabled and self.RunActive then
@@ -912,6 +982,8 @@ function FamiliarCapacityModule:GetSaveData()
 end
 
 function FamiliarCapacityModule:OnPreGameExit()
+    self:ReleaseAllFamiliarPoolSlots()
+
     if self.UpdateCallbackRegistered then
         self.Context.Mod:RemoveCallback(
             ModCallbacks.MC_POST_UPDATE,
