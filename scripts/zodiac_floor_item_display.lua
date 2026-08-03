@@ -513,50 +513,6 @@ function ZodiacFloorItemDisplayModule:CreatePendingState(
     return state
 end
 
-function ZodiacFloorItemDisplayModule:CaptureConsumables(player)
-    return {
-        coins = player:GetNumCoins(),
-        bombs = player:GetNumBombs(),
-        keys = player:GetNumKeys(),
-        soulCharge = player:GetSoulCharge(),
-        bloodCharge = player:GetBloodCharge(),
-    }
-end
-
-function ZodiacFloorItemDisplayModule:RestoreConsumables(player, snapshot)
-    player:AddCoins(snapshot.coins - player:GetNumCoins())
-    player:AddBombs(snapshot.bombs - player:GetNumBombs())
-    player:AddKeys(snapshot.keys - player:GetNumKeys())
-
-    if player:GetSoulCharge() ~= snapshot.soulCharge then
-        player:SetSoulCharge(snapshot.soulCharge)
-    end
-    if player:GetBloodCharge() ~= snapshot.bloodCharge then
-        player:SetBloodCharge(snapshot.bloodCharge)
-    end
-end
-
-function ZodiacFloorItemDisplayModule:CaptureHealth(player)
-    local rerollModule = self.Context.Modules
-        and self.Context.Modules.rerollHealthProtection
-
-    if rerollModule and rerollModule.CaptureHealth then
-        return rerollModule:CaptureHealth(player), rerollModule
-    end
-
-    return nil, nil
-end
-
-function ZodiacFloorItemDisplayModule:RestoreHealth(
-    player,
-    snapshot,
-    rerollModule
-)
-    if snapshot and rerollModule and rerollModule.RestoreHealth then
-        rerollModule:RestoreHealth(player, snapshot)
-    end
-end
-
 function ZodiacFloorItemDisplayModule:GetCurrentRoomKey()
     local level = Game():GetLevel()
     local stage = level and level:GetStage() or -1
@@ -915,61 +871,35 @@ function ZodiacFloorItemDisplayModule:CleanupLegacyWisps(
     return removed
 end
 
-function ZodiacFloorItemDisplayModule:RebuildDisplaySequence(
+function ZodiacFloorItemDisplayModule:MigrateLegacyZodiac(
     player,
     state,
-    effect,
-    includeMarkers
+    expectedCount
 )
-    if #state.sequence == 0 or not VALID_EFFECTS[effect] then
-        return false
+    local actualCount = player:GetCollectibleNum(ZODIAC, true)
+
+    if actualCount >= expectedCount then
+        return true
     end
 
-    self:SyncSequence(player, state)
-    local consumables = self:CaptureConsumables(player)
-    local health, rerollModule = self:CaptureHealth(player)
+    -- Old releases stored the displayed sign in place of the real Zodiac.
+    -- This one-time migration is the only path that may synthesize Zodiac.
+    -- Normal floor rotation and continue restore must never remove/reacquire
+    -- real collectibles: the engine does not clear Zodiac's current-floor
+    -- modifier when RemoveCollectible is called, which stacks native stats.
+    self:RemoveAllProxies(player)
     self.MutationDepth = self.MutationDepth + 1
 
-    for proxyId in pairs(self.EffectByProxy) do
-        local count = player:GetCollectibleNum(proxyId, true)
-
-        for _ = 1, count do
-            self:RemoveOwnedCollectible(player, proxyId)
-        end
-    end
-
-    for index = #state.sequence, 1, -1 do
-        local entry = state.sequence[index]
-        local collectible = entry.kind == "zodiac" and ZODIAC or entry.id
-
-        if collectible
-            and player:GetCollectibleNum(collectible, true) > 0
-        then
-            self:RemoveOwnedCollectible(player, collectible)
-        end
-    end
-
-    local proxyId = self.ProxyByEffect[effect]
-
-    for _, entry in ipairs(state.sequence) do
-        if entry.kind == "zodiac" then
-            self:AddOwnedCollectible(player, ZODIAC, entry.pool)
-
-            if includeMarkers then
-                self:AddOwnedCollectible(player, proxyId, entry.pool)
-            end
-        else
-            self:AddOwnedCollectible(player, entry.id, entry.pool)
-        end
+    for ordinal = actualCount + 1, expectedCount do
+        self:AddOwnedCollectible(
+            player,
+            ZODIAC,
+            self:GetZodiacPool(state, ordinal)
+        )
     end
 
     self.MutationDepth = self.MutationDepth - 1
-    self:RestoreConsumables(player, consumables)
-    self:RestoreHealth(player, health, rerollModule)
-    state.effect = effect
-    state.storageMode = includeMarkers and "display" or "native"
-    state.lastCounts = self:CaptureCounts(player)
-    return true
+    return player:GetCollectibleNum(ZODIAC, true) >= expectedCount
 end
 
 function ZodiacFloorItemDisplayModule:AppendZodiacEntries(
@@ -1119,18 +1049,7 @@ function ZodiacFloorItemDisplayModule:RotateFloorEffect(player, state)
         return false
     end
 
-    if effect ~= state.effect then
-        if not self:RebuildDisplaySequence(
-            player,
-            state,
-            effect,
-            true
-        ) then
-            return false
-        end
-    else
-        self:EnsureMarkers(player, state)
-    end
+    self:EnsureMarkers(player, state)
 
     state.effect = effect
     state.pendingFloorRefresh = nil
@@ -1217,24 +1136,21 @@ function ZodiacFloorItemDisplayModule:RestoreSavedState(
     local expectedZodiacCount = CountZodiacEntries(state.sequence)
     local actualZodiacCount = player:GetCollectibleNum(ZODIAC, true)
     local legacyProxyCount = self:GetProxyCount(player, state.effect)
-    local rebuiltEffect = nil
 
     if actualZodiacCount < expectedZodiacCount
         and legacyProxyCount >= expectedZodiacCount
     then
         self.Players[self:GetPlayerKey(player)] = state
 
-        if not self:RebuildDisplaySequence(
+        if not self:MigrateLegacyZodiac(
             player,
             state,
-            state.effect,
-            displayEnabled
+            expectedZodiacCount
         ) then
             self.Players[self:GetPlayerKey(player)] = nil
             return nil
         end
 
-        rebuiltEffect = state.effect
         actualZodiacCount = player:GetCollectibleNum(ZODIAC, true)
     end
 
@@ -1252,16 +1168,7 @@ function ZodiacFloorItemDisplayModule:RestoreSavedState(
     self.Players[self:GetPlayerKey(player)] = state
 
     if displayEnabled then
-        if rebuiltEffect == state.effect then
-            self:EnsureMarkers(player, state)
-        else
-            self:RebuildDisplaySequence(
-                player,
-                state,
-                state.effect,
-                true
-            )
-        end
+        self:EnsureMarkers(player, state)
     else
         self:RemoveAllProxies(player)
     end
@@ -1447,12 +1354,8 @@ function ZodiacFloorItemDisplayModule:OnPlayerEffectUpdate(player)
         local effect = player:GetZodiacEffect()
 
         if VALID_EFFECTS[effect] and effect ~= state.effect then
-            changed = self:RebuildDisplaySequence(
-                player,
-                state,
-                effect,
-                true
-            ) or changed
+            changed = self:EnsureMarkers(player, state) or changed
+            state.effect = effect
         else
             changed = self:EnsureMarkers(player, state) or changed
         end
@@ -1493,12 +1396,8 @@ function ZodiacFloorItemDisplayModule:OnNewRoom()
             local changed = false
 
             if VALID_EFFECTS[effect] and effect ~= state.effect then
-                changed = self:RebuildDisplaySequence(
-                    player,
-                    state,
-                    effect,
-                    true
-                )
+                changed = self:EnsureMarkers(player, state)
+                state.effect = effect
             else
                 changed = self:EnsureMarkers(player, state)
             end

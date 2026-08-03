@@ -57,7 +57,7 @@
     <collectible id="9">
         <info text="+1 max health"/>
         <info text="+0.1 speed"/>
-        <info text="+0.5 fire rate"/>
+        <info text="+1.0 fire rate"/>
         <info text="+0.5 damage"/>
         <info text="+0.75 range"/>
         <info text=" "/>
@@ -71,7 +71,7 @@
         <info text="The granted Zodiac effect is rerolled at the start of each floor"/>
     </collectible>
     <collectible id="11">
-        <info text="+0.5 fire rate"/>
+        <info text="+1.0 fire rate"/>
         <info text="+0.12 tear size"/>
         <info text="Increased knockback"/>
         <info text=" "/>
