@@ -7,6 +7,7 @@ local DEAD_BIRD = CollectibleType.COLLECTIBLE_DEAD_BIRD
 local ATTACKING_DEAD_BIRD_VARIANT = FamiliarVariant.DEAD_BIRD
 local NATIVE_PERMANENT_DEAD_BIRD_VARIANT = 219
 local MANAGED_DATA_KEY = "CharacterEnhanceRedHeartDeadBirdOwner"
+local ALTAR_PROXY_DATA_KEY = "CharacterEnhanceSoulOfEveAltarProxy"
 local HALF_RED_HEART = 1
 local EVE_RED_HEART_THRESHOLD = 2
 local RNG_SHIFT_INDEX = 35
@@ -162,6 +163,7 @@ function EveDeadBirdModule:FindOwnedBird(player, managedOnly)
         if familiar
             and self:IsEntityAlive(familiar)
             and self:IsOwnedBy(familiar, player)
+            and not self:GetData(familiar)[ALTAR_PROXY_DATA_KEY]
         then
             if self:GetData(familiar)[MANAGED_DATA_KEY] == playerHash then
                 return familiar
@@ -346,6 +348,13 @@ function EveDeadBirdModule:OnFamiliarInit(familiar)
     if variant ~= ATTACKING_DEAD_BIRD_VARIANT
         and variant ~= NATIVE_PERMANENT_DEAD_BIRD_VARIANT
     then
+        return
+    end
+
+    -- The Soul of Eve altar compatibility module creates hidden variant-14
+    -- proxies synchronously around Sacrificial Altar's native familiar scan.
+    -- They are sacrifice slots, not low-health birds to adopt or deduplicate.
+    if self.Context.CreatingSoulOfEveAltarProxy then
         return
     end
 

@@ -113,6 +113,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "soulOfEveBirdFixes",
+        group = "general",
+        zhName = "夏娃魂石死鸟修复",
+        enName = "Soul of Eve Bird Fixes",
+        zhInfo = {
+            "祭坛可献祭夏娃魂石召唤的死鸟。",
+            "补全儿童栓绳加成与BFFS!体型增大。",
+        },
+        enInfo = {
+            "Sacrificial Altar can consume Soul of Eve's birds.",
+            "Adds Child Leash buffs and BFFS! size scaling.",
+        },
+    },
+    {
         key = "eveDamageMultiplier",
         group = "eve",
         zhName = "保持100%攻击倍率",

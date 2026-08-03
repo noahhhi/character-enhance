@@ -1,8 +1,9 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.20.1"
+local VERSION = "1.21.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
+    soulOfEveBirdFixes = true,
     eveDamageMultiplier = true,
     eveDeadBirdRedHeartTrigger = true,
     taintedLostWoodenCross = true,
@@ -180,6 +181,7 @@ end
 local TaintedLostModule = include("scripts/tainted_lost")
 local EveDamageMultiplierModule = include("scripts/eve_damage_multiplier")
 local EveDeadBirdModule = include("scripts/eve_dead_bird")
+local SoulOfEveAltarModule = include("scripts/soul_of_eve_altar")
 local TaintedBlueBabyDealsModule = include("scripts/tainted_bluebaby_deals")
 local TaintedBlueBabyPoopCapacityModule = include(
     "scripts/tainted_bluebaby_poop_capacity"
@@ -230,6 +232,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "eveDeadBirdRedHeartTrigger",
     EveDeadBirdModule.New(Context)
+)
+Context:RegisterModule(
+    "soulOfEveBirdFixes",
+    SoulOfEveAltarModule.New(Context)
 )
 Context:RegisterModule(
     "taintedLostWoodenCross",
