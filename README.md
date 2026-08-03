@@ -259,37 +259,38 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All twenty-nine gameplay settings remain independently configurable:
+All thirty gameplay settings remain independently configurable:
 
 1. Coupon Full-Shop Discount
-2. Protect Wisps from Temporary Familiars
-3. C Section Incubus Animation Fix
-4. Small Player Pickup Range Fix
-5. Clog Creep Damage Fix
-6. Lost Soul White Fire Fix
-7. White Fire Grants Mantle
-8. Pickup Animation Fix
-9. Kid's Drawing Form Fix
-10. Ocular Rift Sound Fix
-11. Pill Rewind Fix
-12. Show Zodiac's Floor Item
-13. Keep 1.00x Damage Multiplier
-14. Keep Dead Bird Active
-15. Eden Starting Passive Choice
-16. Eden's Blessing Choice
-17. Starting Wooden Cross
-18. Blue Baby Deal Prices
-19. Poop Queue Overflow Fix
-20. Keep Health on Reroll
-21. Keep Absorbed Stats
-22. Reveal Pills with Rerolled PHD
-23. Esau Jr. Pickup Effects
-24. TMTRAINER Reroll Chance
-25. Double Soul Charges
-26. Soul Charge Shield
-27. Shield Effects
-28. Gello Wisp Orbit Fix
-29. Explosion-proof Wisps
+2. Soul of Eve Bird Fixes
+3. Protect Wisps from Temporary Familiars
+4. C Section Incubus Animation Fix
+5. Small Player Pickup Range Fix
+6. Clog Creep Damage Fix
+7. Lost Soul White Fire Fix
+8. White Fire Grants Mantle
+9. Pickup Animation Fix
+10. Kid's Drawing Form Fix
+11. Ocular Rift Sound Fix
+12. Pill Rewind Fix
+13. Show Zodiac's Floor Item
+14. Keep 1.00x Damage Multiplier
+15. Keep Dead Bird Active
+16. Eden Starting Passive Choice
+17. Eden's Blessing Choice
+18. Starting Wooden Cross
+19. Blue Baby Deal Prices
+20. Poop Queue Overflow Fix
+21. Keep Health on Reroll
+22. Keep Absorbed Stats
+23. Reveal Pills with Rerolled PHD
+24. Esau Jr. Pickup Effects
+25. TMTRAINER Reroll Chance
+26. Double Soul Charges
+27. Soul Charge Shield
+28. Shield Effects
+29. Gello Wisp Orbit Fix
+30. Explosion-proof Wisps
 
 Options are grouped under the tabs `General`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. The integration supports both Mod
