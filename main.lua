@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.20.0"
+local VERSION = "1.20.1"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     eveDamageMultiplier = true,
