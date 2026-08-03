@@ -13,6 +13,9 @@ local BANK_BLOCKED_RETRY_MAX = 30
 local BANK_RELEASE_BATCH_SIZE = 7
 local BANK_SAVE_DELAY = 60
 local MAX_BANKED_PER_TYPE = 2147483647
+local REWIND_HISTORY_LIMIT = 16
+local REWIND_RELEASE_DELAY = 5
+local REWIND_REMOVAL_TAG = "CharacterEnhanceFamiliarCapacityRewindRemoval"
 local RELEASE_TARGET_DISTANCE = 10000
 local SPIDER_TARGET_GAP = 20
 local RELEASE_TARGET_RETRY_INTERVAL = 10
@@ -50,6 +53,8 @@ function FamiliarCapacityModule.New(context)
         TrackedReleaseTargetCounts = {},
         TrackedReleasedCount = 0,
         NextRetargetFrame = 0,
+        RewindHistory = {},
+        LastRoomTimeCounter = nil,
         UpdateCallbackRegistered = false,
     }, FamiliarCapacityModule)
 
@@ -420,6 +425,235 @@ function FamiliarCapacityModule:AddToBank(playerIndex, variant, amount)
     return true
 end
 
+function FamiliarCapacityModule:CopyTemporaryBank(bankSource)
+    local copy = {}
+
+    for playerKey, bank in pairs(bankSource or {}) do
+        if type(bank) == "table" then
+            copy[tostring(playerKey)] = {
+                blueFlies = self:SanitizeCount(bank.blueFlies),
+                blueSpiders = self:SanitizeCount(bank.blueSpiders),
+            }
+        end
+    end
+
+    return copy
+end
+
+function FamiliarCapacityModule:CountBankedFamiliars(bankSource)
+    local total = 0
+
+    for _, bank in pairs(bankSource or {}) do
+        if type(bank) == "table" then
+            total = total + self:SanitizeCount(bank.blueFlies)
+            total = total + self:SanitizeCount(bank.blueSpiders)
+        end
+    end
+
+    return total
+end
+
+function FamiliarCapacityModule:GetBankField(variant)
+    return variant == BLUE_FLY and "blueFlies" or "blueSpiders"
+end
+
+function FamiliarCapacityModule:CollectPhysicalTemporaryFamiliars()
+    local counts = {}
+    local entities = {}
+
+    for _, entity in ipairs(Isaac.FindByType(
+        EntityType.ENTITY_FAMILIAR,
+        -1,
+        -1,
+        false,
+        false
+    )) do
+        local familiar = entity:ToFamiliar()
+
+        if familiar and familiar:Exists()
+            and self:IsBankableVariant(familiar.Variant)
+        then
+            local owner = self:ResolveOwner(familiar)
+            local playerIndex = self:GetPlayerIndex(owner)
+
+            if playerIndex ~= nil then
+                local playerKey = tostring(playerIndex)
+                local field = self:GetBankField(familiar.Variant)
+                local playerCounts = counts[playerKey]
+                local playerEntities = entities[playerKey]
+
+                if not playerCounts then
+                    playerCounts = { blueFlies = 0, blueSpiders = 0 }
+                    counts[playerKey] = playerCounts
+                    playerEntities = { blueFlies = {}, blueSpiders = {} }
+                    entities[playerKey] = playerEntities
+                end
+
+                playerCounts[field] = playerCounts[field] + 1
+                playerEntities[field][#playerEntities[field] + 1] = {
+                    familiar = familiar,
+                    distance = self:GetSquaredDistance(
+                        familiar.Position,
+                        owner.Position
+                    ),
+                }
+            end
+        end
+    end
+
+    return counts, entities
+end
+
+function FamiliarCapacityModule:GetTimeCounter()
+    local game = Game()
+
+    if type(game.TimeCounter) == "number" then
+        return game.TimeCounter
+    end
+
+    return game:GetFrameCount()
+end
+
+function FamiliarCapacityModule:CaptureRewindSnapshot(timeCounter)
+    local physicalCounts = self:CollectPhysicalTemporaryFamiliars()
+    local snapshot = {
+        timeCounter = timeCounter or self:GetTimeCounter(),
+        temporaryBank = self:CopyTemporaryBank(self.TemporaryBank),
+        physicalCounts = physicalCounts,
+    }
+
+    self.RewindHistory[#self.RewindHistory + 1] = snapshot
+
+    if #self.RewindHistory > REWIND_HISTORY_LIMIT then
+        table.remove(self.RewindHistory, 1)
+    end
+
+    return snapshot
+end
+
+function FamiliarCapacityModule:FindRewindSnapshot(timeCounter)
+    for index = #self.RewindHistory, 1, -1 do
+        local snapshot = self.RewindHistory[index]
+
+        if snapshot.timeCounter <= timeCounter then
+            return snapshot, index
+        end
+    end
+
+    return nil, nil
+end
+
+function FamiliarCapacityModule:AddMissingRewindCount(
+    playerKey,
+    field,
+    amount
+)
+    if amount <= 0 then
+        return 0
+    end
+
+    local bank = self.TemporaryBank[playerKey]
+
+    if not bank then
+        bank = { blueFlies = 0, blueSpiders = 0 }
+        self.TemporaryBank[playerKey] = bank
+    end
+
+    local previousCount = bank[field] or 0
+    local newCount = math.min(MAX_BANKED_PER_TYPE, previousCount + amount)
+    bank[field] = newCount
+    self.BankedCount = self.BankedCount + newCount - previousCount
+
+    return newCount - previousCount
+end
+
+function FamiliarCapacityModule:RemoveRewindDuplicate(familiar)
+    if not familiar or not familiar:Exists() then
+        return false
+    end
+
+    familiar:GetData()[REWIND_REMOVAL_TAG] = true
+    self:ReleaseFamiliarPoolSlot(familiar)
+    familiar:Remove()
+
+    return true
+end
+
+function FamiliarCapacityModule:RestoreRewindSnapshot(snapshot)
+    if not snapshot then
+        return false
+    end
+
+    self.TemporaryBank = self:CopyTemporaryBank(snapshot.temporaryBank)
+    self.BankedCount = self:CountBankedFamiliars(self.TemporaryBank)
+    self.BankDirty = false
+    self.BankSaveDueFrame = nil
+
+    local currentCounts, currentEntities =
+        self:CollectPhysicalTemporaryFamiliars()
+    local targetPhysicalCounts = snapshot.physicalCounts or {}
+    local playerKeys = {}
+    local removedDuplicates = 0
+    local restoredMissing = 0
+
+    for playerKey in pairs(targetPhysicalCounts) do
+        playerKeys[playerKey] = true
+    end
+
+    for playerKey in pairs(currentCounts) do
+        playerKeys[playerKey] = true
+    end
+
+    for playerKey in pairs(playerKeys) do
+        for _, field in ipairs({ "blueFlies", "blueSpiders" }) do
+            local targetBank = targetPhysicalCounts[playerKey]
+            local targetCount = targetBank and targetBank[field] or 0
+            local currentBank = currentCounts[playerKey]
+            local currentCount = currentBank and currentBank[field] or 0
+            local entries = currentEntities[playerKey]
+                and currentEntities[playerKey][field]
+                or {}
+
+            if currentCount > targetCount then
+                table.sort(entries, function(first, second)
+                    return first.distance < second.distance
+                end)
+
+                for index = 1, currentCount - targetCount do
+                    if self:RemoveRewindDuplicate(
+                        entries[index].familiar
+                    ) then
+                        removedDuplicates = removedDuplicates + 1
+                    end
+                end
+            elseif currentCount < targetCount then
+                restoredMissing = restoredMissing
+                    + self:AddMissingRewindCount(
+                        playerKey,
+                        field,
+                        targetCount - currentCount
+                    )
+            end
+        end
+    end
+
+    self:ResetSnapshot()
+    self:ResetPendingOverflowSpawns()
+    self:ResetReleaseTracking()
+    self.NeedsRebalance = self.Context:IsEnabled(SETTING_KEY)
+    self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
+    self.NextReleaseFrame = Game():GetFrameCount() + REWIND_RELEASE_DELAY
+    self:MarkBankDirty()
+    Isaac.DebugString(
+        "[Character Enhance][Familiar Capacity] rewind restored; "
+        .. "discarded duplicates=" .. removedDuplicates
+        .. "; cached missing=" .. restoredMissing
+        .. "; banked=" .. self.BankedCount
+    )
+
+    return true
+end
+
 function FamiliarCapacityModule:RefreshSnapshot(force)
     local frame = Game():GetFrameCount()
 
@@ -659,7 +893,7 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
     end
 
     -- The current limit can consist entirely of important familiars. Record
-    -- this overflow now, use the four-slot reserve, and remove the new
+    -- this overflow now, use the soft-limit reserve, and remove the new
     -- same-class fly/spider from its init fallback. No cross-type proxy is
     -- constructed.
     if not self:AddToBank(playerIndex, variant, 1) then
@@ -811,6 +1045,8 @@ function FamiliarCapacityModule:OnEntityRemove(entity)
     end
 
     local familiar = entity:ToFamiliar()
+    local wasRewindDuplicate = familiar
+        and familiar:GetData()[REWIND_REMOVAL_TAG] == true
     local wasModuleGuarded = familiar
         and familiar:GetData()[POOL_GUARD_TAG] == true
 
@@ -821,6 +1057,11 @@ function FamiliarCapacityModule:OnEntityRemove(entity)
     -- makes the slot permanently ineligible for reuse and eventually exhausts
     -- the pool even when only a few live familiars remain in the room.
     self:ReleaseFamiliarPoolSlot(familiar)
+
+    if wasRewindDuplicate then
+        familiar:GetData()[REWIND_REMOVAL_TAG] = nil
+        return
+    end
 
     -- Natural removals do not pass through BankFamiliar's explicit snapshot
     -- accounting. Invalidate the same-frame count so the next spawn rescans
@@ -1323,10 +1564,13 @@ function FamiliarCapacityModule:OnGameStarted(isContinued)
     self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
     self.ReleasePlayerCursor = 0
     self.ReleaseSpiderNext = false
+    self.RewindHistory = {}
+    self.LastRoomTimeCounter = self:GetTimeCounter()
     self:ResetSnapshot()
     self:ResetPendingOverflowSpawns()
     self:ResetReleaseTracking()
     self:LoadBank(isContinued)
+    self:CaptureRewindSnapshot(self.LastRoomTimeCounter)
 
     if self.Context:IsEnabled(SETTING_KEY) then
         self.NeedsRebalance = true
@@ -1351,12 +1595,36 @@ function FamiliarCapacityModule:OnNewRoom()
         return
     end
 
-    self:ResetSnapshot()
-    self:ResetPendingOverflowSpawns()
-    self:ResetReleaseTargetCache()
-    self.NextRetargetFrame = Game():GetFrameCount()
-    self.NeedsRebalance = self.Context:IsEnabled(SETTING_KEY)
-    self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
+    local timeCounter = self:GetTimeCounter()
+    local isRewind = self.LastRoomTimeCounter ~= nil
+        and timeCounter < self.LastRoomTimeCounter
+
+    if isRewind then
+        local snapshot, historyIndex = self:FindRewindSnapshot(timeCounter)
+
+        if snapshot then
+            self:RestoreRewindSnapshot(snapshot)
+
+            for index = #self.RewindHistory, historyIndex + 1, -1 do
+                self.RewindHistory[index] = nil
+            end
+        else
+            self:ResetSnapshot()
+            self:ResetPendingOverflowSpawns()
+            self:ResetReleaseTargetCache()
+            self.NeedsRebalance = self.Context:IsEnabled(SETTING_KEY)
+        end
+    else
+        self:CaptureRewindSnapshot(timeCounter)
+        self:ResetSnapshot()
+        self:ResetPendingOverflowSpawns()
+        self:ResetReleaseTargetCache()
+        self.NextRetargetFrame = Game():GetFrameCount()
+        self.NeedsRebalance = self.Context:IsEnabled(SETTING_KEY)
+        self.ReleaseRetryInterval = BANK_RELEASE_INTERVAL
+    end
+
+    self.LastRoomTimeCounter = timeCounter
     self:RefreshUpdateCallback()
 end
 
@@ -1398,6 +1666,8 @@ function FamiliarCapacityModule:OnPreGameExit()
 
     self.RunActive = false
     self.NeedsRebalance = false
+    self.RewindHistory = {}
+    self.LastRoomTimeCounter = nil
     self:ResetSnapshot()
     self:ResetPendingOverflowSpawns()
     self:ResetReleaseTracking()
