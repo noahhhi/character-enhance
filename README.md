@@ -189,19 +189,24 @@
   or friendly enemies, mechanisms, and other non-target entities are ignored.
   Steering speed and acceleration are bounded, and the next moving target is
   prepared before the current hit, so direction changes stay smooth during
-  multi-enemy attacks. Multi-shot knives inherit vanilla's central launch axis
-  for their shared target order while retaining every native spread line.
-- As soon as the last reachable enemy is hit, the knife decelerates along its
-  firing ray and stays in contact with the farthest hit enemy still in range
-  until native retraction begins. Native collision damage and the calibrated
-  maximum distance remain unchanged.
+  multi-enemy attacks. Multi-shot knives reuse the complete native knife
+  layout collected at frame end instead of rebuilding item interactions.
+  Compact symmetric spreads use the middle knife—or the midpoint of an even
+  spread—as their shared axis while retaining every native line; backward,
+  omnidirectional, and random extra shots retain the player's native held axis.
+- As soon as the last reachable enemy is hit, the knife follows a visible,
+  acceleration-bounded deceleration curve and stays in contact with the
+  farthest hit enemy still in range. Native retraction then carries that held
+  position smoothly inward instead of jumping out to the turnaround point.
+  Native collision damage remains unchanged.
 - Steering stays within 40 degrees to either side of the firing direction and
   drops a target as soon as it exceeds that throw's calibrated maximum attack
   range. Burrows and teleports are treated as position discontinuities rather
   than high-speed movement, allowing another in-range enemy to take priority.
-  Equal-charge throws keep the native maximum distance exact, stabilizing both
-  outbound and return timing. Non-homing knives and other homing attacks stay
-  vanilla.
+  Targets inside native range keep the original distance and timing. A farther
+  target extends only that throw by the distance it actually needs, up to 30%;
+  targets beyond that cap are ignored. Non-homing knives and other homing
+  attacks stay vanilla.
 
 <a id="small-player-pickup-range"></a>
 ## Small Player Pickup Range Fix

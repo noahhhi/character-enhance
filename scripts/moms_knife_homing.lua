@@ -4,7 +4,7 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 5
+local STATE_VERSION = 6
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local TRACKING_CONE = 40
 local MAX_ANGULAR_SPEED = 15
@@ -26,13 +26,17 @@ local CURVED_INTERCEPT_STEP = 0.5
 local CONTACT_LEAD_FRAMES = 0.5
 local CONTACT_RADIAL_MARGIN = 24
 local MAX_DISTANCE_PERCENT = 100
+local MAX_RANGE_EXTENSION = 1.3
 local HOLD_SWITCH_MARGIN = 6
-local HOLD_MAX_RADIAL_SPEED = 4
-local HOLD_RADIAL_ACCELERATION = 3
-local HOLD_RADIAL_RESPONSE = 0.35
+local HOLD_MAX_RADIAL_SPEED = 8
+local HOLD_RADIAL_ACCELERATION = 1.5
+local HOLD_RADIAL_RESPONSE = 0.45
 local HOLD_DISTANCE_EPSILON = 0.25
 local PREPARED_DISTANCE_MATCH_EPSILON = 0.5
 local RANGE_MATCH_EPSILON = 0.5
+local LAYOUT_SHAPE_EPSILON = 0.1
+local LAYOUT_OFFSET_SYMMETRY_EPSILON = 0.5
+local WIDE_LAYOUT_SPAN = 179.5
 
 local function NormalizeAngle(angle)
     return (angle + 180) % 360 - 180
@@ -103,6 +107,59 @@ end
 
 local function GetWorldRotation(knife)
     return (knife.Rotation or 0) + (knife.RotationOffset or 0)
+end
+
+local function GetMedianAngle(angles)
+    if #angles == 0 then
+        return nil
+    end
+
+    local reference = angles[1]
+    local differences = {}
+
+    for _, angle in ipairs(angles) do
+        differences[#differences + 1] = AngleDifference(angle, reference)
+    end
+
+    table.sort(differences)
+    local middleIndex = math.floor((#differences + 1) * 0.5)
+    local middleDifference = differences[middleIndex]
+
+    if #differences % 2 == 0 then
+        middleDifference = (
+            middleDifference + differences[middleIndex + 1]
+        ) * 0.5
+    end
+
+    return reference + middleDifference
+end
+
+local function GetCircularSpan(angles)
+    if #angles <= 1 then
+        return 0
+    end
+
+    local normalized = {}
+
+    for _, angle in ipairs(angles) do
+        normalized[#normalized + 1] = angle % 360
+    end
+
+    table.sort(normalized)
+    local largestGap = 0
+
+    for index = 1, #normalized - 1 do
+        largestGap = math.max(
+            largestGap,
+            normalized[index + 1] - normalized[index]
+        )
+    end
+
+    largestGap = math.max(
+        largestGap,
+        normalized[1] + 360 - normalized[#normalized]
+    )
+    return 360 - largestGap
 end
 
 local function CopyVector(vector)
@@ -176,6 +233,9 @@ function MomsKnifeHomingModule.New(context)
     self.KnifeCollisionCallback = function(_, knife, collider)
         self:OnKnifeCollision(knife, collider)
     end
+    self.PostUpdateCallback = function()
+        self:OnPostUpdate()
+    end
 
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_KNIFE_UPDATE,
@@ -186,6 +246,10 @@ function MomsKnifeHomingModule.New(context)
         ModCallbacks.MC_PRE_KNIFE_COLLISION,
         self.KnifeCollisionCallback,
         MOMS_KNIFE_VARIANT
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_UPDATE,
+        self.PostUpdateCallback
     )
 
     return self
@@ -616,7 +680,7 @@ function MomsKnifeHomingModule:SolveCurvedInterceptTime(
 end
 
 
-function MomsKnifeHomingModule:GetMaximumAttackRange(knife, state)
+function MomsKnifeHomingModule:GetBaseMaximumAttackRange(knife, state)
     local maximumDistance = state.BaselineMaxDistance
         or knife.MaxDistance
         or 0
@@ -634,6 +698,11 @@ function MomsKnifeHomingModule:GetMaximumAttackRange(knife, state)
     end
 
     return maximumDistance
+end
+
+function MomsKnifeHomingModule:GetMaximumAttackRange(knife, state)
+    return self:GetBaseMaximumAttackRange(knife, state)
+        * MAX_RANGE_EXTENSION
 end
 
 function MomsKnifeHomingModule:GetMaximumInterceptFrames(
@@ -713,12 +782,10 @@ function MomsKnifeHomingModule:GetHeldAimAngle(knife, group)
         and group.Count > 1
         and group.NativeCentralAimAngle ~= nil
     then
-        -- Native multi-knife layouts are not represented uniformly. Inner Eye
-        -- uses offsets around a central Rotation, while Conjoined and Mutant
-        -- Spider can use the leftmost Rotation plus only positive offsets.
-        -- Derive the axis from the complete native spread and preserve each
-        -- raw deviation from it. Do not replace vanilla's launch axis with the
-        -- player input or whichever knife happens to update first.
+        -- Native multi-knife layouts are not represented uniformly. Derive
+        -- compact spreads from the complete native group and preserve each raw
+        -- deviation. Wide/backward/random layouts select their held vanilla
+        -- input later; callback order never defines either kind of axis.
         return group.NativeCentralAimAngle + AngleDifference(
             rawWorldAngle,
             group.NativeCentralAimAngle
@@ -762,17 +829,91 @@ function MomsKnifeHomingModule:RegisterKnifeGroup(knife, frame)
     local group = self.KnifeGroups[ownerHash]
 
     if group == nil then
-        group = { Entries = {} }
+        group = {
+            Entries = {},
+            FlightId = 0,
+            LastFlyingFrame = -2,
+        }
         self.KnifeGroups[ownerHash] = group
     end
 
-    group.Entries[EntityHash(knife)] = {
-        Knife = knife,
-        SeenFrame = frame,
-    }
+    local flying = knife:IsFlying()
+
+    if flying and group.LastFlyingFrame < frame - 1 then
+        group.FlightId = group.FlightId + 1
+        group.FlightStartFrame = frame
+        group.FlightMaxDistance = nil
+        group.FlightReady = false
+        group.LayoutCandidateAngles = nil
+        group.LayoutCandidateOffsets = nil
+        group.LayoutShape = nil
+        group.PreflightAimAngle = group.NativePlayerAimAngle
+            or group.NativeCentralAimAngle
+
+        for _, oldEntry in pairs(group.Entries) do
+            oldEntry.NativeLaunchAngle = nil
+            oldEntry.LaunchFlightId = nil
+            oldEntry.NativeLaunchCaptureFrame = nil
+            oldEntry.ObservedNativeAngle = nil
+            oldEntry.ObservedOffset = nil
+            oldEntry.ObservedFrame = nil
+        end
+    end
+
+    if flying then
+        group.LastFlyingFrame = frame
+    end
+
+    local knifeHash = EntityHash(knife)
+    local knifeEntry = group.Entries[knifeHash]
+
+    if knifeEntry == nil then
+        knifeEntry = {}
+        group.Entries[knifeHash] = knifeEntry
+    end
+
+    knifeEntry.Knife = knife
+    knifeEntry.SeenFrame = frame
+
+    if not flying then
+        knifeEntry.NativeHeldAngle = GetWorldRotation(knife)
+        local player = self:GetSourcePlayer(knife)
+
+        if player ~= nil then
+            local shootingInput = player:GetShootingInput()
+
+            if shootingInput:Length() > 0.01 then
+                group.NativePlayerAimAngle = VectorAngle(shootingInput)
+            end
+        end
+    end
+
+    if flying and knifeEntry.LaunchFlightId ~= group.FlightId then
+        -- Release-spawned extras arrive in an arbitrary callback order. Record
+        -- each native member independently and defer every group-wide write
+        -- until MC_POST_UPDATE has seen the complete layout.
+        knifeEntry.LaunchFlightId = group.FlightId
+
+        if group.FlightReady then
+            -- A genuinely late native member invalidates the completed
+            -- snapshot. Re-open collection instead of assigning that knife an
+            -- item-specific guessed angle.
+            group.FlightReady = false
+            group.LayoutCandidateAngles = nil
+            group.LayoutCandidateOffsets = nil
+            group.LayoutShape = nil
+        end
+    end
+
+    if flying then
+        knifeEntry.ObservedNativeAngle = GetWorldRotation(knife)
+        knifeEntry.ObservedOffset = knife.RotationOffset or 0
+        knifeEntry.ObservedFrame = frame
+    end
+
     local count = 0
-    local cosine = 0
-    local sine = 0
+    local spreadReference
+    local spreadDifferences = {}
 
     for knifeHash, entry in pairs(group.Entries) do
         if entry.SeenFrame < frame - 1
@@ -782,35 +923,243 @@ function MomsKnifeHomingModule:RegisterKnifeGroup(knife, frame)
             group.Entries[knifeHash] = nil
         else
             count = count + 1
-            local memberState = entry.Knife:GetData()[STATE_KEY]
-            local memberAngle = GetWorldRotation(entry.Knife)
+            local memberAngle
 
-            if entry.Knife:IsFlying() and memberState ~= nil then
-                -- Every knife in a native spread enters flight together, but
-                -- their callbacks run sequentially. For members whose module
-                -- callback has not run yet, use the held snapshot instead of
-                -- the first vanilla homing angle from this flying frame.
-                memberAngle = memberState.LaunchAngle
-                    or memberState.PreparedLaunchAngle
-                    or memberAngle
+            if flying
+                and group.FlightReady
+                and entry.LaunchFlightId == group.FlightId
+            then
+                memberAngle = entry.NativeLaunchAngle
+            elseif flying
+                and entry.LaunchFlightId == group.FlightId
+                and entry.ObservedNativeAngle ~= nil
+            then
+                memberAngle = entry.ObservedNativeAngle
+            elseif not flying and not entry.Knife:IsFlying() then
+                memberAngle = GetWorldRotation(entry.Knife)
             end
-            local radians = math.rad(memberAngle)
-            cosine = cosine + math.cos(radians)
-            sine = sine + math.sin(radians)
+
+            if memberAngle ~= nil then
+                if spreadReference == nil then
+                    spreadReference = memberAngle
+                end
+
+                spreadDifferences[#spreadDifferences + 1] = AngleDifference(
+                    memberAngle,
+                    spreadReference
+                )
+            end
         end
     end
 
     group.Count = count
-    if count > 0
-        and (math.abs(cosine) > INTERCEPT_EPSILON
-            or math.abs(sine) > INTERCEPT_EPSILON)
-    then
-        group.NativeCentralAimAngle = math.deg(math.atan(sine, cosine))
+
+    if not flying and #spreadDifferences > 0 then
+        local heldAngles = {}
+
+        for _, difference in ipairs(spreadDifferences) do
+            heldAngles[#heldAngles + 1] = spreadReference + difference
+        end
+
+        group.NativeCentralAimAngle = GetMedianAngle(heldAngles)
     else
-        group.NativeCentralAimAngle = GetWorldRotation(knife)
+        group.NativeCentralAimAngle = group.NativeCentralAimAngle
+            or GetWorldRotation(knife)
     end
 
     return group
+end
+
+function MomsKnifeHomingModule:BuildKnifeLayout(group, frame)
+    local members = {}
+
+    for hash, entry in pairs(group.Entries) do
+        if entry.LaunchFlightId == group.FlightId
+            and entry.ObservedFrame == frame
+            and entry.Knife ~= nil
+            and entry.Knife:Exists()
+            and entry.Knife:IsFlying()
+        then
+            members[#members + 1] = {
+                Hash = hash,
+                Entry = entry,
+                Angle = entry.ObservedNativeAngle,
+                Offset = entry.ObservedOffset or 0,
+            }
+        end
+    end
+
+    table.sort(members, function(left, right)
+        return left.Hash < right.Hash
+    end)
+
+    if #members == 0 then
+        return nil
+    end
+
+    if #members == 1 then
+        local memberState = members[1].Entry.Knife:GetData()[STATE_KEY]
+
+        -- A lone knife can safely retain the held direction captured before
+        -- vanilla homing receives its first flying update. Multi-knife volleys
+        -- must instead use the complete native release layout below.
+        if memberState ~= nil and memberState.LaunchAngle ~= nil then
+            members[1].Angle = memberState.LaunchAngle
+        end
+    end
+
+    local anchorAngle = members[1].Angle
+    local shape = {}
+    local angles = {}
+    local offsets = {}
+
+    for _, member in ipairs(members) do
+        shape[#shape + 1] = {
+            Hash = member.Hash,
+            Difference = AngleDifference(member.Angle, anchorAngle),
+        }
+        angles[member.Hash] = member.Angle
+        offsets[member.Hash] = member.Offset
+    end
+
+    return {
+        Members = members,
+        Shape = shape,
+        Angles = angles,
+        Offsets = offsets,
+    }
+end
+
+function MomsKnifeHomingModule:LayoutShapeMatches(left, right)
+    if left == nil or right == nil or #left ~= #right then
+        return false
+    end
+
+    for index, member in ipairs(left) do
+        if member.Hash ~= right[index].Hash
+            or math.abs(AngleDifference(
+                member.Difference,
+                right[index].Difference
+            )) > LAYOUT_SHAPE_EPSILON
+        then
+            return false
+        end
+    end
+
+    return true
+end
+
+function MomsKnifeHomingModule:GetNativeCentralAxis(group, angles, offsets)
+    local angleList = {}
+    local minimumOffset
+    local maximumOffset
+
+    for hash, angle in pairs(angles) do
+        angleList[#angleList + 1] = angle
+        local offset = offsets[hash] or 0
+        minimumOffset = minimumOffset == nil
+                and offset
+            or math.min(minimumOffset, offset)
+        maximumOffset = maximumOffset == nil
+                and offset
+            or math.max(maximumOffset, offset)
+    end
+
+    local symmetricNativeOffsets = minimumOffset ~= nil
+        and maximumOffset ~= nil
+        and math.abs(minimumOffset + maximumOffset)
+            <= LAYOUT_OFFSET_SYMMETRY_EPSILON
+    local compactLayout = GetCircularSpan(angleList) < WIDE_LAYOUT_SPAN
+
+    -- Ordinary shot multipliers expose a compact spread with symmetric native
+    -- offsets: odd groups use the middle knife and even groups use the middle
+    -- pair. Omnidirectional/backward/random emitters do not have one geometric
+    -- middle that represents the player's shot; retain the held vanilla axis
+    -- for those layouts while still preserving every individual launch line.
+    if (#angleList > 1 and (not symmetricNativeOffsets or not compactLayout))
+        and group.PreflightAimAngle ~= nil
+    then
+        return group.PreflightAimAngle
+    end
+
+    return GetMedianAngle(angleList) or group.PreflightAimAngle
+end
+
+function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
+    local angles = group.LayoutCandidateAngles
+    local offsets = group.LayoutCandidateOffsets
+
+    if angles == nil or offsets == nil then
+        return
+    end
+
+    local centralAxis = self:GetNativeCentralAxis(group, angles, offsets)
+    group.NativeCentralAimAngle = centralAxis
+    group.FlightReady = true
+    group.NativeLayoutFrame = frame
+
+    for hash, launchAngle in pairs(angles) do
+        local entry = group.Entries[hash]
+        local memberState = entry
+            and entry.Knife
+            and entry.Knife:GetData()[STATE_KEY]
+
+        if entry ~= nil
+            and memberState ~= nil
+            and memberState.Flying
+            and entry.LaunchFlightId == group.FlightId
+        then
+            entry.NativeLaunchAngle = launchAngle
+            entry.NativeLaunchCaptureFrame = frame
+            memberState.LaunchAngle = launchAngle
+            memberState.BaseAimAngle = centralAxis
+            memberState.ControlledAngle = launchAngle
+            memberState.AngularVelocity = 0
+            entry.Knife.Rotation = launchAngle
+                - (entry.Knife.RotationOffset or 0)
+        end
+    end
+end
+
+function MomsKnifeHomingModule:OnPostUpdate()
+    local frame = Game():GetFrameCount()
+
+    for _, group in pairs(self.KnifeGroups) do
+        if not group.FlightReady
+            and group.FlightStartFrame ~= nil
+            and group.LastFlyingFrame == frame
+        then
+            local layout = self:BuildKnifeLayout(group, frame)
+
+            if layout ~= nil then
+                if group.LayoutShape == nil then
+                    group.LayoutCandidateAngles = layout.Angles
+                    group.LayoutCandidateOffsets = layout.Offsets
+                    group.LayoutShape = layout.Shape
+                elseif self:LayoutShapeMatches(
+                    group.LayoutShape,
+                    layout.Shape
+                ) then
+                    -- Retain the first absolute native axes when only a common
+                    -- rotation changed; the relative spread is already stable.
+                else
+                    -- Keep observing without steering when vanilla changes the
+                    -- relative spread itself (rather than applying one common
+                    -- homing rotation). The new layout becomes the candidate.
+                    group.LayoutCandidateAngles = layout.Angles
+                    group.LayoutCandidateOffsets = layout.Offsets
+                    group.LayoutShape = layout.Shape
+                end
+
+                local memberCount = #layout.Members
+                local elapsed = frame - group.FlightStartFrame
+
+                if memberCount == 1 or elapsed >= 1 then
+                    self:FinalizeKnifeLayout(group, frame)
+                end
+            end
+        end
+    end
 end
 
 function MomsKnifeHomingModule:MatchesDistanceCalibration(
@@ -842,7 +1191,72 @@ function MomsKnifeHomingModule:StabilizeMaxDistance(knife, state)
         return
     end
 
-    knife.MaxDistance = baseline
+    local baseAttackRange = self:GetBaseMaximumAttackRange(knife, state)
+    local maximumAttackRange = baseAttackRange * MAX_RANGE_EXTENSION
+    local origin = self:GetRotationOrigin(knife)
+    local aimAngle = state.MultiKnifeGroup and state.BaseAimAngle
+        or state.LaunchAngle
+    local farthestDistance = baseAttackRange
+
+    if baseAttackRange > 0 and aimAngle ~= nil then
+        for _, target in ipairs(self:GetCandidates()) do
+            local delta = target.Position - origin
+            local distance = delta:Length()
+
+            if distance <= maximumAttackRange
+                and math.abs(AngleDifference(
+                    VectorAngle(delta),
+                    aimAngle
+                )) <= TRACKING_CONE
+            then
+                farthestDistance = math.max(farthestDistance, distance)
+            end
+        end
+    end
+
+    local requiredDistance = baseline
+
+    if baseAttackRange > 0 then
+        requiredDistance = baseline * math.min(
+            MAX_RANGE_EXTENSION,
+            farthestDistance / baseAttackRange
+        )
+    end
+
+    state.FlightMaxDistance = math.max(
+        state.FlightMaxDistance or baseline,
+        requiredDistance
+    )
+
+    local group = state.KnifeGroup
+
+    if state.MultiKnifeGroup and group ~= nil then
+        group.FlightMaxDistance = math.max(
+            group.FlightMaxDistance or baseline,
+            state.FlightMaxDistance
+        )
+        state.FlightMaxDistance = group.FlightMaxDistance
+
+        for _, entry in pairs(group.Entries) do
+            local memberState = entry.Knife
+                and entry.Knife:GetData()[STATE_KEY]
+
+            if memberState ~= nil
+                and memberState.Flying
+                and entry.LaunchFlightId == group.FlightId
+            then
+                memberState.FlightMaxDistance = math.max(
+                    memberState.FlightMaxDistance
+                        or memberState.BaselineMaxDistance
+                        or baseline,
+                    group.FlightMaxDistance
+                )
+                entry.Knife.MaxDistance = memberState.FlightMaxDistance
+            end
+        end
+    end
+
+    knife.MaxDistance = state.FlightMaxDistance
 end
 
 function MomsKnifeHomingModule:GetPredictedPosition(
@@ -1118,32 +1532,78 @@ function MomsKnifeHomingModule:FindFarthestHitTarget(
     return bestTarget
 end
 
+function MomsKnifeHomingModule:BeginHoldRadialMotion(knife, state)
+    if state.HoldTarget == nil or state.HoldDistance ~= nil then
+        return
+    end
+
+    local baseline = self:GetMaximumAttackRange(knife, state)
+    state.HoldDistance = math.max(
+        0,
+        math.min(baseline, knife:GetKnifeDistance())
+    )
+    state.HoldRadialVelocity = math.max(
+        -HOLD_MAX_RADIAL_SPEED,
+        math.min(
+            HOLD_MAX_RADIAL_SPEED,
+            state.RadialSpeed or knife:GetKnifeVelocity()
+        )
+    )
+    state.HoldRetracting = false
+    state.HoldRetractionNativeStart = nil
+    state.HoldRetractionVisualStart = nil
+end
+
 function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
-    if state.HoldTarget == nil
-        or (state.RadialSpeed or 0) < -MOTION_EPSILON
-    then
+    if state.HoldTarget == nil and not state.HoldRetracting then
         state.HoldDistance = nil
         state.HoldRadialVelocity = nil
+        state.HoldRetractionNativeStart = nil
+        state.HoldRetractionVisualStart = nil
         return nil
     end
 
-    local origin = self:GetRotationOrigin(knife)
     local baseline = self:GetMaximumAttackRange(knife, state)
+
+    self:BeginHoldRadialMotion(knife, state)
+
+    local nativeDistance = math.max(0, knife:GetKnifeDistance())
+
+    if state.HoldRetracting
+        or (state.RadialSpeed or 0) < -MOTION_EPSILON
+    then
+        if not state.HoldRetracting then
+            state.HoldRetracting = true
+            state.HoldRetractionVisualStart = state.HoldDistance
+            state.HoldRetractionNativeStart = math.max(
+                nativeDistance,
+                nativeDistance - (state.RadialSpeed or 0)
+            )
+        end
+
+        local nativeStart = math.max(
+            MOTION_EPSILON,
+            state.HoldRetractionNativeStart or nativeDistance
+        )
+        local previousDistance = state.HoldDistance
+        local returnProgress = math.max(
+            0,
+            math.min(1, nativeDistance / nativeStart)
+        )
+        state.HoldDistance = math.min(
+            previousDistance,
+            (state.HoldRetractionVisualStart or previousDistance)
+                * returnProgress
+        )
+        state.HoldRadialVelocity = state.HoldDistance - previousDistance
+        return state.HoldDistance
+    end
+
+    local origin = self:GetRotationOrigin(knife)
     local desiredDistance = math.min(
         baseline,
         (state.HoldTarget.Position - origin):Length()
     )
-
-    if state.HoldDistance == nil then
-        state.HoldDistance = math.min(
-            baseline,
-            math.max(0, knife:GetKnifeDistance())
-        )
-        state.HoldRadialVelocity = math.max(
-            -HOLD_MAX_RADIAL_SPEED,
-            math.min(HOLD_MAX_RADIAL_SPEED, state.RadialSpeed or 0)
-        )
-    end
 
     local radialError = desiredDistance - state.HoldDistance
     local desiredVelocity = math.max(
@@ -1163,16 +1623,28 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
         desiredVelocity,
         HOLD_RADIAL_ACCELERATION
     )
-    local nextDistance = state.HoldDistance + state.HoldRadialVelocity
+    local nextDistance
 
-    if (radialError > 0 and nextDistance > desiredDistance)
-        or (radialError < 0 and nextDistance < desiredDistance)
+    if math.abs(radialError) <= HOLD_DISTANCE_EPSILON
+        and math.abs(state.HoldRadialVelocity)
+            <= HOLD_RADIAL_ACCELERATION
     then
         nextDistance = desiredDistance
         state.HoldRadialVelocity = 0
+    else
+        nextDistance = state.HoldDistance + state.HoldRadialVelocity
     end
 
-    state.HoldDistance = math.max(0, math.min(baseline, nextDistance))
+    local clampedDistance = math.max(
+        0,
+        math.min(baseline, nextDistance)
+    )
+
+    if math.abs(clampedDistance - nextDistance) > INTERCEPT_EPSILON then
+        state.HoldRadialVelocity = 0
+    end
+
+    state.HoldDistance = clampedDistance
     return state.HoldDistance
 end
 
@@ -1240,7 +1712,11 @@ function MomsKnifeHomingModule:BeginFlight(knife, state)
     state.HoldTarget = nil
     state.HoldDistance = nil
     state.HoldRadialVelocity = nil
+    state.HoldRetracting = false
+    state.HoldRetractionNativeStart = nil
+    state.HoldRetractionVisualStart = nil
     state.BaselineSourceRange = sourceRange
+    state.FlightMaxDistance = state.BaselineMaxDistance
     state.PreviousKnifeDistance = knife:GetKnifeDistance()
     state.DistanceFrame = Game():GetFrameCount()
     state.RadialSpeed = knife:GetKnifeVelocity()
@@ -1275,6 +1751,24 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
     local flying = knife:IsFlying()
 
     if not flying then
+        local finishedFlight = state.Flying
+
+        -- A target beyond native range may temporarily extend MaxDistance for
+        -- this throw. Some native knife states leave that written value on the
+        -- entity when flight ends. Restore only the value that this module
+        -- wrote, before recording the next held/charging baseline, so a far
+        -- target cannot silently lengthen every later throw. If vanilla has
+        -- already supplied a different charged/range-dependent value, retain
+        -- it as the new baseline instead.
+        if finishedFlight
+            and state.BaselineMaxDistance ~= nil
+            and state.FlightMaxDistance ~= nil
+            and math.abs(knife.MaxDistance - state.FlightMaxDistance)
+                <= PREPARED_DISTANCE_MATCH_EPSILON
+        then
+            knife.MaxDistance = state.BaselineMaxDistance
+        end
+
         state.Flying = false
         state.Target = nil
         state.NextTarget = nil
@@ -1283,6 +1777,10 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.HoldTarget = nil
         state.HoldDistance = nil
         state.HoldRadialVelocity = nil
+        state.HoldRetracting = false
+        state.HoldRetractionNativeStart = nil
+        state.HoldRetractionVisualStart = nil
+        state.FlightMaxDistance = nil
         state.LastSteeringFrame = nil
         state.PreparedLaunchAngle = self:GetHeldAimAngle(knife, knifeGroup)
         state.PreparedBaseAimAngle = self:GetHeldBaseAimAngle(
@@ -1307,6 +1805,15 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.BaseAimAngle = knifeGroup.NativeCentralAimAngle
     end
 
+    -- Do not write any flying member until the frame-end collector has seen
+    -- the complete native volley. This prevents a release-spawned knife that
+    -- updates late (20/20 and stacked shot multipliers in particular) from
+    -- inheriting whichever earlier member happened to run first.
+    if not knifeGroup.FlightReady then
+        self:StabilizeMaxDistance(knife, state)
+        return
+    end
+
     if state.LastSteeringFrame == frame then
         self:StabilizeMaxDistance(knife, state)
         knife.Rotation = state.ControlledAngle
@@ -1329,66 +1836,82 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
     -- stay consistent without reshooting or replacing the native knife.
     self:StabilizeMaxDistance(knife, state)
 
-    if state.Target ~= nil
-        and not self:IsReachable(knife, state, state.Target, TRACKING_CONE)
-    then
+    local holdReturning = state.HoldDistance ~= nil
+        and (state.RadialSpeed or 0) < -MOTION_EPSILON
+
+    if holdReturning then
         state.Target = nil
         state.NextTarget = nil
         state.TargetPlan = {}
-        state.HoldTarget = nil
-    end
-
-    if state.HoldTarget ~= nil then
-        local unhitTarget = self:FindTarget(knife, state, false)
-
-        if unhitTarget ~= nil then
+    else
+        if state.Target ~= nil
+            and not self:IsReachable(
+                knife,
+                state,
+                state.Target,
+                TRACKING_CONE
+            )
+        then
+            state.Target = nil
+            state.NextTarget = nil
+            state.TargetPlan = {}
             state.HoldTarget = nil
-            state.Target = unhitTarget
+        end
+
+        if state.HoldTarget ~= nil then
+            local unhitTarget = self:FindTarget(knife, state, false)
+
+            if unhitTarget ~= nil then
+                state.HoldTarget = nil
+                state.Target = unhitTarget
+                local _, plan = self:FindTarget(
+                    knife,
+                    state,
+                    false,
+                    unhitTarget
+                )
+                state.TargetPlan = plan
+                state.NextTarget = plan[1] and plan[1].Target or nil
+            else
+                state.HoldTarget = self:FindFarthestHitTarget(knife, state)
+                state.Target = state.HoldTarget
+                state.NextTarget = nil
+                state.TargetPlan = {}
+            end
+        end
+
+        if state.Target == nil then
+            local plan
+            state.Target, plan = self:FindTarget(knife, state, false)
+            state.TargetPlan = plan
+            state.NextTarget = plan[2] and plan[2].Target or nil
+
+            if state.Target == nil then
+                -- After crossing every reachable target, stay aligned with the
+                -- farthest already-hit enemy still inside the calibrated range.
+                -- Native knife distance and timing continue to control retraction.
+                state.HoldTarget = self:FindFarthestHitTarget(knife, state)
+                state.Target = state.HoldTarget
+                state.NextTarget = nil
+                state.TargetPlan = {}
+            end
+        elseif state.HoldTarget == nil then
             local _, plan = self:FindTarget(
                 knife,
                 state,
                 false,
-                unhitTarget
+                state.Target
             )
             state.TargetPlan = plan
             state.NextTarget = plan[1] and plan[1].Target or nil
-        else
-            state.HoldTarget = self:FindFarthestHitTarget(knife, state)
-            state.Target = state.HoldTarget
-            state.NextTarget = nil
-            state.TargetPlan = {}
         end
-    end
-
-    if state.Target == nil then
-        local plan
-        state.Target, plan = self:FindTarget(knife, state, false)
-        state.TargetPlan = plan
-        state.NextTarget = plan[2] and plan[2].Target or nil
-
-        if state.Target == nil then
-            -- After crossing every reachable target, stay aligned with the
-            -- farthest already-hit enemy still inside the calibrated range.
-            -- Native knife distance and timing continue to control retraction.
-            state.HoldTarget = self:FindFarthestHitTarget(knife, state)
-            state.Target = state.HoldTarget
-            state.NextTarget = nil
-            state.TargetPlan = {}
-        end
-    elseif state.HoldTarget == nil then
-        local _, plan = self:FindTarget(
-            knife,
-            state,
-            false,
-            state.Target
-        )
-        state.TargetPlan = plan
-        state.NextTarget = plan[1] and plan[1].Target or nil
     end
 
     local holdDistance = self:UpdateHoldRadialMotion(knife, state)
 
-    local desiredAngle = state.LaunchAngle
+    local desiredAngle = state.HoldRetracting
+            and state.ControlledAngle
+        or state.LaunchAngle
     if state.Target ~= nil then
         local origin = self:GetRotationOrigin(knife)
         local predicted, _, _, predictedOrigin = self:GetPredictedPosition(
@@ -1497,10 +2020,16 @@ function MomsKnifeHomingModule:OnKnifeCollision(knife, collider)
         state.Target = state.HoldTarget
         state.NextTarget = nil
         state.TargetPlan = {}
+        self:BeginHoldRadialMotion(knife, state)
         return
     end
 
     state.HoldTarget = nil
+    state.HoldDistance = nil
+    state.HoldRadialVelocity = nil
+    state.HoldRetracting = false
+    state.HoldRetractionNativeStart = nil
+    state.HoldRetractionVisualStart = nil
     state.Target = nextTarget
     local _, plan = self:FindTarget(knife, state, false, nextTarget)
     state.TargetPlan = plan
