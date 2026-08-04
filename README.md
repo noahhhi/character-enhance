@@ -185,11 +185,16 @@
 ## Mom's Knife Homing Fix
 
 - When Mom's Knife has homing, it continuously replans a short curved intercept
-  from each enemy's observed movement. Steering speed and acceleration are
-  bounded, and the next moving target is prepared before the current hit, so
-  direction changes stay smooth during multi-enemy attacks. After crossing
-  every reachable enemy, the knife stays aligned with the farthest hit enemy
-  still in range until its native flight cycle retracts it.
+  from each hostile enemy's observed movement, turn, and speed change. Charmed
+  or friendly enemies, mechanisms, and other non-target entities are ignored.
+  Steering speed and acceleration are bounded, and the next moving target is
+  prepared before the current hit, so direction changes stay smooth during
+  multi-enemy attacks. Multi-shot knives share a central-aim target order while
+  retaining their individual spread lines.
+- After crossing every reachable enemy, the knife decelerates along its firing
+  ray and stays in contact with the farthest hit enemy still in range until its
+  native flight cycle retracts it. Native collision damage and the calibrated
+  maximum distance remain unchanged.
 - Steering stays within 40 degrees to either side of the firing direction and
   drops a target beyond 130% of the calibrated maximum range. Equal-charge
   throws keep that maximum distance exact, stabilizing both outbound and return
