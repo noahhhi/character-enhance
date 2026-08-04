@@ -504,6 +504,20 @@ local MENU_SETTINGS = {
             "My Stuff explains the floor's sign and Zodiac.",
         },
     },
+    {
+        key = "momsKnifeHomingFix",
+        group = "general",
+        zhName = "妈妈的菜刀追踪修复",
+        enName = "Mom's Knife Homing Fix",
+        zhInfo = {
+            "追踪菜刀预判转弯，转火后贴住最远目标。",
+            "只修正妈妈的菜刀；其他追踪攻击保持原版。",
+        },
+        enInfo = {
+            "Homing knives lead curves, then hold farthest hits.",
+            "Other homing attacks stay vanilla.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)
