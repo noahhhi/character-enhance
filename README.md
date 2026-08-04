@@ -188,8 +188,8 @@
   target, and turns toward another reachable enemy after a hit. After crossing
   every reachable enemy, it stays aligned with the farthest hit enemy still in
   range until the stable flight cycle retracts it. Its steering remains
-  bounded around the original firing direction instead of sharply snapping
-  across the room.
+  within 40 degrees to either side of the original firing direction; targets
+  outside that window are released instead of causing a futile chase.
 - Equal-charge throws reuse a range calibration for the current range stat.
   Homing may vary maximum distance by only 5%, keeping flight distance and
   duration consistent. Non-homing knives and other homing attacks stay vanilla.

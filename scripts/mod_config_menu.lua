@@ -510,12 +510,12 @@ local MENU_SETTINGS = {
         zhName = "妈妈的菜刀追踪修复",
         enName = "Mom's Knife Homing Fix",
         zhInfo = {
-            "追踪菜刀预判转弯，转火后贴住最远目标。",
-            "只修正妈妈的菜刀；其他追踪攻击保持原版。",
+            "追踪菜刀只在发射线左右各40°内修正。",
+            "命中后转火，全部命中后贴住最远目标。",
         },
         enInfo = {
-            "Homing knives lead curves, then hold farthest hits.",
-            "Other homing attacks stay vanilla.",
+            "Homing knives lead within 40° of either side.",
+            "Hits switch targets, then hold the farthest one.",
         },
     },
 }
