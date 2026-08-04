@@ -510,12 +510,12 @@ local MENU_SETTINGS = {
         zhName = "妈妈的菜刀追踪修复",
         enName = "Mom's Knife Homing Fix",
         zhInfo = {
-            "追踪菜刀只在发射线左右各40°内修正。",
-            "命中后转火，全部命中后贴住最远目标。",
+            "逐帧预判运动，平滑转向并在命中后转火。",
+            "锁定限左右40°、射程130%；往返距离固定。",
         },
         enInfo = {
-            "Homing knives lead within 40° of either side.",
-            "Hits switch targets, then hold the farthest one.",
+            "Replans smooth intercepts throughout each throw.",
+            "Locks within ±40°/130%; distance stays fixed.",
         },
     },
 }

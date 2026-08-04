@@ -184,15 +184,16 @@
 <a id="moms-knife-homing-fix"></a>
 ## Mom's Knife Homing Fix
 
-- When Mom's Knife has homing, it predicts curved movement, keeps a stable
-  target, and turns toward another reachable enemy after a hit. After crossing
-  every reachable enemy, it stays aligned with the farthest hit enemy still in
-  range until the stable flight cycle retracts it. Its steering remains
-  within 40 degrees to either side of the original firing direction; targets
-  outside that window are released instead of causing a futile chase.
-- Equal-charge throws reuse a range calibration for the current range stat.
-  Homing may vary maximum distance by only 5%, keeping flight distance and
-  duration consistent. Non-homing knives and other homing attacks stay vanilla.
+- When Mom's Knife has homing, it continuously replans a short curved intercept
+  from each enemy's observed movement. Steering speed and acceleration are
+  bounded, and the next moving target is prepared before the current hit, so
+  direction changes stay smooth during multi-enemy attacks. After crossing
+  every reachable enemy, the knife stays aligned with the farthest hit enemy
+  still in range until its native flight cycle retracts it.
+- Steering stays within 40 degrees to either side of the firing direction and
+  drops a target beyond 130% of the calibrated maximum range. Equal-charge
+  throws keep that maximum distance exact, stabilizing both outbound and return
+  timing. Non-homing knives and other homing attacks stay vanilla.
 
 <a id="small-player-pickup-range"></a>
 ## Small Player Pickup Range Fix
