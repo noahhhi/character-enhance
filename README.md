@@ -189,16 +189,19 @@
   or friendly enemies, mechanisms, and other non-target entities are ignored.
   Steering speed and acceleration are bounded, and the next moving target is
   prepared before the current hit, so direction changes stay smooth during
-  multi-enemy attacks. Multi-shot knives share a central-aim target order while
-  retaining their individual spread lines.
-- After crossing every reachable enemy, the knife decelerates along its firing
-  ray and stays in contact with the farthest hit enemy still in range until its
-  native flight cycle retracts it. Native collision damage and the calibrated
+  multi-enemy attacks. Multi-shot knives inherit vanilla's central launch axis
+  for their shared target order while retaining every native spread line.
+- As soon as the last reachable enemy is hit, the knife decelerates along its
+  firing ray and stays in contact with the farthest hit enemy still in range
+  until native retraction begins. Native collision damage and the calibrated
   maximum distance remain unchanged.
 - Steering stays within 40 degrees to either side of the firing direction and
-  drops a target beyond 130% of the calibrated maximum range. Equal-charge
-  throws keep that maximum distance exact, stabilizing both outbound and return
-  timing. Non-homing knives and other homing attacks stay vanilla.
+  drops a target as soon as it exceeds that throw's calibrated maximum attack
+  range. Burrows and teleports are treated as position discontinuities rather
+  than high-speed movement, allowing another in-range enemy to take priority.
+  Equal-charge throws keep the native maximum distance exact, stabilizing both
+  outbound and return timing. Non-homing knives and other homing attacks stay
+  vanilla.
 
 <a id="small-player-pickup-range"></a>
 ## Small Player Pickup Range Fix
