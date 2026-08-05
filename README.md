@@ -190,6 +190,8 @@
   Angular motion and the extra sideways world speed produced by steering are
   both speed- and acceleration-bounded. Targets that cannot be intercepted
   inside those limits are released, even when this reduces homing coverage.
+  The live knife's outward/return radial speed also changes through a bounded
+  acceleration curve, avoiding visible speed steps after release.
   A knife that has already passed one target's reachable radial band yields to
   another feasible enemy, and begins a small contact-safe
   turn toward its next target immediately before the current hit. Multi-shot
@@ -213,14 +215,15 @@
   degrees of its own native launch line. A target is dropped as soon as it
   leaves that sector or exceeds the throw's calibrated maximum attack range.
   During the outbound phase, that sector center and the live knife follow
-  40% of the owner's displacement from the release point; native retraction
+  80% of the owner's displacement from the release point; native retraction
   smoothly raises the follow ratio to 100% so the knife rejoins its owner.
   Burrows and teleports are treated as position discontinuities rather than
   high-speed movement, allowing another in-range enemy to take priority.
-  Targets inside native range keep the original distance and timing. A farther
-  target extends only that throw by the distance it actually needs, up to 30%;
-  targets beyond that cap are ignored. Non-homing knives and other homing
-  attacks stay vanilla.
+  Targets inside native range keep the original distance and timing. The
+  farthest valid target present at release may extend only that throw by the
+  distance it actually needs, up to 30%; that target-derived range and timer do
+  not expand later when an enemy moves outward. Targets that cross it are
+  dropped. Non-homing knives and other homing attacks stay vanilla.
 
 <a id="small-player-pickup-range"></a>
 ## Small Player Pickup Range Fix
