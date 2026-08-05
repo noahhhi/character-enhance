@@ -4,7 +4,7 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 9
+local STATE_VERSION = 10
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local TRACKING_CONE = 40
 local MAX_ANGULAR_SPEED = 15
@@ -46,6 +46,7 @@ local TARGET_TURN_FEASIBILITY_SLACK = 1
 local SEQUENCE_LOOKAHEAD_FRAMES = 1
 local SEQUENCE_LOOKAHEAD_FRACTION = 0.35
 local MAX_SEQUENCE_LOOKAHEAD_ANGLE = 6
+local KNIFE_SPRITE_FORWARD_OFFSET = 90
 
 local function NormalizeAngle(angle)
     return (angle + 180) % 360 - 180
@@ -1024,6 +1025,29 @@ function MomsKnifeHomingModule:ClampTrackedAngle(state, angle)
     return trackingAxis + desiredOffset
 end
 
+function MomsKnifeHomingModule:ApplyControlledTransform(
+    knife,
+    state,
+    controlledDistance
+)
+    state.ControlledAngle = ClampAngleAround(
+        state.ControlledAngle or state.LaunchAngle,
+        state.LaunchAngle,
+        TRACKING_CONE
+    )
+    knife.Rotation = state.ControlledAngle
+        - (knife.RotationOffset or 0)
+
+    -- EntityKnife's rendered sprite points along SpriteRotation + 90 degrees.
+    -- Vanilla can leave SpriteRotation at a stale homing angle for the first
+    -- multi-knife layout frame even after Rotation has been corrected. Write
+    -- the final visible angle explicitly so the render and hitbox obey this
+    -- knife's own independent launch cone on every flying frame.
+    knife.SpriteRotation = state.ControlledAngle
+        - KNIFE_SPRITE_FORWARD_OFFSET
+    self:ApplyControlledPosition(knife, state, controlledDistance)
+end
+
 function MomsKnifeHomingModule:GetHeldAimAngle(knife, group)
     local rawWorldAngle = GetWorldRotation(knife)
 
@@ -1362,15 +1386,19 @@ function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
         then
             entry.NativeLaunchAngle = launchAngle
             entry.NativeLaunchCaptureFrame = frame
-            memberState.LaunchAngle = launchAngle
+            memberState.NativeLaunchAngle = launchAngle
             memberState.BaseAimAngle = centralAxis
-            memberState.ControlledAngle = launchAngle
+            memberState.LaunchAngle = launchAngle
+            memberState.ControlledAngle = memberState.LaunchAngle
             memberState.AngularVelocity = 0
             memberState.TangentialVelocity = 0
             memberState.PreviousControlledDistance =
                 entry.Knife:GetKnifeDistance()
-            entry.Knife.Rotation = launchAngle
-                - (entry.Knife.RotationOffset or 0)
+            self:ApplyControlledTransform(
+                entry.Knife,
+                memberState,
+                entry.Knife:GetKnifeDistance()
+            )
         end
     end
 end
@@ -1410,6 +1438,27 @@ function MomsKnifeHomingModule:OnPostUpdate()
 
                 if memberCount == 1 or elapsed >= 1 then
                     self:FinalizeKnifeLayout(group, frame)
+                end
+            end
+        end
+
+        if group.FlightReady then
+            for _, entry in pairs(group.Entries) do
+                local knife = entry.Knife
+                local state = knife and knife:GetData()[STATE_KEY]
+
+                if knife ~= nil
+                    and knife:Exists()
+                    and knife:IsFlying()
+                    and state ~= nil
+                    and state.Flying
+                    and state.ControlledAngle ~= nil
+                then
+                    self:ApplyControlledTransform(
+                        knife,
+                        state,
+                        state.HoldDistance or knife:GetKnifeDistance()
+                    )
                 end
             end
         end
@@ -2513,7 +2562,7 @@ function MomsKnifeHomingModule:UpdateOriginRetraction(knife, state)
 end
 
 
-function MomsKnifeHomingModule:BeginFlight(knife, state)
+function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     local charge = state.PreparedCharge or knife.Charge or 0
     local sourceRange = state.PreparedSourceRange
 
@@ -2553,10 +2602,26 @@ function MomsKnifeHomingModule:BeginFlight(knife, state)
     -- MC_POST_KNIFE_UPDATE observes the first flying frame only after vanilla
     -- homing has already rotated toward its stale target position. Preserve
     -- the player's last charging/held angle from the preceding idle frame.
-    state.LaunchAngle = state.PreparedLaunchAngle
-        or GetWorldRotation(knife)
+    local rotationOffset = knife.RotationOffset or 0
     state.BaseAimAngle = state.PreparedBaseAimAngle
-        or state.LaunchAngle - (knife.RotationOffset or 0)
+        or (knifeGroup and knifeGroup.PreflightAimAngle)
+        or GetWorldRotation(knife) - rotationOffset
+    state.NativeLaunchAngle = state.PreparedLaunchAngle
+        or GetWorldRotation(knife)
+
+    -- Native shot multipliers can change a held knife's RotationOffset only
+    -- on release. Carry that exact offset delta onto the member's own saved
+    -- held angle instead of collapsing it onto the group center. Extras that
+    -- exist only after release retain their first observed native world angle;
+    -- the frame-end layout replaces either provisional value once complete.
+    if state.PreparedLaunchAngle ~= nil
+        and state.PreparedRotationOffset ~= nil
+    then
+        state.NativeLaunchAngle = state.PreparedLaunchAngle
+            + rotationOffset - state.PreparedRotationOffset
+    end
+
+    state.LaunchAngle = state.NativeLaunchAngle
     state.ControlledAngle = state.LaunchAngle
     state.AngularVelocity = 0
     state.TangentialVelocity = 0
@@ -2654,6 +2719,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
             knife,
             knifeGroup
         )
+        state.PreparedRotationOffset = knife.RotationOffset or 0
         state.PreparedMaxDistance = knife.MaxDistance
         state.PreparedCharge = knife.Charge or 0
         state.PreparedSourceRange = self:GetSourceRange(knife)
@@ -2665,7 +2731,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
     end
 
     if not state.Flying then
-        self:BeginFlight(knife, state)
+        self:BeginFlight(knife, state, knifeGroup)
     end
 
     if state.MultiKnifeGroup and knifeGroup.NativeCentralAimAngle ~= nil then
@@ -2678,14 +2744,17 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
     -- inheriting whichever earlier member happened to run first.
     if not knifeGroup.FlightReady then
         self:StabilizeMaxDistance(knife, state)
+        self:ApplyControlledTransform(
+            knife,
+            state,
+            knife:GetKnifeDistance()
+        )
         return
     end
 
     if state.LastSteeringFrame == frame then
         self:StabilizeMaxDistance(knife, state)
-        knife.Rotation = state.ControlledAngle
-            - (knife.RotationOffset or 0)
-        self:ApplyControlledPosition(
+        self:ApplyControlledTransform(
             knife,
             state,
             state.HoldDistance or knife:GetKnifeDistance()
@@ -2901,8 +2970,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.HoldAngle = state.ControlledAngle
     end
 
-    knife.Rotation = state.ControlledAngle - (knife.RotationOffset or 0)
-    self:ApplyControlledPosition(
+    self:ApplyControlledTransform(
         knife,
         state,
         controlledDistance
