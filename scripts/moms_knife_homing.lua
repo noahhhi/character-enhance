@@ -4,7 +4,7 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 6
+local STATE_VERSION = 7
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local TRACKING_CONE = 40
 local MAX_ANGULAR_SPEED = 15
@@ -37,6 +37,7 @@ local RANGE_MATCH_EPSILON = 0.5
 local LAYOUT_SHAPE_EPSILON = 0.1
 local LAYOUT_OFFSET_SYMMETRY_EPSILON = 0.5
 local WIDE_LAYOUT_SPAN = 179.5
+local FLIGHT_ORIGIN_FOLLOW = 0.4
 
 local function NormalizeAngle(angle)
     return (angle + 180) % 360 - 180
@@ -374,7 +375,7 @@ function MomsKnifeHomingModule:GetCandidates()
     return candidates
 end
 
-function MomsKnifeHomingModule:GetTargetMotion(knife, target)
+function MomsKnifeHomingModule:GetTargetMotion(knife, state, target)
     local motion = self.TargetMotion[EntityHash(target)]
     local targetVelocity = motion and motion.Velocity
         or target.Velocity
@@ -385,6 +386,7 @@ function MomsKnifeHomingModule:GetTargetMotion(knife, target)
 
     if knife.SpawnerEntity and knife.SpawnerEntity.Velocity then
         sourceVelocity = knife.SpawnerEntity.Velocity
+            * self:GetOriginFollowFactor(knife, state)
     end
 
     return ClampVectorLength(targetVelocity, MAX_TRACKED_SPEED),
@@ -757,10 +759,51 @@ function MomsKnifeHomingModule:GetSourceRange(knife)
     return player and player.TearRange or nil
 end
 
-function MomsKnifeHomingModule:GetRotationOrigin(knife)
+function MomsKnifeHomingModule:GetOriginFollowFactor(knife, state)
+    if state == nil
+        or not state.Flying
+        or state.LaunchSourcePosition == nil
+        or state.LaunchOrigin == nil
+    then
+        return 1
+    end
+
+    if not state.OriginRetracting then
+        return FLIGHT_ORIGIN_FOLLOW
+    end
+
+    local nativeStart = math.max(
+        MOTION_EPSILON,
+        state.OriginRetractionNativeStart or knife:GetKnifeDistance()
+    )
+    local projectedDistance = math.max(
+        0,
+        knife:GetKnifeDistance() + math.min(0, state.RadialSpeed or 0)
+    )
+    local returnProgress = 1 - math.max(
+        0,
+        math.min(1, projectedDistance / nativeStart)
+    )
+
+    return FLIGHT_ORIGIN_FOLLOW
+        + (1 - FLIGHT_ORIGIN_FOLLOW) * returnProgress
+end
+
+function MomsKnifeHomingModule:GetRotationOrigin(knife, state)
     local source = knife.SpawnerEntity
 
     if source ~= nil and source.Position ~= nil then
+        if state ~= nil
+            and state.Flying
+            and state.LaunchSourcePosition ~= nil
+            and state.LaunchOrigin ~= nil
+        then
+            local sourceDisplacement = source.Position
+                - state.LaunchSourcePosition
+            return state.LaunchOrigin + sourceDisplacement
+                * self:GetOriginFollowFactor(knife, state)
+        end
+
         return source.Position
     end
 
@@ -1193,7 +1236,7 @@ function MomsKnifeHomingModule:StabilizeMaxDistance(knife, state)
 
     local baseAttackRange = self:GetBaseMaximumAttackRange(knife, state)
     local maximumAttackRange = baseAttackRange * MAX_RANGE_EXTENSION
-    local origin = self:GetRotationOrigin(knife)
+    local origin = self:GetRotationOrigin(knife, state)
     local aimAngle = state.MultiKnifeGroup and state.BaseAimAngle
         or state.LaunchAngle
     local farthestDistance = baseAttackRange
@@ -1269,9 +1312,10 @@ function MomsKnifeHomingModule:GetPredictedPosition(
     local relativePosition = target.Position - origin
     local targetVelocity, turnRate, speedChange, sourceVelocity =
         self:GetTargetMotion(
-        knife,
-        target
-    )
+            knife,
+            state,
+            target
+        )
     local radialSpeed = state.HoldDistance ~= nil
             and state.HoldRadialVelocity
         or state.RadialSpeed
@@ -1334,7 +1378,7 @@ function MomsKnifeHomingModule:IsReachable(
         return false
     end
 
-    local origin = self:GetRotationOrigin(knife)
+    local origin = self:GetRotationOrigin(knife, state)
     local delta = target.Position - origin
     local radialDistance = delta:Length()
     local maximumReach = self:GetMaximumAttackRange(knife, state)
@@ -1348,7 +1392,7 @@ function MomsKnifeHomingModule:IsReachable(
 end
 
 function MomsKnifeHomingModule:ScoreTarget(knife, state, target)
-    local origin = self:GetRotationOrigin(knife)
+    local origin = self:GetRotationOrigin(knife, state)
     local knifeDistance = knife:GetKnifeDistance()
     local predicted, interceptFrames, radialError, predictedOrigin =
         self:GetPredictedPosition(
@@ -1466,7 +1510,7 @@ function MomsKnifeHomingModule:IsWithinHoldRange(knife, state, target)
     end
 
     local maximumReach = self:GetMaximumAttackRange(knife, state)
-    local origin = self:GetRotationOrigin(knife)
+    local origin = self:GetRotationOrigin(knife, state)
     local currentDelta = target.Position - origin
 
     if currentDelta:Length() > maximumReach then
@@ -1492,7 +1536,7 @@ function MomsKnifeHomingModule:FindFarthestHitTarget(
         and self:IsWithinHoldRange(knife, state, state.HoldTarget)
     then
         bestTarget = state.HoldTarget
-        local origin = self:GetRotationOrigin(knife)
+        local origin = self:GetRotationOrigin(knife, state)
         bestDistance = (state.HoldTarget.Position - origin):Length()
     end
 
@@ -1500,7 +1544,7 @@ function MomsKnifeHomingModule:FindFarthestHitTarget(
         and state.HitTargets[EntityHash(preferredTarget)] == true
         and self:IsWithinHoldRange(knife, state, preferredTarget)
     then
-        local origin = self:GetRotationOrigin(knife)
+        local origin = self:GetRotationOrigin(knife, state)
         local distance = (preferredTarget.Position - origin):Length()
 
         if bestDistance == nil or distance > bestDistance then
@@ -1513,7 +1557,7 @@ function MomsKnifeHomingModule:FindFarthestHitTarget(
         if state.HitTargets[EntityHash(target)] == true
             and self:IsWithinHoldRange(knife, state, target)
         then
-            local origin = self:GetRotationOrigin(knife)
+            local origin = self:GetRotationOrigin(knife, state)
             local distance = (target.Position - origin):Length()
             local switchMargin = bestTarget == state.HoldTarget
                     and state.HoldTarget ~= nil
@@ -1599,7 +1643,7 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
         return state.HoldDistance
     end
 
-    local origin = self:GetRotationOrigin(knife)
+    local origin = self:GetRotationOrigin(knife, state)
     local desiredDistance = math.min(
         baseline,
         (state.HoldTarget.Position - origin):Length()
@@ -1648,21 +1692,37 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
     return state.HoldDistance
 end
 
-function MomsKnifeHomingModule:ApplyHoldPosition(knife, state, holdDistance)
-    if holdDistance == nil then
+function MomsKnifeHomingModule:ApplyControlledPosition(
+    knife,
+    state,
+    controlledDistance
+)
+    local origin = self:GetRotationOrigin(knife, state)
+    local radians = math.rad(state.ControlledAngle)
+
+    -- Keep the native entity, damage, radial distance and flight timer. Its
+    -- live hitbox follows only part of the owner's displacement during the
+    -- outbound phase, then converges smoothly back to the owner throughout
+    -- native retraction. A final-target hold may substitute its own controlled
+    -- radial distance without changing this shared moving origin.
+    knife.Position = origin + Vector(
+        math.cos(radians) * controlledDistance,
+        math.sin(radians) * controlledDistance
+    )
+end
+
+function MomsKnifeHomingModule:UpdateOriginRetraction(knife, state)
+    if state.OriginRetracting
+        or (state.RadialSpeed or 0) >= -MOTION_EPSILON
+    then
         return
     end
 
-    local origin = self:GetRotationOrigin(knife)
-    local radians = math.rad(state.ControlledAngle)
-
-    -- Keep the native knife entity, damage, maximum distance and flight state.
-    -- Only constrain its live hitbox along the already-controlled ray after it
-    -- has crossed the farthest target, so contact is retained while the native
-    -- outbound timer continues toward its ordinary retraction point.
-    knife.Position = origin + Vector(
-        math.cos(radians) * holdDistance,
-        math.sin(radians) * holdDistance
+    local nativeDistance = math.max(0, knife:GetKnifeDistance())
+    state.OriginRetracting = true
+    state.OriginRetractionNativeStart = math.max(
+        nativeDistance,
+        nativeDistance - (state.RadialSpeed or 0)
     )
 end
 
@@ -1695,6 +1755,14 @@ function MomsKnifeHomingModule:BeginFlight(knife, state)
         state.CalibratedSourceRange = sourceRange
     end
 
+    local source = knife.SpawnerEntity
+    state.LaunchOrigin = CopyVector(self:GetRotationOrigin(knife))
+    state.LaunchSourcePosition = source ~= nil
+            and source.Position ~= nil
+        and CopyVector(source.Position)
+        or nil
+    state.OriginRetracting = false
+    state.OriginRetractionNativeStart = nil
     state.Flying = true
     -- MC_POST_KNIFE_UPDATE observes the first flying frame only after vanilla
     -- homing has already rotated toward its stale target position. Preserve
@@ -1780,6 +1848,10 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.HoldRetracting = false
         state.HoldRetractionNativeStart = nil
         state.HoldRetractionVisualStart = nil
+        state.LaunchOrigin = nil
+        state.LaunchSourcePosition = nil
+        state.OriginRetracting = false
+        state.OriginRetractionNativeStart = nil
         state.FlightMaxDistance = nil
         state.LastSteeringFrame = nil
         state.PreparedLaunchAngle = self:GetHeldAimAngle(knife, knifeGroup)
@@ -1818,12 +1890,17 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         self:StabilizeMaxDistance(knife, state)
         knife.Rotation = state.ControlledAngle
             - (knife.RotationOffset or 0)
-        self:ApplyHoldPosition(knife, state, state.HoldDistance)
+        self:ApplyControlledPosition(
+            knife,
+            state,
+            state.HoldDistance or knife:GetKnifeDistance()
+        )
         return
     end
     state.LastSteeringFrame = frame
 
     self:GetRadialSpeed(knife, state, frame)
+    self:UpdateOriginRetraction(knife, state)
 
     -- Refresh target positions once before validating an existing lock. This
     -- also derives real per-frame displacement for NPCs whose Velocity field
@@ -1913,7 +1990,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
             and state.ControlledAngle
         or state.LaunchAngle
     if state.Target ~= nil then
-        local origin = self:GetRotationOrigin(knife)
+        local origin = self:GetRotationOrigin(knife, state)
         local predicted, _, _, predictedOrigin = self:GetPredictedPosition(
             knife,
             state,
@@ -1958,7 +2035,11 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
     )
 
     knife.Rotation = state.ControlledAngle - (knife.RotationOffset or 0)
-    self:ApplyHoldPosition(knife, state, holdDistance)
+    self:ApplyControlledPosition(
+        knife,
+        state,
+        holdDistance or knife:GetKnifeDistance()
+    )
 end
 
 function MomsKnifeHomingModule:OnKnifeCollision(knife, collider)

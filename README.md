@@ -201,8 +201,11 @@
   Native collision damage remains unchanged.
 - Steering stays within 40 degrees to either side of the firing direction and
   drops a target as soon as it exceeds that throw's calibrated maximum attack
-  range. Burrows and teleports are treated as position discontinuities rather
-  than high-speed movement, allowing another in-range enemy to take priority.
+  range. During the outbound phase, that range center and the live knife follow
+  40% of the owner's displacement from the release point; native retraction
+  smoothly raises the follow ratio to 100% so the knife rejoins its owner.
+  Burrows and teleports are treated as position discontinuities rather than
+  high-speed movement, allowing another in-range enemy to take priority.
   Targets inside native range keep the original distance and timing. A farther
   target extends only that throw by the distance it actually needs, up to 30%;
   targets beyond that cap are ignored. Non-homing knives and other homing
