@@ -4,7 +4,7 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 14
+local STATE_VERSION = 15
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local TRACKING_CONE = 40
 local MAX_ANGULAR_SPEED = 15
@@ -49,6 +49,8 @@ local SEQUENCE_LOOKAHEAD_FRACTION = 0.35
 local MAX_SEQUENCE_LOOKAHEAD_ANGLE = 6
 local KNIFE_SPRITE_FORWARD_OFFSET = 90
 local GROUP_CONTACT_RETENTION_FRAMES = 1
+local MAX_NATIVE_BASE_EXTENSION = 60
+local NATIVE_RADIAL_MATCH_EPSILON = 8
 
 local function NormalizeAngle(angle)
     return (angle + 180) % 360 - 180
@@ -477,7 +479,8 @@ function MomsKnifeHomingModule:PredictTargetDisplacement(
 end
 
 function MomsKnifeHomingModule:GetRadialSpeed(knife, state, frame)
-    local knifeDistance = knife:GetKnifeDistance()
+    local knifeDistance = state.NativeRadialDistance
+        or knife:GetKnifeDistance()
     local nativeSpeed = knife:GetKnifeVelocity()
     local radialSpeed = nativeSpeed
 
@@ -500,14 +503,54 @@ function MomsKnifeHomingModule:GetRadialSpeed(knife, state, frame)
     return radialSpeed
 end
 
+function MomsKnifeHomingModule:CaptureNativeRadialDistance(knife, state)
+    local origin = self:GetRotationOrigin(knife, state)
+    local actualDistance = (knife.Position - origin):Length()
+    local pathDistance = knife:GetKnifeDistance()
+    local radialOffset = state.NativeRadialOffset
+
+    -- GetKnifeDistance excludes Mom's Knife's native base extension (about
+    -- 30 world units in Repentance+ 1.9.7.15). Using it as a world radius
+    -- makes a controlled write teleport between the native and shortened
+    -- rays. Capture the real entity radius after every native knife update;
+    -- the path value remains responsible only for native flight timing.
+    if radialOffset == nil
+        and actualDistance > MOTION_EPSILON
+        and actualDistance >= pathDistance
+        and actualDistance - pathDistance <= MAX_NATIVE_BASE_EXTENSION
+    then
+        state.NativeRadialDistance = actualDistance
+        state.NativeRadialOffset = actualDistance - pathDistance
+    elseif radialOffset ~= nil
+        and math.abs(
+            actualDistance - (pathDistance + radialOffset)
+        ) <= NATIVE_RADIAL_MATCH_EPSILON
+    then
+        state.NativeRadialDistance = actualDistance
+    else
+        state.NativeRadialDistance = math.max(
+            0,
+            pathDistance + (radialOffset or 0)
+        )
+    end
+
+    if state.PreviousKnifeDistance == nil then
+        state.PreviousKnifeDistance = state.NativeRadialDistance
+        state.DistanceFrame = Game():GetFrameCount()
+    end
+
+    return state.NativeRadialDistance
+end
+
 function MomsKnifeHomingModule:GetControlledRadialDistance(knife, state)
     if state.HoldDistance ~= nil then
         return state.HoldDistance
     end
 
-    -- Preserve the engine's native radial trajectory and render interpolation
+    -- Preserve the engine's native world-space radius and render interpolation
     -- until final-target retention explicitly takes ownership of distance.
-    return knife:GetKnifeDistance()
+    return state.NativeRadialDistance
+        or self:CaptureNativeRadialDistance(knife, state)
 end
 
 function MomsKnifeHomingModule:GetControlledRadialSpeed(knife, state)
@@ -1066,8 +1109,6 @@ function MomsKnifeHomingModule:ApplyControlledTransform(
     state,
     controlledDistance
 )
-    local frame = Game():GetFrameCount()
-
     state.ControlledAngle = ClampAngleAround(
         state.ControlledAngle or state.LaunchAngle,
         state.LaunchAngle,
@@ -1084,7 +1125,6 @@ function MomsKnifeHomingModule:ApplyControlledTransform(
     knife.SpriteRotation = state.ControlledAngle
         - KNIFE_SPRITE_FORWARD_OFFSET
     self:ApplyControlledPosition(knife, state, controlledDistance)
-    state.TransformFrame = frame
 end
 
 function MomsKnifeHomingModule:GetHeldAimAngle(knife, group)
@@ -1438,18 +1478,9 @@ function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
                 or memberState.TrackingAttackRange
             memberState.RangeCalibrated = true
             memberState.PreviousControlledDistance =
-                entry.Knife:GetKnifeDistance()
+                memberState.NativeRadialDistance
+                or entry.Knife:GetKnifeDistance()
             memberState.LastSteeringFrame = frame
-            if memberState.TransformFrame ~= frame then
-                self:ApplyControlledTransform(
-                    entry.Knife,
-                    memberState,
-                    self:GetControlledRadialDistance(
-                        entry.Knife,
-                        memberState
-                    )
-                )
-            end
         end
     end
 end
@@ -3239,7 +3270,9 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.ControlledAngle = state.LaunchAngle
     state.AngularVelocity = 0
     state.TangentialVelocity = 0
-    state.PreviousControlledDistance = knife:GetKnifeDistance()
+    state.NativeRadialDistance = nil
+    state.NativeRadialOffset = nil
+    state.PreviousControlledDistance = nil
     state.Target = nil
     state.NextTarget = nil
     state.TargetPlan = {}
@@ -3258,11 +3291,10 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.TrackingAttackRange = self:GetBaseMaximumAttackRange(knife, state)
     state.RangeCalibrated = false
     state.RangeEvaluationLimit = nil
-    state.PreviousKnifeDistance = knife:GetKnifeDistance()
+    state.PreviousKnifeDistance = nil
     state.DistanceFrame = Game():GetFrameCount()
     state.RadialSpeed = knife:GetKnifeVelocity()
     state.LastSteeringFrame = nil
-    state.TransformFrame = nil
 end
 
 function MomsKnifeHomingModule:OnKnifeUpdate(knife)
@@ -3317,6 +3349,8 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.TargetPlan = {}
         state.AngularVelocity = 0
         state.TangentialVelocity = 0
+        state.NativeRadialDistance = nil
+        state.NativeRadialOffset = nil
         state.PreviousControlledDistance = nil
         state.HoldTarget = nil
         state.HoldTargetDistance = nil
@@ -3335,7 +3369,6 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.RangeCalibrated = nil
         state.RangeEvaluationLimit = nil
         state.LastSteeringFrame = nil
-        state.TransformFrame = nil
         state.PreparedLaunchAngle = self:GetHeldAimAngle(knife, knifeGroup)
         state.PreparedBaseAimAngle = self:GetHeldBaseAimAngle(
             knife,
@@ -3356,34 +3389,41 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         self:BeginFlight(knife, state, knifeGroup)
     end
 
+    -- MC_POST_KNIFE_UPDATE runs twice inside one Game frame on the tested
+    -- build. Vanilla advances the native position before both callbacks, so
+    -- capture the fresh world radius on every sub-update even though target
+    -- planning and controller state advance only once per Game frame.
+    self:CaptureNativeRadialDistance(knife, state)
+
     if state.MultiKnifeGroup and knifeGroup.NativeCentralAimAngle ~= nil then
         state.BaseAimAngle = knifeGroup.NativeCentralAimAngle
     end
 
-    -- Do not write any flying member until the frame-end collector has seen
-    -- the complete native volley. This prevents a release-spawned knife that
-    -- updates late (20/20 and stacked shot multipliers in particular) from
-    -- inheriting whichever earlier member happened to run first.
+    -- Keep every provisional member on its own captured native launch line
+    -- until the frame-end collector has seen the complete volley. Do not plan
+    -- targets yet, but reapply that provisional transform after each native
+    -- sub-update so the renderer never alternates back to vanilla homing.
     if not knifeGroup.FlightReady then
         if state.DistanceFrame ~= frame then
             self:GetRadialSpeed(knife, state, frame)
         end
         self:StabilizeMaxDistance(knife, state)
 
-        if frame == knifeGroup.FlightStartFrame
-            and state.TransformFrame ~= frame
-        then
-            self:ApplyControlledTransform(
-                knife,
-                state,
-                self:GetControlledRadialDistance(knife, state)
-            )
-        end
+        self:ApplyControlledTransform(
+            knife,
+            state,
+            self:GetControlledRadialDistance(knife, state)
+        )
         return
     end
 
     if state.LastSteeringFrame == frame then
         self:StabilizeMaxDistance(knife, state)
+        self:ApplyControlledTransform(
+            knife,
+            state,
+            self:GetControlledRadialDistance(knife, state)
+        )
         return
     end
     state.LastSteeringFrame = frame
