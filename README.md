@@ -188,11 +188,14 @@
   from each hostile enemy's observed movement, turn, and speed change. Charmed
   or friendly enemies, mechanisms, and other non-target entities are ignored.
   Angular motion and the extra sideways world speed produced by steering are
-  both speed- and acceleration-bounded. Targets that cannot be intercepted
-  inside those limits are released, even when this reduces homing coverage.
-  Ordinary outward and return distance remains on the engine's native radial
-  trajectory instead of a parallel correction controller, preserving smooth
-  knife animation.
+  both speed- and acceleration-bounded. Every final world-space movement also
+  shares one symmetric absolute acceleration limit, so speeding up, braking,
+  turning, final-target hold, and movement of the range center cannot create a
+  one-frame velocity jump. Targets that cannot be intercepted inside those
+  limits are released, even when this reduces homing coverage. The engine's
+  ordinary outward and return trajectory remains the reference and its native
+  flight timer is unchanged, while both native sub-updates receive continuous
+  physical motion for smoother animation.
   A knife that has already passed one target's reachable radial band yields to
   another feasible enemy, and begins a small contact-safe
   turn toward its next target immediately before the current hit. Multi-shot

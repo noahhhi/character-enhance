@@ -4,13 +4,17 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 15
+local STATE_VERSION = 16
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local TRACKING_CONE = 40
 local MAX_ANGULAR_SPEED = 15
 local MAX_ANGULAR_ACCELERATION = 6
 local MAX_TANGENTIAL_STEERING_SPEED = 14
 local MAX_TANGENTIAL_STEERING_ACCELERATION = 3.5
+local MAX_FLIGHT_ACCELERATION = 2.5
+local MAX_FLIGHT_SPEED = 20
+local FLIGHT_POSITION_RESPONSE = 0.4
+local MAX_FLIGHT_POSITION_CORRECTION = 6
 local MIN_STEERING_RADIUS = 24
 local TURN_FEASIBILITY_STEP = 0.5
 local STEERING_RESPONSE = 0.75
@@ -508,13 +512,21 @@ function MomsKnifeHomingModule:CaptureNativeRadialDistance(knife, state)
     local actualDistance = (knife.Position - origin):Length()
     local pathDistance = knife:GetKnifeDistance()
     local radialOffset = state.NativeRadialOffset
+    local stillShowsAppliedPosition = state.AppliedPosition ~= nil
+        and (knife.Position - state.AppliedPosition):Length()
+            <= INTERCEPT_EPSILON
 
     -- GetKnifeDistance excludes Mom's Knife's native base extension (about
     -- 30 world units in Repentance+ 1.9.7.15). Using it as a world radius
     -- makes a controlled write teleport between the native and shortened
     -- rays. Capture the real entity radius after every native knife update;
     -- the path value remains responsible only for native flight timing.
-    if radialOffset == nil
+    if stillShowsAppliedPosition and radialOffset ~= nil then
+        state.NativeRadialDistance = math.max(
+            0,
+            pathDistance + radialOffset
+        )
+    elseif radialOffset == nil
         and actualDistance > MOTION_EPSILON
         and actualDistance >= pathDistance
         and actualDistance - pathDistance <= MAX_NATIVE_BASE_EXTENSION
@@ -1114,17 +1126,20 @@ function MomsKnifeHomingModule:ApplyControlledTransform(
         state.LaunchAngle,
         TRACKING_CONE
     )
-    knife.Rotation = state.ControlledAngle
-        - (knife.RotationOffset or 0)
+    local appliedAngle = self:ApplyControlledPosition(
+        knife,
+        state,
+        controlledDistance
+    )
+    knife.Rotation = appliedAngle - (knife.RotationOffset or 0)
 
     -- EntityKnife's rendered sprite points along SpriteRotation + 90 degrees.
     -- Vanilla can leave SpriteRotation at a stale homing angle for the first
     -- multi-knife layout frame even after Rotation has been corrected. Write
     -- the final visible angle explicitly so the render and hitbox obey this
     -- knife's own independent launch cone on every flying frame.
-    knife.SpriteRotation = state.ControlledAngle
+    knife.SpriteRotation = appliedAngle
         - KNIFE_SPRITE_FORWARD_OFFSET
-    self:ApplyControlledPosition(knife, state, controlledDistance)
 end
 
 function MomsKnifeHomingModule:GetHeldAimAngle(knife, group)
@@ -1473,6 +1488,18 @@ function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
             memberState.ControlledAngle = memberState.LaunchAngle
             memberState.AngularVelocity = 0
             memberState.TangentialVelocity = 0
+            -- The provisional callbacks did not yet own a stable launch ray.
+            -- Start the absolute-acceleration history only after the complete
+            -- native layout fixes this member's independent baseline.
+            memberState.MotionReferenceAngle = nil
+            memberState.MotionReferenceDistance = nil
+            memberState.MotionReferenceOrigin = nil
+            memberState.MotionReferenceHoldActive = false
+            memberState.MotionReferencePosition = nil
+            memberState.AppliedPosition = nil
+            memberState.AppliedVelocity = nil
+            memberState.AppliedAcceleration = nil
+            memberState.AppliedAngle = nil
             memberState.TrackingAttackRange =
                 group.TrackingAttackRange
                 or memberState.TrackingAttackRange
@@ -3172,23 +3199,107 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
     return state.HoldDistance
 end
 
+function MomsKnifeHomingModule:StepFlightMotion(state, desiredPosition)
+    local previousDesiredPosition = state.MotionReferencePosition
+    local previousAppliedPosition = state.AppliedPosition
+
+    if previousDesiredPosition == nil or previousAppliedPosition == nil then
+        state.MotionReferencePosition = CopyVector(desiredPosition)
+        state.AppliedPosition = CopyVector(desiredPosition)
+        state.AppliedVelocity = nil
+        state.AppliedAcceleration = Vector(0, 0)
+        return CopyVector(desiredPosition)
+    end
+
+    local referenceVelocity = desiredPosition - previousDesiredPosition
+
+    if state.AppliedVelocity == nil then
+        -- The first measured native sub-update establishes the incoming world
+        -- velocity. Acceleration is only meaningful after two controlled
+        -- positions exist; beginning from zero would add an artificial launch
+        -- hitch that the engine itself did not produce.
+        state.AppliedVelocity = CopyVector(referenceVelocity)
+        state.AppliedAcceleration = Vector(0, 0)
+        state.AppliedPosition = CopyVector(desiredPosition)
+        state.MotionReferencePosition = CopyVector(desiredPosition)
+        return CopyVector(desiredPosition)
+    end
+
+    local positionError = previousDesiredPosition
+        - previousAppliedPosition
+    local correctionVelocity = ClampVectorLength(
+        positionError * FLIGHT_POSITION_RESPONSE,
+        MAX_FLIGHT_POSITION_CORRECTION
+    )
+    local desiredVelocity = ClampVectorLength(
+        referenceVelocity + correctionVelocity,
+        MAX_FLIGHT_SPEED
+    )
+    local requestedAcceleration = desiredVelocity
+        - state.AppliedVelocity
+    local appliedAcceleration = ClampVectorLength(
+        requestedAcceleration,
+        MAX_FLIGHT_ACCELERATION
+    )
+    local appliedVelocity = state.AppliedVelocity
+        + appliedAcceleration
+    local appliedPosition = previousAppliedPosition + appliedVelocity
+
+    state.MotionReferencePosition = CopyVector(desiredPosition)
+    state.AppliedPosition = CopyVector(appliedPosition)
+    state.AppliedVelocity = CopyVector(appliedVelocity)
+    state.AppliedAcceleration = CopyVector(appliedAcceleration)
+    return appliedPosition
+end
+
 function MomsKnifeHomingModule:ApplyControlledPosition(
     knife,
     state,
     controlledDistance
 )
-    local origin = self:GetRotationOrigin(knife, state)
-    local radians = math.rad(state.ControlledAngle)
-
-    -- Keep the native entity, damage and flight timer. The live radial distance
-    -- follows native flight through an acceleration-bounded controller, while
-    -- the moving origin follows only part of the owner's outbound displacement
-    -- and converges back throughout native retraction. A final-target hold may
-    -- substitute its own controlled distance without changing that origin.
-    knife.Position = origin + Vector(
-        math.cos(radians) * controlledDistance,
-        math.sin(radians) * controlledDistance
+    local desiredAngle = ClampAngleAround(
+        state.ControlledAngle,
+        state.LaunchAngle,
+        TRACKING_CONE
     )
+    local desiredDistance = controlledDistance
+    local holdActive = state.HoldDistance ~= nil
+    local desiredOrigin = self:GetRotationOrigin(knife, state)
+    local radians = math.rad(desiredAngle)
+    local desiredPosition = desiredOrigin + Vector(
+        math.cos(radians) * desiredDistance,
+        math.sin(radians) * desiredDistance
+    )
+    local appliedPosition = self:StepFlightMotion(
+        state,
+        desiredPosition
+    )
+
+    -- Target planning remains once per Game frame, but Repentance+ advances
+    -- and renders Mom's Knife twice inside that frame. Continue the physical
+    -- velocity on both native sub-updates and pass every source of motion
+    -- through one world-space acceleration limiter. Its vector-magnitude cap
+    -- is symmetric: accelerating, braking and turning cannot bypass it by
+    -- changing different radial/tangential controllers. Native damage and the
+    -- native flight timer remain untouched.
+    knife.Position = appliedPosition
+
+    state.MotionReferenceAngle = desiredAngle
+    state.MotionReferenceDistance = desiredDistance
+    state.MotionReferenceOrigin = CopyVector(desiredOrigin)
+    state.MotionReferenceHoldActive = holdActive
+
+    local appliedDelta = appliedPosition - desiredOrigin
+    local appliedAngle = appliedDelta:Length() > MOTION_EPSILON
+            and VectorAngle(appliedDelta)
+        or desiredAngle
+    appliedAngle = ClampAngleAround(
+        appliedAngle,
+        state.LaunchAngle,
+        TRACKING_CONE
+    )
+    state.AppliedAngle = appliedAngle
+    return appliedAngle
 end
 
 function MomsKnifeHomingModule:UpdateOriginRetraction(knife, state)
@@ -3273,6 +3384,15 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.NativeRadialDistance = nil
     state.NativeRadialOffset = nil
     state.PreviousControlledDistance = nil
+    state.MotionReferenceAngle = nil
+    state.MotionReferenceDistance = nil
+    state.MotionReferenceOrigin = nil
+    state.MotionReferenceHoldActive = false
+    state.MotionReferencePosition = nil
+    state.AppliedPosition = nil
+    state.AppliedVelocity = nil
+    state.AppliedAcceleration = nil
+    state.AppliedAngle = nil
     state.Target = nil
     state.NextTarget = nil
     state.TargetPlan = {}
@@ -3352,6 +3472,15 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.NativeRadialDistance = nil
         state.NativeRadialOffset = nil
         state.PreviousControlledDistance = nil
+        state.MotionReferenceAngle = nil
+        state.MotionReferenceDistance = nil
+        state.MotionReferenceOrigin = nil
+        state.MotionReferenceHoldActive = false
+        state.MotionReferencePosition = nil
+        state.AppliedPosition = nil
+        state.AppliedVelocity = nil
+        state.AppliedAcceleration = nil
+        state.AppliedAngle = nil
         state.HoldTarget = nil
         state.HoldTargetDistance = nil
         state.HoldAngle = nil
