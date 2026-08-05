@@ -189,8 +189,13 @@
   or friendly enemies, mechanisms, and other non-target entities are ignored.
   Steering speed and acceleration are bounded, and the next moving target is
   prepared before the current hit, so direction changes stay smooth during
-  multi-enemy attacks. Multi-shot knives reuse the complete native knife
-  layout collected at frame end instead of rebuilding item interactions.
+  multi-enemy attacks. A knife that has already passed one target's reachable
+  radial band yields to another feasible enemy, and begins a small contact-safe
+  turn toward its next target immediately before the current hit. Multi-shot
+  knives reuse the complete native knife layout collected at frame end instead
+  of rebuilding item interactions. Each knife independently tracks a different
+  reachable enemy whenever possible; additional knives reinforce the least
+  covered targets only after unique enemy coverage is exhausted.
   Compact symmetric spreads use the middle knife—or the midpoint of an even
   spread—as their shared axis while retaining every native line; backward,
   omnidirectional, and random extra shots retain the player's native held axis.

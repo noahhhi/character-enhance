@@ -4,7 +4,7 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 7
+local STATE_VERSION = 8
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local TRACKING_CONE = 40
 local MAX_ANGULAR_SPEED = 15
@@ -38,6 +38,10 @@ local LAYOUT_SHAPE_EPSILON = 0.1
 local LAYOUT_OFFSET_SYMMETRY_EPSILON = 0.5
 local WIDE_LAYOUT_SPAN = 179.5
 local FLIGHT_ORIGIN_FOLLOW = 0.4
+local TARGET_TURN_FEASIBILITY_SLACK = 1
+local SEQUENCE_LOOKAHEAD_FRAMES = 1
+local SEQUENCE_LOOKAHEAD_FRACTION = 0.35
+local MAX_SEQUENCE_LOOKAHEAD_ANGLE = 6
 
 local function NormalizeAngle(angle)
     return (angle + 180) % 360 - 180
@@ -890,6 +894,8 @@ function MomsKnifeHomingModule:RegisterKnifeGroup(knife, frame)
         group.LayoutCandidateAngles = nil
         group.LayoutCandidateOffsets = nil
         group.LayoutShape = nil
+        group.CoveredTargets = {}
+        group.AssignmentFrame = -1
         group.PreflightAimAngle = group.NativePlayerAimAngle
             or group.NativeCentralAimAngle
 
@@ -1237,8 +1243,7 @@ function MomsKnifeHomingModule:StabilizeMaxDistance(knife, state)
     local baseAttackRange = self:GetBaseMaximumAttackRange(knife, state)
     local maximumAttackRange = baseAttackRange * MAX_RANGE_EXTENSION
     local origin = self:GetRotationOrigin(knife, state)
-    local aimAngle = state.MultiKnifeGroup and state.BaseAimAngle
-        or state.LaunchAngle
+    local aimAngle = state.LaunchAngle
     local farthestDistance = baseAttackRange
 
     if baseAttackRange > 0 and aimAngle ~= nil then
@@ -1414,24 +1419,24 @@ function MomsKnifeHomingModule:ScoreTarget(knife, state, target)
         + radialError * 8
         + interceptFrames * 2
         + angleCost * 0.35
-    local consensusScore = physicalScore
-
-    if state.MultiKnifeGroup and state.BaseAimAngle ~= nil then
-        -- Multi-shot Mom's Knife throws should agree on a target whenever it
-        -- remains reachable from each individual spread line. Use the owner's
-        -- central aim for a deterministic shared ordering, while retaining the
-        -- physical score as the tie-breaker for each knife.
-        local centralAngleCost = math.abs(
-            AngleDifference(targetAngle, state.BaseAimAngle)
-        )
-        consensusScore = radialError * 8
-            + interceptFrames * 2
-            + centralAngleCost * 0.35
-    end
-
     return physicalScore,
         interceptFrames,
-        consensusScore
+        radialError,
+        turnDeficit
+end
+
+function MomsKnifeHomingModule:IsPlanEntryFeasible(
+    knife,
+    target,
+    radialError,
+    turnDeficit
+)
+    local contactWindow = (target.Size or 0)
+        + (knife.Size or 0)
+        + CONTACT_RADIAL_MARGIN
+
+    return radialError <= contactWindow
+        and turnDeficit <= TARGET_TURN_FEASIBILITY_SLACK
 end
 
 function MomsKnifeHomingModule:BuildTargetPlan(
@@ -1451,7 +1456,8 @@ function MomsKnifeHomingModule:BuildTargetPlan(
             and (allowHitTargets or not wasHit)
             and self:IsReachable(knife, state, target, TRACKING_CONE)
         then
-            local score, interceptFrames, consensusScore = self:ScoreTarget(
+            local score, interceptFrames, radialError, turnDeficit =
+                self:ScoreTarget(
                 knife,
                 state,
                 target
@@ -1459,23 +1465,23 @@ function MomsKnifeHomingModule:BuildTargetPlan(
             plan[#plan + 1] = {
                 Target = target,
                 Score = score,
-                ConsensusScore = consensusScore,
                 InterceptFrames = interceptFrames,
+                RadialError = radialError,
+                TurnDeficit = turnDeficit,
+                Feasible = self:IsPlanEntryFeasible(
+                    knife,
+                    target,
+                    radialError,
+                    turnDeficit
+                ),
                 Hash = hash,
             }
         end
     end
 
     table.sort(plan, function(left, right)
-        if state.MultiKnifeGroup
-            and math.abs(left.ConsensusScore - right.ConsensusScore)
-                > INTERCEPT_EPSILON
-        then
-            return left.ConsensusScore < right.ConsensusScore
-        end
-
-        if state.MultiKnifeGroup and left.Hash ~= right.Hash then
-            return left.Hash < right.Hash
+        if left.Feasible ~= right.Feasible then
+            return left.Feasible
         end
 
         if math.abs(left.Score - right.Score) > INTERCEPT_EPSILON then
@@ -1502,6 +1508,390 @@ function MomsKnifeHomingModule:FindTarget(
     )
 
     return plan[1] and plan[1].Target or nil, plan
+end
+
+function MomsKnifeHomingModule:HasMissedTargetRadially(
+    knife,
+    state,
+    target
+)
+    local origin = self:GetRotationOrigin(knife, state)
+    local targetDistance = (target.Position - origin):Length()
+    local knifeDistance = state.HoldDistance or knife:GetKnifeDistance()
+    local radialSpeed = state.HoldDistance ~= nil
+            and (state.HoldRadialVelocity or 0)
+        or state.RadialSpeed
+        or knife:GetKnifeVelocity()
+    local contactWindow = (target.Size or 0)
+        + (knife.Size or 0)
+        + CONTACT_RADIAL_MARGIN
+
+    if radialSpeed > MOTION_EPSILON then
+        return targetDistance + contactWindow < knifeDistance
+    elseif radialSpeed < -MOTION_EPSILON then
+        return targetDistance - contactWindow > knifeDistance
+    end
+
+    return false
+end
+
+
+function MomsKnifeHomingModule:FindRadialMissReplacement(
+    knife,
+    state,
+    currentTarget
+)
+    if not self:HasMissedTargetRadially(knife, state, currentTarget) then
+        return nil
+    end
+
+    local plan = self:BuildTargetPlan(
+        knife,
+        state,
+        false,
+        currentTarget
+    )
+    local replacement = plan[1]
+
+    if replacement ~= nil and replacement.Feasible then
+        return replacement.Target
+    end
+
+    return nil
+end
+
+function MomsKnifeHomingModule:GetGroupFlightMembers(group)
+    local members = {}
+    local centralAxis = group.NativeCentralAimAngle
+
+    for hash, entry in pairs(group.Entries) do
+        local knife = entry.Knife
+        local state = knife and knife:GetData()[STATE_KEY]
+
+        if knife ~= nil
+            and knife:Exists()
+            and knife:IsFlying()
+            and entry.LaunchFlightId == group.FlightId
+            and state ~= nil
+            and state.Flying
+            and not state.HoldRetracting
+        then
+            members[#members + 1] = {
+                Hash = hash,
+                Knife = knife,
+                State = state,
+                LaunchDifference = AngleDifference(
+                    state.LaunchAngle,
+                    centralAxis or state.LaunchAngle
+                ),
+            }
+        end
+    end
+
+    table.sort(members, function(left, right)
+        if math.abs(left.LaunchDifference - right.LaunchDifference)
+            > INTERCEPT_EPSILON
+        then
+            return left.LaunchDifference < right.LaunchDifference
+        end
+
+        return left.Hash < right.Hash
+    end)
+
+    return members
+end
+
+function MomsKnifeHomingModule:GetAllocationPlan(member, coveredTargets)
+    local fullPlan = self:BuildTargetPlan(
+        member.Knife,
+        member.State,
+        false
+    )
+    local currentHash = member.State.Target
+            and EntityHash(member.State.Target)
+        or nil
+
+    table.sort(fullPlan, function(left, right)
+        local leftRetained = left.Hash == currentHash
+        local rightRetained = right.Hash == currentHash
+
+        if leftRetained ~= rightRetained then
+            return leftRetained
+        end
+
+        if left.Feasible ~= right.Feasible then
+            return left.Feasible
+        end
+
+        if math.abs(left.Score - right.Score) > INTERCEPT_EPSILON then
+            return left.Score < right.Score
+        end
+
+        return left.Hash < right.Hash
+    end)
+
+    local uncoveredPlan = {}
+
+    for _, entry in ipairs(fullPlan) do
+        if entry.Feasible and not coveredTargets[entry.Hash] then
+            uncoveredPlan[#uncoveredPlan + 1] = entry
+        end
+    end
+
+    member.FullPlan = fullPlan
+    member.PrimaryPlan = uncoveredPlan
+end
+
+function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
+    if group == nil
+        or not group.FlightReady
+        or group.AssignmentFrame == frame
+    then
+        return
+    end
+
+    group.AssignmentFrame = frame
+    group.CoveredTargets = group.CoveredTargets or {}
+    local members = self:GetGroupFlightMembers(group)
+
+    for _, member in ipairs(members) do
+        self:GetAllocationPlan(member, group.CoveredTargets)
+    end
+
+    -- Knives with the fewest choices are matched first. The augmenting-path
+    -- reassignment then finds the maximum number of distinct reachable enemies
+    -- instead of letting an early, flexible knife consume a constrained
+    -- knife's only target.
+    table.sort(members, function(left, right)
+        if #left.PrimaryPlan ~= #right.PrimaryPlan then
+            return #left.PrimaryPlan < #right.PrimaryPlan
+        end
+
+        if math.abs(left.LaunchDifference - right.LaunchDifference)
+            > INTERCEPT_EPSILON
+        then
+            return left.LaunchDifference < right.LaunchDifference
+        end
+
+        return left.Hash < right.Hash
+    end)
+
+    local assignments = {}
+    local targetOwners = {}
+
+    local function TryAssign(member, visitedTargets)
+        for _, option in ipairs(member.PrimaryPlan) do
+            if not visitedTargets[option.Hash] then
+                visitedTargets[option.Hash] = true
+                local previousOwner = targetOwners[option.Hash]
+
+                if previousOwner == nil
+                    or TryAssign(previousOwner, visitedTargets)
+                then
+                    targetOwners[option.Hash] = member
+                    assignments[member.Hash] = option
+                    return true
+                end
+            end
+        end
+
+        return false
+    end
+
+    for _, member in ipairs(members) do
+        TryAssign(member, {})
+    end
+
+    local occupancy = {}
+
+    for _, option in pairs(assignments) do
+        occupancy[option.Hash] = (occupancy[option.Hash] or 0) + 1
+    end
+
+    -- More knives than enemies should not leave a knife idle. After maximum
+    -- unique coverage is established, distribute the extras across the least
+    -- occupied still-unhit targets, preferring enemies not yet crossed by any
+    -- knife in this volley.
+    for _, member in ipairs(members) do
+        if assignments[member.Hash] == nil then
+            local bestOption
+
+            for _, option in ipairs(member.FullPlan) do
+                local optionCovered = group.CoveredTargets[option.Hash] == true
+                local bestCovered = bestOption ~= nil
+                    and group.CoveredTargets[bestOption.Hash] == true
+                local optionOccupancy = occupancy[option.Hash] or 0
+                local bestOccupancy = bestOption
+                        and (occupancy[bestOption.Hash] or 0)
+                    or math.huge
+                local optionRetained = member.State.Target ~= nil
+                    and EntityHash(member.State.Target) == option.Hash
+                local bestRetained = bestOption ~= nil
+                    and member.State.Target ~= nil
+                    and EntityHash(member.State.Target) == bestOption.Hash
+
+                if bestOption == nil
+                    or (optionCovered ~= bestCovered and not optionCovered)
+                    or (optionCovered == bestCovered
+                        and optionOccupancy < bestOccupancy)
+                    or (optionCovered == bestCovered
+                        and optionOccupancy == bestOccupancy
+                        and optionRetained ~= bestRetained
+                        and optionRetained)
+                    or (optionCovered == bestCovered
+                        and optionOccupancy == bestOccupancy
+                        and optionRetained == bestRetained
+                        and option.Feasible ~= bestOption.Feasible
+                        and option.Feasible)
+                    or (optionCovered == bestCovered
+                        and optionOccupancy == bestOccupancy
+                        and optionRetained == bestRetained
+                        and option.Feasible == bestOption.Feasible
+                        and option.Score < bestOption.Score)
+                then
+                    bestOption = option
+                end
+            end
+
+            if bestOption ~= nil then
+                assignments[member.Hash] = bestOption
+                occupancy[bestOption.Hash] =
+                    (occupancy[bestOption.Hash] or 0) + 1
+            end
+        end
+    end
+
+    for _, member in ipairs(members) do
+        local state = member.State
+        local assignment = assignments[member.Hash]
+
+        if assignment ~= nil then
+            state.Target = assignment.Target
+            state.HoldTarget = nil
+            state.HoldDistance = nil
+            state.HoldRadialVelocity = nil
+            state.HoldRetracting = false
+            state.HoldRetractionNativeStart = nil
+            state.HoldRetractionVisualStart = nil
+        else
+            state.Target = nil
+        end
+
+        local continuation = {}
+
+        for _, option in ipairs(member.FullPlan) do
+            if assignment == nil or option.Hash ~= assignment.Hash then
+                continuation[#continuation + 1] = option
+            end
+        end
+
+        table.sort(continuation, function(left, right)
+            local leftCovered = group.CoveredTargets[left.Hash] == true
+            local rightCovered = group.CoveredTargets[right.Hash] == true
+
+            if leftCovered ~= rightCovered then
+                return not leftCovered
+            end
+
+            local leftOccupancy = occupancy[left.Hash] or 0
+            local rightOccupancy = occupancy[right.Hash] or 0
+
+            if leftOccupancy ~= rightOccupancy then
+                return leftOccupancy < rightOccupancy
+            end
+
+            if left.Feasible ~= right.Feasible then
+                return left.Feasible
+            end
+
+            if math.abs(left.Score - right.Score) > INTERCEPT_EPSILON then
+                return left.Score < right.Score
+            end
+
+            return left.Hash < right.Hash
+        end)
+
+        state.TargetPlan = continuation
+        state.NextTarget = continuation[1]
+                and continuation[1].Target
+            or nil
+    end
+end
+
+function MomsKnifeHomingModule:GetSequentialAimAngle(
+    knife,
+    state,
+    target,
+    currentAimAngle,
+    interceptFrames,
+    origin,
+    controlledDistance
+)
+    local nextTarget = state.NextTarget
+
+    if nextTarget == nil
+        or nextTarget == target
+        or state.HitTargets[EntityHash(nextTarget)] == true
+        or interceptFrames > SEQUENCE_LOOKAHEAD_FRAMES
+        or not self:IsReachable(
+            knife,
+            state,
+            nextTarget,
+            TRACKING_CONE
+        )
+    then
+        return currentAimAngle
+    end
+
+    local targetDelta = target.Position - origin
+    local contactWindow = (target.Size or 0)
+        + (knife.Size or 0)
+        + CONTACT_RADIAL_MARGIN
+
+    if math.abs(targetDelta:Length() - controlledDistance) > contactWindow then
+        return currentAimAngle
+    end
+
+    local _, _, nextRadialError, nextTurnDeficit = self:ScoreTarget(
+        knife,
+        state,
+        nextTarget
+    )
+
+    if not self:IsPlanEntryFeasible(
+        knife,
+        nextTarget,
+        nextRadialError,
+        nextTurnDeficit
+    ) then
+        return currentAimAngle
+    end
+
+    local predicted, _, _, predictedOrigin = self:GetPredictedPosition(
+        knife,
+        state,
+        nextTarget,
+        origin,
+        controlledDistance
+    )
+    local nextAimAngle = VectorAngle(predicted - predictedOrigin)
+    local contactRadius = (target.Size or 0) + (knife.Size or 0)
+    local contactAngle = math.deg(math.atan(
+        contactRadius,
+        math.max(MOTION_EPSILON, targetDelta:Length())
+    ))
+    local maximumBias = math.min(
+        MAX_SEQUENCE_LOOKAHEAD_ANGLE,
+        contactAngle * SEQUENCE_LOOKAHEAD_FRACTION
+    )
+
+    return currentAimAngle + math.max(
+        -maximumBias,
+        math.min(
+            maximumBias,
+            AngleDifference(nextAimAngle, currentAimAngle)
+        )
+    )
 end
 
 function MomsKnifeHomingModule:IsWithinHoldRange(knife, state, target)
@@ -1935,52 +2325,77 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
             state.HoldTarget = nil
         end
 
-        if state.HoldTarget ~= nil then
-            local unhitTarget = self:FindTarget(knife, state, false)
+        if state.MultiKnifeGroup then
+            self:AssignGroupTargets(knifeGroup, frame)
 
-            if unhitTarget ~= nil then
-                state.HoldTarget = nil
-                state.Target = unhitTarget
+            if state.Target == nil then
+                state.HoldTarget = self:FindFarthestHitTarget(knife, state)
+                state.Target = state.HoldTarget
+                state.NextTarget = nil
+                state.TargetPlan = {}
+            end
+        else
+            if state.Target ~= nil and state.HoldTarget == nil then
+                local replacement = self:FindRadialMissReplacement(
+                    knife,
+                    state,
+                    state.Target
+                )
+
+                if replacement ~= nil then
+                    state.Target = replacement
+                    state.NextTarget = nil
+                    state.TargetPlan = {}
+                end
+            end
+
+            if state.HoldTarget ~= nil then
+                local unhitTarget = self:FindTarget(knife, state, false)
+
+                if unhitTarget ~= nil then
+                    state.HoldTarget = nil
+                    state.Target = unhitTarget
+                    local _, plan = self:FindTarget(
+                        knife,
+                        state,
+                        false,
+                        unhitTarget
+                    )
+                    state.TargetPlan = plan
+                    state.NextTarget = plan[1] and plan[1].Target or nil
+                else
+                    state.HoldTarget = self:FindFarthestHitTarget(knife, state)
+                    state.Target = state.HoldTarget
+                    state.NextTarget = nil
+                    state.TargetPlan = {}
+                end
+            end
+
+            if state.Target == nil then
+                local plan
+                state.Target, plan = self:FindTarget(knife, state, false)
+                state.TargetPlan = plan
+                state.NextTarget = plan[2] and plan[2].Target or nil
+
+                if state.Target == nil then
+                    -- After crossing every reachable target, stay aligned with
+                    -- the farthest already-hit enemy still inside calibrated
+                    -- range. Native timing continues to control retraction.
+                    state.HoldTarget = self:FindFarthestHitTarget(knife, state)
+                    state.Target = state.HoldTarget
+                    state.NextTarget = nil
+                    state.TargetPlan = {}
+                end
+            elseif state.HoldTarget == nil then
                 local _, plan = self:FindTarget(
                     knife,
                     state,
                     false,
-                    unhitTarget
+                    state.Target
                 )
                 state.TargetPlan = plan
                 state.NextTarget = plan[1] and plan[1].Target or nil
-            else
-                state.HoldTarget = self:FindFarthestHitTarget(knife, state)
-                state.Target = state.HoldTarget
-                state.NextTarget = nil
-                state.TargetPlan = {}
             end
-        end
-
-        if state.Target == nil then
-            local plan
-            state.Target, plan = self:FindTarget(knife, state, false)
-            state.TargetPlan = plan
-            state.NextTarget = plan[2] and plan[2].Target or nil
-
-            if state.Target == nil then
-                -- After crossing every reachable target, stay aligned with the
-                -- farthest already-hit enemy still inside the calibrated range.
-                -- Native knife distance and timing continue to control retraction.
-                state.HoldTarget = self:FindFarthestHitTarget(knife, state)
-                state.Target = state.HoldTarget
-                state.NextTarget = nil
-                state.TargetPlan = {}
-            end
-        elseif state.HoldTarget == nil then
-            local _, plan = self:FindTarget(
-                knife,
-                state,
-                false,
-                state.Target
-            )
-            state.TargetPlan = plan
-            state.NextTarget = plan[1] and plan[1].Target or nil
         end
     end
 
@@ -1991,14 +2406,25 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         or state.LaunchAngle
     if state.Target ~= nil then
         local origin = self:GetRotationOrigin(knife, state)
-        local predicted, _, _, predictedOrigin = self:GetPredictedPosition(
+        local controlledDistance = holdDistance or knife:GetKnifeDistance()
+        local predicted, interceptFrames, _, predictedOrigin =
+            self:GetPredictedPosition(
             knife,
             state,
             state.Target,
             origin,
-            holdDistance or knife:GetKnifeDistance()
+            controlledDistance
         )
         desiredAngle = VectorAngle(predicted - predictedOrigin)
+        desiredAngle = self:GetSequentialAimAngle(
+            knife,
+            state,
+            state.Target,
+            desiredAngle,
+            interceptFrames,
+            origin,
+            controlledDistance
+        )
     end
 
     desiredAngle = ClampAngleAround(
@@ -2057,7 +2483,15 @@ function MomsKnifeHomingModule:OnKnifeCollision(knife, collider)
         return
     end
 
-    state.HitTargets[EntityHash(collider)] = true
+    local colliderHash = EntityHash(collider)
+    state.HitTargets[colliderHash] = true
+    local group = state.KnifeGroup
+
+    if state.MultiKnifeGroup and group ~= nil then
+        group.CoveredTargets = group.CoveredTargets or {}
+        group.CoveredTargets[colliderHash] = true
+        group.AssignmentFrame = -1
+    end
 
     local function IsUsableUnhitTarget(target)
         return target ~= nil
@@ -2067,9 +2501,15 @@ function MomsKnifeHomingModule:OnKnifeCollision(knife, collider)
 
     local nextTarget
     local collidedWithCurrent = state.Target ~= nil
-        and EntityHash(state.Target) == EntityHash(collider)
+        and EntityHash(state.Target) == colliderHash
 
-    if not collidedWithCurrent and IsUsableUnhitTarget(state.Target) then
+    if state.MultiKnifeGroup and group ~= nil and group.FlightReady then
+        self:AssignGroupTargets(group, Game():GetFrameCount())
+
+        if IsUsableUnhitTarget(state.Target) then
+            nextTarget = state.Target
+        end
+    elseif not collidedWithCurrent and IsUsableUnhitTarget(state.Target) then
         -- Crossing a non-selected enemy must not discard the still-reachable
         -- target that this knife was already steering toward.
         nextTarget = state.Target
@@ -2112,6 +2552,11 @@ function MomsKnifeHomingModule:OnKnifeCollision(knife, collider)
     state.HoldRetractionNativeStart = nil
     state.HoldRetractionVisualStart = nil
     state.Target = nextTarget
+
+    if state.MultiKnifeGroup and group ~= nil and group.FlightReady then
+        return
+    end
+
     local _, plan = self:FindTarget(knife, state, false, nextTarget)
     state.TargetPlan = plan
     state.NextTarget = plan[1] and plan[1].Target or nil
