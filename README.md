@@ -199,17 +199,22 @@
   knives reuse the complete native knife layout collected at frame end instead
   of rebuilding item interactions. Each knife independently tracks a different
   reachable enemy whenever possible; additional knives reinforce the least
-  covered targets only after unique enemy coverage is exhausted. Every member
+  covered targets only after unique enemy coverage is exhausted. When only one
+  target remains, every reachable knife converges on it; entering its braking
+  approach starts continuous acceleration-bounded deceleration tracking for
+  the whole assigned volley so the outer blades connect instead of flying
+  through. Every member
   uses the same selected-direction acquisition sector while retaining its own
   native launch line.
   Compact symmetric spreads use the middle knife—or the midpoint of an even
   spread—as their shared axis while retaining every native line; backward,
   omnidirectional, and random extra shots retain the player's native held axis.
-- As soon as the last reachable enemy is hit, the knife follows a visible,
-  acceleration-bounded deceleration curve while continuing to turn and match
-  the live farthest-hit enemy's radial movement, rather than stopping at its
-  previous position. If that enemy dies, its last valid radial distance and
-  direction remain the deceleration anchor. Native retraction then
+- While approaching the last reachable enemy, the knife begins a visible,
+  acceleration-bounded braking curve while continuing to turn and match that
+  target's live radial movement; a confirmed hit retains the live farthest-hit
+  enemy instead of stopping at its previous position. If that enemy dies, its
+  last valid radial distance and direction remain the deceleration anchor.
+  Native retraction then
   carries that held position smoothly inward instead of jumping out to the turnaround point.
   Native collision damage remains unchanged.
 - Acquisition uses a hard sector 40 degrees to either side of the player's
