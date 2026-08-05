@@ -190,8 +190,9 @@
   Angular motion and the extra sideways world speed produced by steering are
   both speed- and acceleration-bounded. Targets that cannot be intercepted
   inside those limits are released, even when this reduces homing coverage.
-  The live knife's outward/return radial speed also changes through a bounded
-  acceleration curve, avoiding visible speed steps after release.
+  Ordinary outward and return distance remains on the engine's native radial
+  trajectory instead of a parallel correction controller, preserving smooth
+  knife animation.
   A knife that has already passed one target's reachable radial band yields to
   another feasible enemy, and begins a small contact-safe
   turn toward its next target immediately before the current hit. Multi-shot
@@ -205,9 +206,10 @@
   spread—as their shared axis while retaining every native line; backward,
   omnidirectional, and random extra shots retain the player's native held axis.
 - As soon as the last reachable enemy is hit, the knife follows a visible,
-  acceleration-bounded deceleration curve and stays in contact with the
-  farthest hit enemy still in range. If that enemy dies, its last valid radial
-  distance and direction remain the deceleration anchor. Native retraction then
+  acceleration-bounded deceleration curve while continuing to turn and match
+  the live farthest-hit enemy's radial movement, rather than stopping at its
+  previous position. If that enemy dies, its last valid radial distance and
+  direction remain the deceleration anchor. Native retraction then
   carries that held position smoothly inward instead of jumping out to the turnaround point.
   Native collision damage remains unchanged.
 - Acquisition uses a hard sector 40 degrees to either side of the player's

@@ -4,16 +4,13 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 12
+local STATE_VERSION = 13
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local TRACKING_CONE = 40
 local MAX_ANGULAR_SPEED = 15
 local MAX_ANGULAR_ACCELERATION = 6
 local MAX_TANGENTIAL_STEERING_SPEED = 14
 local MAX_TANGENTIAL_STEERING_ACCELERATION = 3.5
-local MAX_RADIAL_ACCELERATION = 4
-local MAX_RADIAL_CORRECTION_SPEED = 8
-local RADIAL_POSITION_RESPONSE = 1
 local MIN_STEERING_RADIUS = 24
 local TURN_FEASIBILITY_STEP = 0.5
 local STEERING_RESPONSE = 0.75
@@ -38,6 +35,7 @@ local HOLD_SWITCH_MARGIN = 6
 local HOLD_MAX_RADIAL_SPEED = 8
 local HOLD_RADIAL_ACCELERATION = 1.5
 local HOLD_RADIAL_RESPONSE = 0.45
+local HOLD_RADIAL_FEED_FORWARD = 0.55
 local HOLD_DISTANCE_EPSILON = 0.25
 local PREPARED_DISTANCE_MATCH_EPSILON = 0.5
 local RANGE_MATCH_EPSILON = 0.5
@@ -504,7 +502,9 @@ function MomsKnifeHomingModule:GetControlledRadialDistance(knife, state)
         return state.HoldDistance
     end
 
-    return state.ControlledRadialDistance or knife:GetKnifeDistance()
+    -- Preserve the engine's native radial trajectory and render interpolation
+    -- until final-target retention explicitly takes ownership of distance.
+    return knife:GetKnifeDistance()
 end
 
 function MomsKnifeHomingModule:GetControlledRadialSpeed(knife, state)
@@ -512,77 +512,8 @@ function MomsKnifeHomingModule:GetControlledRadialSpeed(knife, state)
         return state.HoldRadialVelocity or 0
     end
 
-    return state.ControlledRadialVelocity
-        or state.RadialSpeed
+    return state.RadialSpeed
         or knife:GetKnifeVelocity()
-end
-
-function MomsKnifeHomingModule:SyncControlledRadialMotion(
-    knife,
-    state,
-    frame
-)
-    state.ControlledRadialDistance = math.max(
-        0,
-        knife:GetKnifeDistance()
-    )
-    state.ControlledRadialVelocity = state.RadialSpeed
-        or knife:GetKnifeVelocity()
-    state.ControlledRadialFrame = frame
-    return state.ControlledRadialDistance
-end
-
-function MomsKnifeHomingModule:UpdateControlledRadialMotion(
-    knife,
-    state,
-    frame
-)
-    if state.HoldDistance ~= nil then
-        return state.HoldDistance
-    end
-
-    if state.ControlledRadialFrame == frame
-        and state.ControlledRadialDistance ~= nil
-    then
-        return state.ControlledRadialDistance
-    end
-
-    if state.ControlledRadialDistance == nil then
-        return self:SyncControlledRadialMotion(knife, state, frame)
-    end
-
-    local nativeDistance = math.max(0, knife:GetKnifeDistance())
-    local radialError = nativeDistance - state.ControlledRadialDistance
-    local nativeVelocity = state.RadialSpeed or knife:GetKnifeVelocity()
-    local responseVelocity = radialError * RADIAL_POSITION_RESPONSE
-    local desiredVelocity = math.max(
-        nativeVelocity - MAX_RADIAL_CORRECTION_SPEED,
-        math.min(
-            nativeVelocity + MAX_RADIAL_CORRECTION_SPEED,
-            responseVelocity
-        )
-    )
-    local previousDistance = state.ControlledRadialDistance
-    local controlledVelocity = MoveTowards(
-        state.ControlledRadialVelocity or 0,
-        desiredVelocity,
-        MAX_RADIAL_ACCELERATION
-    )
-    local controlledDistance = math.max(
-        0,
-        previousDistance + controlledVelocity
-    )
-    local hardMaximum = self:GetHardMaximumAttackRange(knife, state)
-
-    if hardMaximum > 0 and controlledDistance > hardMaximum then
-        controlledDistance = hardMaximum
-    end
-
-    state.ControlledRadialDistance = controlledDistance
-    state.ControlledRadialVelocity = controlledDistance - previousDistance
-    state.ControlledRadialFrame = frame
-
-    return controlledDistance
 end
 
 function MomsKnifeHomingModule:GetSteeringMotionLimits(knifeDistance)
@@ -2923,14 +2854,38 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
     end
 
     local origin = self:GetRotationOrigin(knife, state)
+    local liveTargetRadialVelocity = 0
+    local hasLiveHoldTarget = false
 
     if state.HoldTarget ~= nil
         and self:IsWithinHoldRange(knife, state, state.HoldTarget)
     then
+        local targetDelta = state.HoldTarget.Position - origin
+        local targetDistance = targetDelta:Length()
         state.HoldTargetDistance = math.min(
             baseline,
-            (state.HoldTarget.Position - origin):Length()
+            targetDistance
         )
+
+        if targetDistance > MOTION_EPSILON then
+            local targetVelocity, _, _, sourceVelocity =
+                self:GetTargetMotion(knife, state, state.HoldTarget)
+            local relativeVelocityX = targetVelocity.X - sourceVelocity.X
+            local relativeVelocityY = targetVelocity.Y - sourceVelocity.Y
+            liveTargetRadialVelocity = (
+                relativeVelocityX * targetDelta.X
+                + relativeVelocityY * targetDelta.Y
+            ) / targetDistance
+            liveTargetRadialVelocity = math.max(
+                -HOLD_MAX_RADIAL_SPEED,
+                math.min(
+                    HOLD_MAX_RADIAL_SPEED,
+                    liveTargetRadialVelocity
+                )
+            )
+        end
+
+        hasLiveHoldTarget = true
     end
 
     local desiredDistance = math.min(
@@ -2943,11 +2898,14 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
         -HOLD_MAX_RADIAL_SPEED,
         math.min(
             HOLD_MAX_RADIAL_SPEED,
-            radialError * HOLD_RADIAL_RESPONSE
+            liveTargetRadialVelocity * HOLD_RADIAL_FEED_FORWARD
+                + radialError * HOLD_RADIAL_RESPONSE
         )
     )
 
-    if math.abs(radialError) <= HOLD_DISTANCE_EPSILON then
+    if not hasLiveHoldTarget
+        and math.abs(radialError) <= HOLD_DISTANCE_EPSILON
+    then
         desiredVelocity = 0
     end
 
@@ -2958,7 +2916,8 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
     )
     local nextDistance
 
-    if math.abs(radialError) <= HOLD_DISTANCE_EPSILON
+    if not hasLiveHoldTarget
+        and math.abs(radialError) <= HOLD_DISTANCE_EPSILON
         and math.abs(state.HoldRadialVelocity)
             <= HOLD_RADIAL_ACCELERATION
     then
@@ -3080,9 +3039,6 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.AngularVelocity = 0
     state.TangentialVelocity = 0
     state.PreviousControlledDistance = knife:GetKnifeDistance()
-    state.ControlledRadialDistance = knife:GetKnifeDistance()
-    state.ControlledRadialVelocity = knife:GetKnifeVelocity()
-    state.ControlledRadialFrame = Game():GetFrameCount()
     state.Target = nil
     state.NextTarget = nil
     state.TargetPlan = {}
@@ -3160,9 +3116,6 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.AngularVelocity = 0
         state.TangentialVelocity = 0
         state.PreviousControlledDistance = nil
-        state.ControlledRadialDistance = nil
-        state.ControlledRadialVelocity = nil
-        state.ControlledRadialFrame = nil
         state.HoldTarget = nil
         state.HoldTargetDistance = nil
         state.HoldAngle = nil
@@ -3213,7 +3166,6 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
             self:GetRadialSpeed(knife, state, frame)
         end
         self:StabilizeMaxDistance(knife, state)
-        self:UpdateControlledRadialMotion(knife, state, frame)
         self:ApplyControlledTransform(
             knife,
             state,
@@ -3235,7 +3187,6 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
 
     self:GetRadialSpeed(knife, state, frame)
     self:UpdateOriginRetraction(knife, state)
-    self:UpdateControlledRadialMotion(knife, state, frame)
 
     -- Refresh target positions once before validating an existing lock. This
     -- also derives real per-frame displacement for NPCs whose Velocity field
