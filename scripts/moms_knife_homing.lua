@@ -4,7 +4,7 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 17
+local STATE_VERSION = 18
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local ACQUISITION_CONE = 40
 local MAX_LAUNCH_DEVIATION = 75
@@ -12,7 +12,7 @@ local MAX_ANGULAR_SPEED = 15
 local MAX_ANGULAR_ACCELERATION = 6
 local MAX_TANGENTIAL_STEERING_SPEED = 14
 local MAX_TANGENTIAL_STEERING_ACCELERATION = 3.5
-local MAX_FLIGHT_ACCELERATION = 2.5
+local MAX_FLIGHT_ACCELERATION = 2
 local MAX_FLIGHT_SPEED = 20
 local FLIGHT_POSITION_RESPONSE = 0.4
 local MAX_FLIGHT_POSITION_CORRECTION = 6
@@ -54,6 +54,7 @@ local SEQUENCE_LOOKAHEAD_FRACTION = 0.35
 local MAX_SEQUENCE_LOOKAHEAD_ANGLE = 6
 local KNIFE_SPRITE_FORWARD_OFFSET = 90
 local GROUP_CONTACT_RETENTION_FRAMES = 1
+local LAUNCH_CONVERGENCE_FRAMES = 10
 local MAX_NATIVE_BASE_EXTENSION = 60
 local NATIVE_RADIAL_MATCH_EPSILON = 8
 
@@ -2181,10 +2182,67 @@ function MomsKnifeHomingModule:GetGroupFlightMembers(group)
     return members
 end
 
+function MomsKnifeHomingModule:GetLaunchConvergenceTarget(
+    group,
+    members,
+    frame
+)
+    local layoutFrame = group.NativeLayoutFrame
+
+    if layoutFrame == nil
+        or frame < layoutFrame
+        or frame - layoutFrame > LAUNCH_CONVERGENCE_FRAMES
+    then
+        return nil
+    end
+
+    local soleTarget
+    local soleTargetHash
+
+    -- The ordinary feasibility score is intentionally conservative near a
+    -- radial contact band. On release that can give a wide outer knife less
+    -- than one estimated frame to close a valid 45-degree gap, so it receives
+    -- no assignment until the middle knife collides. Reuse the frame-cached
+    -- candidates and permit a short commitment only when the whole release
+    -- sector has one hard-reachable target; this stays O(knives * targets).
+    for _, target in ipairs(self:GetCandidates()) do
+        local targetHash = EntityHash(target)
+        local reachable = false
+
+        if not group.CoveredTargets[targetHash] then
+            for _, member in ipairs(members) do
+                if member.State.HitTargets[targetHash] ~= true
+                    and self:IsReachable(
+                        member.Knife,
+                        member.State,
+                        target,
+                        MAX_LAUNCH_DEVIATION
+                    )
+                then
+                    reachable = true
+                    break
+                end
+            end
+        end
+
+        if reachable then
+            if soleTargetHash ~= nil and soleTargetHash ~= targetHash then
+                return nil
+            end
+
+            soleTarget = target
+            soleTargetHash = targetHash
+        end
+    end
+
+    return soleTarget
+end
+
 function MomsKnifeHomingModule:GetAllocationPlan(
     member,
     coveredTargets,
-    frame
+    frame,
+    launchConvergenceTarget
 )
     local candidatePlan = self:BuildTargetPlan(
         member.Knife,
@@ -2199,6 +2257,50 @@ function MomsKnifeHomingModule:GetAllocationPlan(
         and frame - (member.State.LastContactFrame or -math.huge)
             <= GROUP_CONTACT_RETENTION_FRAMES
     local fullPlan = {}
+
+    if launchConvergenceTarget ~= nil then
+        local launchTargetHash = EntityHash(launchConvergenceTarget)
+        local alreadyPlanned = false
+
+        for _, entry in ipairs(candidatePlan) do
+            if entry.Hash == launchTargetHash then
+                alreadyPlanned = true
+                break
+            end
+        end
+
+        if not alreadyPlanned
+            and member.State.HitTargets[launchTargetHash] ~= true
+            and self:IsReachable(
+                member.Knife,
+                member.State,
+                launchConvergenceTarget,
+                MAX_LAUNCH_DEVIATION
+            )
+        then
+            -- Keep the real physical score for deterministic allocation, but
+            -- mark this option separately: only short-horizon feasibility is
+            -- relaxed. IsReachable above still enforces target type, calibrated
+            -- range, the shared 40-degree sector and this member's 75-degree
+            -- launch cone on every frame.
+            local score, interceptFrames, radialError, turnDeficit =
+                self:ScoreTarget(
+                    member.Knife,
+                    member.State,
+                    launchConvergenceTarget
+                )
+            candidatePlan[#candidatePlan + 1] = {
+                Target = launchConvergenceTarget,
+                Score = score,
+                InterceptFrames = interceptFrames,
+                RadialError = radialError,
+                TurnDeficit = turnDeficit,
+                Feasible = false,
+                LaunchConvergence = true,
+                Hash = launchTargetHash,
+            }
+        end
+    end
 
     for _, entry in ipairs(candidatePlan) do
         if member.State.HitTargets[entry.Hash] ~= true
@@ -2501,9 +2603,19 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
     group.AssignmentFrame = frame
     group.CoveredTargets = group.CoveredTargets or {}
     local members = self:GetGroupFlightMembers(group)
+    local launchConvergenceTarget = self:GetLaunchConvergenceTarget(
+        group,
+        members,
+        frame
+    )
 
     for _, member in ipairs(members) do
-        self:GetAllocationPlan(member, group.CoveredTargets, frame)
+        self:GetAllocationPlan(
+            member,
+            group.CoveredTargets,
+            frame,
+            launchConvergenceTarget
+        )
     end
 
     local feasibleTargetCount = 0
@@ -2662,6 +2774,14 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
                 )
             else
                 state.Target = assignment.Target
+                if assignment.LaunchConvergence then
+                    state.LaunchConvergenceTargetHash = assignment.Hash
+                    state.LaunchConvergenceUntilFrame =
+                        group.NativeLayoutFrame + LAUNCH_CONVERGENCE_FRAMES
+                else
+                    state.LaunchConvergenceTargetHash = nil
+                    state.LaunchConvergenceUntilFrame = nil
+                end
                 state.HoldTarget = nil
                 state.HoldTargetDistance = nil
                 state.HoldAngle = nil
@@ -2673,6 +2793,8 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
             end
         else
             state.Target = nil
+            state.LaunchConvergenceTargetHash = nil
+            state.LaunchConvergenceUntilFrame = nil
         end
 
         local continuation = {}
@@ -2958,6 +3080,8 @@ function MomsKnifeHomingModule:BeginSharedTargetHold(knife, state, target)
 
     local origin = self:GetRotationOrigin(knife, state)
     state.HoldTarget = target
+    state.LaunchConvergenceTargetHash = nil
+    state.LaunchConvergenceUntilFrame = nil
     state.HoldTargetDistance = math.min(
         self:GetMaximumAttackRange(knife, state),
         (target.Position - origin):Length()
@@ -3404,6 +3528,8 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.AppliedVelocity = nil
     state.AppliedAcceleration = nil
     state.AppliedAngle = nil
+    state.LaunchConvergenceTargetHash = nil
+    state.LaunchConvergenceUntilFrame = nil
     state.Target = nil
     state.NextTarget = nil
     state.TargetPlan = {}
@@ -3492,6 +3618,8 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.AppliedVelocity = nil
         state.AppliedAcceleration = nil
         state.AppliedAngle = nil
+        state.LaunchConvergenceTargetHash = nil
+        state.LaunchConvergenceUntilFrame = nil
         state.HoldTarget = nil
         state.HoldTargetDistance = nil
         state.HoldAngle = nil
@@ -3587,9 +3715,16 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
 
     if holdReturning then
         state.Target = nil
+        state.LaunchConvergenceTargetHash = nil
+        state.LaunchConvergenceUntilFrame = nil
         state.NextTarget = nil
         state.TargetPlan = {}
     else
+        local launchConvergenceActive = state.Target ~= nil
+            and state.LaunchConvergenceTargetHash
+                == EntityHash(state.Target)
+            and frame <= (state.LaunchConvergenceUntilFrame or -1)
+
         if state.Target ~= nil and (
             not self:IsReachable(
                 knife,
@@ -3598,6 +3733,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
                 MAX_LAUNCH_DEVIATION
             )
             or (state.HoldTarget == nil
+                and not launchConvergenceActive
                 and not self:IsTargetMotionFeasible(
                     knife,
                     state,
@@ -3610,6 +3746,8 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
             end
 
             state.Target = nil
+            state.LaunchConvergenceTargetHash = nil
+            state.LaunchConvergenceUntilFrame = nil
             state.NextTarget = nil
             state.TargetPlan = {}
             state.HoldTarget = nil
