@@ -4,7 +4,7 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 18
+local STATE_VERSION = 19
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local ACQUISITION_CONE = 40
 local MAX_LAUNCH_DEVIATION = 75
@@ -12,7 +12,10 @@ local MAX_ANGULAR_SPEED = 15
 local MAX_ANGULAR_ACCELERATION = 6
 local MAX_TANGENTIAL_STEERING_SPEED = 14
 local MAX_TANGENTIAL_STEERING_ACCELERATION = 3.5
-local MAX_FLIGHT_ACCELERATION = 2
+local MAX_LAUNCH_TANGENTIAL_STEERING_SPEED = 24
+local MAX_LAUNCH_TANGENTIAL_STEERING_ACCELERATION = 8
+local BASE_FLIGHT_ACCELERATION = 1
+local MAX_LAUNCH_FLIGHT_ACCELERATION = 1.75
 local MAX_FLIGHT_SPEED = 20
 local FLIGHT_POSITION_RESPONSE = 0.4
 local MAX_FLIGHT_POSITION_CORRECTION = 6
@@ -55,6 +58,7 @@ local MAX_SEQUENCE_LOOKAHEAD_ANGLE = 6
 local KNIFE_SPRITE_FORWARD_OFFSET = 90
 local GROUP_CONTACT_RETENTION_FRAMES = 1
 local LAUNCH_CONVERGENCE_FRAMES = 10
+local HOLD_ANGULAR_APPROACH_MARGIN = 12
 local MAX_NATIVE_BASE_EXTENSION = 60
 local NATIVE_RADIAL_MATCH_EPSILON = 8
 
@@ -576,19 +580,34 @@ function MomsKnifeHomingModule:GetControlledRadialSpeed(knife, state)
         or knife:GetKnifeVelocity()
 end
 
-function MomsKnifeHomingModule:GetSteeringMotionLimits(knifeDistance)
+function MomsKnifeHomingModule:GetSteeringTangentialLimits(state)
+    if state ~= nil and state.LaunchConvergenceTargetHash ~= nil then
+        return MAX_LAUNCH_TANGENTIAL_STEERING_SPEED,
+            MAX_LAUNCH_TANGENTIAL_STEERING_ACCELERATION
+    end
+
+    return MAX_TANGENTIAL_STEERING_SPEED,
+        MAX_TANGENTIAL_STEERING_ACCELERATION
+end
+
+function MomsKnifeHomingModule:GetSteeringMotionLimits(
+    knifeDistance,
+    state
+)
     local steeringRadius = math.max(
         MIN_STEERING_RADIUS,
         knifeDistance or 0
     )
+    local maximumTangentialSpeed, maximumTangentialAcceleration =
+        self:GetSteeringTangentialLimits(state)
     local maximumAngularSpeed = math.min(
         MAX_ANGULAR_SPEED,
-        math.deg(MAX_TANGENTIAL_STEERING_SPEED / steeringRadius)
+        math.deg(maximumTangentialSpeed / steeringRadius)
     )
     local maximumAngularAcceleration = math.min(
         MAX_ANGULAR_ACCELERATION,
         math.deg(
-            MAX_TANGENTIAL_STEERING_ACCELERATION / steeringRadius
+            maximumTangentialAcceleration / steeringRadius
         )
     )
 
@@ -620,7 +639,7 @@ function MomsKnifeHomingModule:GetTurnCapacity(
             knifeDistance + radialSpeed * (elapsed + step)
         )
         local maximumSpeed, maximumAcceleration =
-            self:GetSteeringMotionLimits(projectedDistance)
+            self:GetSteeringMotionLimits(projectedDistance, state)
         local desiredVelocity = direction * maximumSpeed
         angularVelocity = MoveTowards(
             angularVelocity,
@@ -646,6 +665,8 @@ function MomsKnifeHomingModule:GetBoundedSteeringVelocity(
     local radius = math.max(MOTION_EPSILON, knifeDistance or 0)
     local previousAngularVelocity = state.AngularVelocity or 0
     local previousTangentialVelocity = state.TangentialVelocity
+    local maximumTangentialSpeed, maximumTangentialAcceleration =
+        self:GetSteeringTangentialLimits(state)
 
     if previousTangentialVelocity == nil then
         previousTangentialVelocity = math.rad(previousAngularVelocity)
@@ -653,14 +674,14 @@ function MomsKnifeHomingModule:GetBoundedSteeringVelocity(
     end
 
     local minimumTangentialVelocity = math.max(
-        -MAX_TANGENTIAL_STEERING_SPEED,
+        -maximumTangentialSpeed,
         previousTangentialVelocity
-            - MAX_TANGENTIAL_STEERING_ACCELERATION
+            - maximumTangentialAcceleration
     )
     local maximumTangentialVelocity = math.min(
-        MAX_TANGENTIAL_STEERING_SPEED,
+        maximumTangentialSpeed,
         previousTangentialVelocity
-            + MAX_TANGENTIAL_STEERING_ACCELERATION
+            + maximumTangentialAcceleration
     )
     local minimumAngularVelocity = math.max(
         -MAX_ANGULAR_SPEED,
@@ -680,7 +701,7 @@ function MomsKnifeHomingModule:GetBoundedSteeringVelocity(
         -- large visible sideways jump.
         local absoluteLimit = math.min(
             MAX_ANGULAR_SPEED,
-            math.deg(MAX_TANGENTIAL_STEERING_SPEED / radius)
+            math.deg(maximumTangentialSpeed / radius)
         )
         minimumAngularVelocity = math.max(
             -absoluteLimit,
@@ -1219,6 +1240,7 @@ function MomsKnifeHomingModule:RegisterKnifeGroup(knife, frame)
         group.LayoutCandidateOffsets = nil
         group.LayoutShape = nil
         group.CoveredTargets = {}
+        group.FinalHoldTarget = nil
         group.AssignmentFrame = -1
         group.PreflightAimAngle = group.NativePlayerAimAngle
             or group.NativeCentralAimAngle
@@ -1498,6 +1520,12 @@ function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
             memberState.MotionReferenceOrigin = nil
             memberState.MotionReferenceHoldActive = false
             memberState.MotionReferencePosition = nil
+            memberState.MotionInterpolationFrame = nil
+            memberState.MotionInterpolationStep = nil
+            memberState.MotionFrameStartAngle = nil
+            memberState.MotionFrameTargetAngle = nil
+            memberState.MotionFrameStartDistance = nil
+            memberState.MotionFrameTargetDistance = nil
             memberState.AppliedPosition = nil
             memberState.AppliedVelocity = nil
             memberState.AppliedAcceleration = nil
@@ -1559,6 +1587,17 @@ function MomsKnifeHomingModule:OnPostUpdate()
             -- later callback cannot clear its new target while the once-per-
             -- frame assignment guard leaves the volley partially unassigned.
             self:AssignGroupTargets(group, frame)
+
+            if group.FinalHoldTarget ~= nil then
+                if IsTargetableEnemy(group.FinalHoldTarget) then
+                    self:BeginFinalGroupTargetHold(
+                        group,
+                        group.FinalHoldTarget
+                    )
+                else
+                    group.FinalHoldTarget = nil
+                end
+            end
 
             for _, entry in pairs(group.Entries) do
                 local knife = entry.Knife
@@ -2757,7 +2796,7 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
                 and soleTargetHash == assignment.Hash
 
             if (assignmentCovered or beginsGroupApproach)
-                and self:IsWithinHoldRange(
+                and self:IsTargetAngularlyReadyForHold(
                     member.Knife,
                     state,
                     assignment.Target
@@ -2984,6 +3023,47 @@ function MomsKnifeHomingModule:IsWithinHoldRange(knife, state, target)
     )
 end
 
+function MomsKnifeHomingModule:IsTargetAngularlyReadyForHold(
+    knife,
+    state,
+    target
+)
+    if not self:IsWithinHoldRange(knife, state, target) then
+        return false
+    end
+
+    local origin = self:GetRotationOrigin(knife, state)
+    local targetDelta = target.Position - origin
+    local targetDistance = targetDelta:Length()
+
+    if targetDistance <= MOTION_EPSILON then
+        return true
+    end
+
+    local currentAngle = state.AppliedAngle
+        or state.ControlledAngle
+        or state.LaunchAngle
+
+    if currentAngle == nil then
+        return false
+    end
+
+    local contactRadius = (target.Size or 0) + (knife.Size or 0)
+    local contactAngle = math.deg(math.atan(
+        contactRadius,
+        math.max(MOTION_EPSILON, targetDistance)
+    ))
+    local maximumApproachError = math.min(
+        ACQUISITION_CONE,
+        contactAngle + HOLD_ANGULAR_APPROACH_MARGIN
+    )
+
+    return math.abs(AngleDifference(
+        VectorAngle(targetDelta),
+        currentAngle
+    )) <= maximumApproachError
+end
+
 function MomsKnifeHomingModule:FindFarthestHitTarget(
     knife,
     state,
@@ -3093,6 +3173,14 @@ function MomsKnifeHomingModule:BeginSharedTargetHold(knife, state, target)
 end
 
 function MomsKnifeHomingModule:BeginFinalGroupTargetHold(group, target)
+    if group == nil or not IsTargetableEnemy(target) then
+        if group ~= nil then
+            group.FinalHoldTarget = nil
+        end
+
+        return false
+    end
+
     local targetHash = EntityHash(target)
     local members = self:GetGroupFlightMembers(group)
 
@@ -3113,20 +3201,64 @@ function MomsKnifeHomingModule:BeginFinalGroupTargetHold(group, target)
         end
     end
 
+    group.FinalHoldTarget = target
     local started = false
+    local frame = Game():GetFrameCount()
 
     for _, member in ipairs(members) do
         if self:IsWithinHoldRange(
             member.Knife,
             member.State,
             target
+        ) and self:IsReachable(
+            member.Knife,
+            member.State,
+            target,
+            MAX_LAUNCH_DEVIATION
         ) then
-            self:BeginSharedTargetHold(
-                member.Knife,
-                member.State,
-                target
-            )
-            started = true
+            local state = member.State
+            local alreadyHolding = state.HoldTarget ~= nil
+                and state.HoldTarget:Exists()
+                and EntityHash(state.HoldTarget) == targetHash
+            local collided = state.HitTargets[targetHash] == true
+
+            if alreadyHolding
+                or collided
+                or self:IsTargetAngularlyReadyForHold(
+                    member.Knife,
+                    state,
+                    target
+                )
+            then
+                self:BeginSharedTargetHold(
+                    member.Knife,
+                    state,
+                    target
+                )
+                started = true
+            else
+                -- The group owns one final target, but a wide outer lane must
+                -- keep flying and curving until its own live hitbox approaches
+                -- the contact angle. Sharing the target must not share the
+                -- center knife's radial brake state.
+                state.Target = target
+                state.LaunchConvergenceTargetHash = targetHash
+                state.LaunchConvergenceUntilFrame = math.max(
+                    state.LaunchConvergenceUntilFrame or -1,
+                    frame + LAUNCH_CONVERGENCE_FRAMES
+                )
+                state.HoldTarget = nil
+                state.HoldTargetDistance = nil
+                state.HoldAngle = nil
+                state.HoldDistance = nil
+                state.HoldRadialVelocity = nil
+                state.HoldRetracting = false
+                state.HoldRetractionNativeStart = nil
+                state.HoldRetractionVisualStart = nil
+                state.NextTarget = nil
+                state.TargetPlan = {}
+                started = true
+            end
         end
     end
 
@@ -3139,7 +3271,7 @@ function MomsKnifeHomingModule:ShouldBeginTargetApproachHold(
     target
 )
     if state.HoldRetracting
-        or not self:IsWithinHoldRange(knife, state, target)
+        or not self:IsTargetAngularlyReadyForHold(knife, state, target)
     then
         return false
     end
@@ -3334,6 +3466,32 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
     return state.HoldDistance
 end
 
+function MomsKnifeHomingModule:GetFlightAccelerationLimit(state)
+    if state == nil or state.LaunchConvergenceTargetHash == nil then
+        return BASE_FLIGHT_ACCELERATION
+    end
+
+    local launchAngle = state.LaunchAngle
+    local centralAngle = state.BaseAimAngle
+
+    if launchAngle == nil or centralAngle == nil then
+        return BASE_FLIGHT_ACCELERATION
+    end
+
+    -- The vanilla full-charge benchmark changes straight-line world speed by
+    -- roughly one unit per native sub-update. A spread lane needs additional
+    -- lateral acceleration to reproduce vanilla's early curve, but that extra
+    -- budget belongs only to that knife and scales with its own native offset.
+    local launchOffset = math.abs(AngleDifference(
+        launchAngle,
+        centralAngle
+    ))
+    local convergence = math.min(1, launchOffset / 45)
+    return BASE_FLIGHT_ACCELERATION
+        + (MAX_LAUNCH_FLIGHT_ACCELERATION
+            - BASE_FLIGHT_ACCELERATION) * convergence
+end
+
 function MomsKnifeHomingModule:StepFlightMotion(state, desiredPosition)
     local previousDesiredPosition = state.MotionReferencePosition
     local previousAppliedPosition = state.AppliedPosition
@@ -3374,7 +3532,7 @@ function MomsKnifeHomingModule:StepFlightMotion(state, desiredPosition)
         - state.AppliedVelocity
     local appliedAcceleration = ClampVectorLength(
         requestedAcceleration,
-        MAX_FLIGHT_ACCELERATION
+        self:GetFlightAccelerationLimit(state)
     )
     local appliedVelocity = state.AppliedVelocity
         + appliedAcceleration
@@ -3400,10 +3558,47 @@ function MomsKnifeHomingModule:ApplyControlledPosition(
     local desiredDistance = controlledDistance
     local holdActive = state.HoldDistance ~= nil
     local desiredOrigin = self:GetRotationOrigin(knife, state)
-    local radians = math.rad(desiredAngle)
+    local frame = Game():GetFrameCount()
+
+    if state.MotionInterpolationFrame ~= frame then
+        state.MotionInterpolationFrame = frame
+        state.MotionInterpolationStep = 1
+        state.MotionFrameStartAngle = state.MotionReferenceAngle
+            or desiredAngle
+        state.MotionFrameTargetAngle = desiredAngle
+        state.MotionFrameStartDistance = state.MotionReferenceDistance
+            or desiredDistance
+        state.MotionFrameTargetDistance = desiredDistance
+    else
+        state.MotionInterpolationStep =
+            (state.MotionInterpolationStep or 1) + 1
+    end
+
+    -- The tested Repentance+ build renders two native knife updates per Game
+    -- frame. Split the once-per-frame logical turn (and final-target radial
+    -- step) evenly across them so the physical controller receives a 60 Hz
+    -- reference instead of alternating between one large step and no step.
+    local interpolation = math.min(
+        1,
+        (state.MotionInterpolationStep or 2) * 0.5
+    )
+    local appliedDesiredAngle = state.MotionFrameStartAngle
+        + AngleDifference(
+            state.MotionFrameTargetAngle,
+            state.MotionFrameStartAngle
+        ) * interpolation
+    local appliedDesiredDistance = desiredDistance
+
+    if holdActive and state.MotionReferenceHoldActive then
+        appliedDesiredDistance = state.MotionFrameStartDistance
+            + (state.MotionFrameTargetDistance
+                - state.MotionFrameStartDistance) * interpolation
+    end
+
+    local radians = math.rad(appliedDesiredAngle)
     local desiredPosition = desiredOrigin + Vector(
-        math.cos(radians) * desiredDistance,
-        math.sin(radians) * desiredDistance
+        math.cos(radians) * appliedDesiredDistance,
+        math.sin(radians) * appliedDesiredDistance
     )
     local appliedPosition = self:StepFlightMotion(
         state,
@@ -3524,6 +3719,12 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.MotionReferenceOrigin = nil
     state.MotionReferenceHoldActive = false
     state.MotionReferencePosition = nil
+    state.MotionInterpolationFrame = nil
+    state.MotionInterpolationStep = nil
+    state.MotionFrameStartAngle = nil
+    state.MotionFrameTargetAngle = nil
+    state.MotionFrameStartDistance = nil
+    state.MotionFrameTargetDistance = nil
     state.AppliedPosition = nil
     state.AppliedVelocity = nil
     state.AppliedAcceleration = nil
@@ -3614,6 +3815,12 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.MotionReferenceOrigin = nil
         state.MotionReferenceHoldActive = false
         state.MotionReferencePosition = nil
+        state.MotionInterpolationFrame = nil
+        state.MotionInterpolationStep = nil
+        state.MotionFrameStartAngle = nil
+        state.MotionFrameTargetAngle = nil
+        state.MotionFrameStartDistance = nil
+        state.MotionFrameTargetDistance = nil
         state.AppliedPosition = nil
         state.AppliedVelocity = nil
         state.AppliedAcceleration = nil
@@ -3879,7 +4086,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.ControlledAngle
     )
     local maximumAngularSpeed, maximumAngularAcceleration =
-        self:GetSteeringMotionLimits(controlledDistance)
+        self:GetSteeringMotionLimits(controlledDistance, state)
     local desiredAngularSpeed = math.min(
         maximumAngularSpeed,
         math.abs(angleError) * STEERING_RESPONSE,
