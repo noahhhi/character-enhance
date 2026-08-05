@@ -221,8 +221,9 @@
   carries that held position smoothly inward instead of jumping out to the turnaround point.
   Native collision damage remains unchanged.
 - Acquisition uses a hard sector 40 degrees to either side of the player's
-  selected firing direction, and each knife's steering also stays within 40
-  degrees of its own native launch line. A target is dropped as soon as it
+  selected firing direction. Independently, each knife may steer by up to 75
+  degrees from its own native launch line so wide Conjoined lanes can converge
+  on the same central target. A target is dropped as soon as it
   leaves that sector or exceeds the throw's calibrated maximum attack range.
   During the outbound phase, that sector center and the live knife follow
   80% of the owner's displacement from the release point; native retraction

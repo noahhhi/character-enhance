@@ -4,9 +4,10 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 16
+local STATE_VERSION = 17
 local HOMING_FLAG = TearFlags.TEAR_HOMING
-local TRACKING_CONE = 40
+local ACQUISITION_CONE = 40
+local MAX_LAUNCH_DEVIATION = 75
 local MAX_ANGULAR_SPEED = 15
 local MAX_ANGULAR_ACCELERATION = 6
 local MAX_TANGENTIAL_STEERING_SPEED = 14
@@ -1083,7 +1084,7 @@ function MomsKnifeHomingModule:IsInsideTrackingSector(
     return math.abs(AngleDifference(
         VectorAngle(delta),
         trackingAxis
-    )) <= TRACKING_CONE
+    )) <= ACQUISITION_CONE
 end
 
 function MomsKnifeHomingModule:ClampTrackedAngle(state, angle)
@@ -1096,12 +1097,12 @@ function MomsKnifeHomingModule:ClampTrackedAngle(state, angle)
 
     local launchOffset = AngleDifference(launchAngle, trackingAxis)
     local minimumOffset = math.max(
-        -TRACKING_CONE,
-        launchOffset - TRACKING_CONE
+        -ACQUISITION_CONE,
+        launchOffset - MAX_LAUNCH_DEVIATION
     )
     local maximumOffset = math.min(
-        TRACKING_CONE,
-        launchOffset + TRACKING_CONE
+        ACQUISITION_CONE,
+        launchOffset + MAX_LAUNCH_DEVIATION
     )
 
     if minimumOffset > maximumOffset then
@@ -1124,7 +1125,7 @@ function MomsKnifeHomingModule:ApplyControlledTransform(
     state.ControlledAngle = ClampAngleAround(
         state.ControlledAngle or state.LaunchAngle,
         state.LaunchAngle,
-        TRACKING_CONE
+        MAX_LAUNCH_DEVIATION
     )
     local appliedAngle = self:ApplyControlledPosition(
         knife,
@@ -1642,7 +1643,7 @@ function MomsKnifeHomingModule:StabilizeMaxDistance(knife, state)
                 and math.abs(AngleDifference(
                     targetAngle,
                     state.LaunchAngle
-                )) <= TRACKING_CONE
+                )) <= MAX_LAUNCH_DEVIATION
                 and self:IsTargetMotionFeasible(knife, state, target)
             then
                 farthestDistance = math.max(farthestDistance, distance)
@@ -1988,7 +1989,12 @@ function MomsKnifeHomingModule:IsTargetMotionFeasible(
     state,
     target
 )
-    if not self:IsReachable(knife, state, target, TRACKING_CONE) then
+    if not self:IsReachable(
+        knife,
+        state,
+        target,
+        MAX_LAUNCH_DEVIATION
+    ) then
         return false
     end
 
@@ -2021,7 +2027,12 @@ function MomsKnifeHomingModule:BuildTargetPlan(
 
         if hash ~= excludedHash
             and (allowHitTargets or not wasHit)
-            and self:IsReachable(knife, state, target, TRACKING_CONE)
+            and self:IsReachable(
+                knife,
+                state,
+                target,
+                MAX_LAUNCH_DEVIATION
+            )
         then
             local score, interceptFrames, radialError, turnDeficit =
                 self:ScoreTarget(
@@ -2735,7 +2746,7 @@ function MomsKnifeHomingModule:GetSequentialAimAngle(
             knife,
             state,
             nextTarget,
-            TRACKING_CONE
+            MAX_LAUNCH_DEVIATION
         )
     then
         return currentAimAngle
@@ -3260,7 +3271,7 @@ function MomsKnifeHomingModule:ApplyControlledPosition(
     local desiredAngle = ClampAngleAround(
         state.ControlledAngle,
         state.LaunchAngle,
-        TRACKING_CONE
+        MAX_LAUNCH_DEVIATION
     )
     local desiredDistance = controlledDistance
     local holdActive = state.HoldDistance ~= nil
@@ -3296,7 +3307,7 @@ function MomsKnifeHomingModule:ApplyControlledPosition(
     appliedAngle = ClampAngleAround(
         appliedAngle,
         state.LaunchAngle,
-        TRACKING_CONE
+        MAX_LAUNCH_DEVIATION
     )
     state.AppliedAngle = appliedAngle
     return appliedAngle
@@ -3584,7 +3595,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
                 knife,
                 state,
                 state.Target,
-                TRACKING_CONE
+                MAX_LAUNCH_DEVIATION
             )
             or (state.HoldTarget == nil
                 and not self:IsTargetMotionFeasible(
@@ -3719,7 +3730,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
     desiredAngle = ClampAngleAround(
         desiredAngle,
         state.LaunchAngle,
-        TRACKING_CONE
+        MAX_LAUNCH_DEVIATION
     )
     if steeringActive then
         desiredAngle = self:ClampTrackedAngle(state, desiredAngle)
@@ -3753,7 +3764,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
     local nextControlledAngle = ClampAngleAround(
         state.ControlledAngle + state.AngularVelocity,
         state.LaunchAngle,
-        TRACKING_CONE
+        MAX_LAUNCH_DEVIATION
     )
     state.ControlledAngle = nextControlledAngle
     state.AngularVelocity = AngleDifference(
