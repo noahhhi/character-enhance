@@ -15,6 +15,7 @@ local MAX_TANGENTIAL_STEERING_ACCELERATION = 3.5
 local MAX_LAUNCH_TANGENTIAL_STEERING_SPEED = 24
 local MAX_LAUNCH_TANGENTIAL_STEERING_ACCELERATION = 8
 local BASE_FLIGHT_ACCELERATION = 1
+local HOLD_FLIGHT_ACCELERATION = 1.5
 local MAX_LAUNCH_FLIGHT_ACCELERATION = 1.75
 local MAX_FLIGHT_SPEED = 20
 local FLIGHT_POSITION_RESPONSE = 0.4
@@ -3305,10 +3306,26 @@ function MomsKnifeHomingModule:ShouldBeginTargetApproachHold(
         targetVelocity - sourceVelocity,
         radialUnit
     )
+    local appliedRadialSpeed = 0
+
+    if state.AppliedVelocity ~= nil then
+        appliedRadialSpeed = Dot(state.AppliedVelocity, radialUnit)
+    end
+
+    -- Repentance+ can expose one short native sub-update immediately before a
+    -- much longer one at release. Basing braking only on the last measured
+    -- RadialSpeed underestimates the next-frame approach by more than one
+    -- whole contact radius. The native flight speed is the conservative
+    -- forward envelope; AppliedVelocity covers an already faster controlled
+    -- hitbox without changing the absolute acceleration cap itself.
+    local incomingRadialSpeed = math.max(
+        self:GetControlledRadialSpeed(knife, state),
+        knife:GetKnifeVelocity(),
+        appliedRadialSpeed
+    )
     local closingSpeed = math.max(
         0,
-        self:GetControlledRadialSpeed(knife, state)
-            - targetRadialVelocity
+        incomingRadialSpeed - targetRadialVelocity
     )
     local brakingDistance = closingSpeed * closingSpeed
             / (2 * HOLD_RADIAL_ACCELERATION)
@@ -3467,6 +3484,17 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
 end
 
 function MomsKnifeHomingModule:GetFlightAccelerationLimit(state)
+    -- Final-target radial tracking deliberately changes its reference speed
+    -- by HOLD_RADIAL_ACCELERATION each logical frame. Give the physical
+    -- hitbox the matching absolute acceleration budget; otherwise the
+    -- reference brakes while the rendered/damaging knife keeps its old world
+    -- velocity and flies through the enemy. This remains below the temporary
+    -- wide-lane launch-convergence budget and still caps acceleration,
+    -- deceleration and turning through the single vector limiter below.
+    if state ~= nil and state.HoldDistance ~= nil then
+        return HOLD_FLIGHT_ACCELERATION
+    end
+
     if state == nil or state.LaunchConvergenceTargetHash == nil then
         return BASE_FLIGHT_ACCELERATION
     end
@@ -3988,8 +4016,20 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
 
             if state.HoldTarget ~= nil then
                 local unhitTarget = self:FindTarget(knife, state, false)
+                local sameApproachTarget = unhitTarget ~= nil
+                    and EntityHash(unhitTarget)
+                        == EntityHash(state.HoldTarget)
 
-                if unhitTarget ~= nil then
+                if sameApproachTarget then
+                    -- A sole-target predictive hold begins before the first
+                    -- collision so the absolute acceleration cap has enough
+                    -- distance to brake. The ordinary unhit-target search
+                    -- necessarily rediscovers that same enemy on the next
+                    -- frame; preserve the radial controller instead of
+                    -- treating it as a replacement and restoring full-speed
+                    -- vanilla flight.
+                    state.Target = state.HoldTarget
+                elseif unhitTarget ~= nil then
                     state.HoldTarget = nil
                     state.HoldTargetDistance = nil
                     state.HoldAngle = nil
