@@ -4,7 +4,7 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 10
+local STATE_VERSION = 11
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local TRACKING_CONE = 40
 local MAX_ANGULAR_SPEED = 15
@@ -47,6 +47,7 @@ local SEQUENCE_LOOKAHEAD_FRAMES = 1
 local SEQUENCE_LOOKAHEAD_FRACTION = 0.35
 local MAX_SEQUENCE_LOOKAHEAD_ANGLE = 6
 local KNIFE_SPRITE_FORWARD_OFFSET = 90
+local GROUP_CONTACT_RETENTION_FRAMES = 1
 
 local function NormalizeAngle(angle)
     return (angle + 180) % 360 - 180
@@ -1443,6 +1444,12 @@ function MomsKnifeHomingModule:OnPostUpdate()
         end
 
         if group.FlightReady then
+            -- Every knife callback updates its own radial and motion state.
+            -- Allocate only after all members have completed that work so a
+            -- later callback cannot clear its new target while the once-per-
+            -- frame assignment guard leaves the volley partially unassigned.
+            self:AssignGroupTargets(group, frame)
+
             for _, entry in pairs(group.Entries) do
                 local knife = entry.Knife
                 local state = knife and knife:GetData()[STATE_KEY]
@@ -1454,6 +1461,13 @@ function MomsKnifeHomingModule:OnPostUpdate()
                     and state.Flying
                     and state.ControlledAngle ~= nil
                 then
+                    if state.MultiKnifeGroup
+                        and not state.HoldRetracting
+                        and state.Target == nil
+                    then
+                        self:PrepareFarthestHitHold(knife, state)
+                    end
+
                     self:ApplyControlledTransform(
                         knife,
                         state,
@@ -1672,11 +1686,6 @@ function MomsKnifeHomingModule:GetRadialApproachFrames(
         + (knife.Size or 0)
         + CONTACT_RADIAL_MARGIN
     local radialGap = targetDistance - knifeDistance
-
-    if math.abs(radialGap) <= contactWindow then
-        return CONTACT_LEAD_FRAMES
-    end
-
     local radialSpeed = state.HoldDistance ~= nil
             and (state.HoldRadialVelocity or 0)
         or state.RadialSpeed
@@ -1689,6 +1698,36 @@ function MomsKnifeHomingModule:GetRadialApproachFrames(
     local radialUnit = delta * (1 / math.max(MOTION_EPSILON, targetDistance))
     local relativeTargetVelocity = targetVelocity - sourceVelocity
     local targetRadialVelocity = Dot(relativeTargetVelocity, radialUnit)
+
+    if math.abs(radialGap) <= contactWindow then
+        -- Entering the broad radial contact band does not mean only one half
+        -- update remains for steering. The blade still has the rest of that
+        -- band to traverse before a radial miss. Use that physical exit time
+        -- for feasibility while GetPredictedPosition keeps its half-update
+        -- lead for near-contact aiming.
+        if radialSpeed > MOTION_EPSILON then
+            local exitSpeed = radialSpeed - targetRadialVelocity
+
+            if exitSpeed > MOTION_EPSILON then
+                return math.max(
+                    CONTACT_LEAD_FRAMES,
+                    (radialGap + contactWindow) / exitSpeed
+                )
+            end
+        elseif radialSpeed < -MOTION_EPSILON then
+            local exitSpeed = targetRadialVelocity - radialSpeed
+
+            if exitSpeed > MOTION_EPSILON then
+                return math.max(
+                    CONTACT_LEAD_FRAMES,
+                    (contactWindow - radialGap) / exitSpeed
+                )
+            end
+        end
+
+        return CONTACT_LEAD_FRAMES
+    end
+
     local closingSpeed = radialGap > 0
             and (radialSpeed - targetRadialVelocity)
         or (targetRadialVelocity - radialSpeed)
@@ -1767,7 +1806,14 @@ function MomsKnifeHomingModule:ScoreTarget(knife, state, target)
         steeringFrames,
         angleError < 0 and -1 or (angleError > 0 and 1 or 0)
     )
-    local turnDeficit = math.max(0, angleCost - turnCapacity)
+    local angularContactAllowance = math.deg(math.atan(
+        (target.Size or 0) + (knife.Size or 0),
+        math.max(MIN_STEERING_RADIUS, delta:Length())
+    ))
+    local turnDeficit = math.max(
+        0,
+        angleCost - angularContactAllowance - turnCapacity
+    )
 
     local physicalScore = turnDeficit * 100
         + radialError * 8
@@ -1992,15 +2038,32 @@ function MomsKnifeHomingModule:GetGroupFlightMembers(group)
     return members
 end
 
-function MomsKnifeHomingModule:GetAllocationPlan(member, coveredTargets)
-    local fullPlan = self:BuildTargetPlan(
+function MomsKnifeHomingModule:GetAllocationPlan(
+    member,
+    coveredTargets,
+    frame
+)
+    local candidatePlan = self:BuildTargetPlan(
         member.Knife,
         member.State,
-        false
+        true
     )
     local currentHash = member.State.Target
             and EntityHash(member.State.Target)
         or nil
+    local retainsRecentContact = currentHash ~= nil
+        and member.State.LastContactTargetHash == currentHash
+        and frame - (member.State.LastContactFrame or -math.huge)
+            <= GROUP_CONTACT_RETENTION_FRAMES
+    local fullPlan = {}
+
+    for _, entry in ipairs(candidatePlan) do
+        if member.State.HitTargets[entry.Hash] ~= true
+            or (retainsRecentContact and entry.Hash == currentHash)
+        then
+            fullPlan[#fullPlan + 1] = entry
+        end
+    end
 
     table.sort(fullPlan, function(left, right)
         local leftRetained = left.Hash == currentHash
@@ -2031,6 +2094,202 @@ function MomsKnifeHomingModule:GetAllocationPlan(member, coveredTargets)
 
     member.FullPlan = fullPlan
     member.PrimaryPlan = uncoveredPlan
+    member.CurrentHash = currentHash
+end
+
+local function AddAssignmentCost(left, right)
+    return {
+        Switches = left.Switches + right.Switches,
+        Physical = left.Physical + right.Physical,
+        Stable = left.Stable + right.Stable,
+    }
+end
+
+local function NegateAssignmentCost(cost)
+    return {
+        Switches = -cost.Switches,
+        Physical = -cost.Physical,
+        Stable = -cost.Stable,
+    }
+end
+
+local function IsAssignmentCostLess(left, right)
+    if right == nil then
+        return true
+    end
+
+    if left.Switches ~= right.Switches then
+        return left.Switches < right.Switches
+    end
+
+    if math.abs(left.Physical - right.Physical) > INTERCEPT_EPSILON then
+        return left.Physical < right.Physical
+    end
+
+    return left.Stable < right.Stable
+end
+
+function MomsKnifeHomingModule:SolveDistinctAssignments(members)
+    local targetHashes = {}
+    local targetSeen = {}
+
+    for _, member in ipairs(members) do
+        for _, option in ipairs(member.PrimaryPlan) do
+            if not targetSeen[option.Hash] then
+                targetSeen[option.Hash] = true
+                targetHashes[#targetHashes + 1] = option.Hash
+            end
+        end
+    end
+
+    table.sort(targetHashes)
+
+    local assignments = {}
+
+    if #members == 0 or #targetHashes == 0 then
+        return assignments
+    end
+
+    local sourceNode = 1
+    local memberNodeStart = 2
+    local targetNodeStart = memberNodeStart + #members
+    local sinkNode = targetNodeStart + #targetHashes
+    local nodeCount = sinkNode
+    local graph = {}
+
+    for node = 1, nodeCount do
+        graph[node] = {}
+    end
+
+    local function AddEdge(fromNode, toNode, capacity, cost, option)
+        local forward = {
+            To = toNode,
+            Capacity = capacity,
+            Cost = cost,
+            Option = option,
+        }
+        local reverse = {
+            To = fromNode,
+            Capacity = 0,
+            Cost = NegateAssignmentCost(cost),
+        }
+        forward.Reverse = #graph[toNode] + 1
+        reverse.Reverse = #graph[fromNode] + 1
+        graph[fromNode][#graph[fromNode] + 1] = forward
+        graph[toNode][#graph[toNode] + 1] = reverse
+    end
+
+    local zeroCost = {
+        Switches = 0,
+        Physical = 0,
+        Stable = 0,
+    }
+    local targetIndexes = {}
+
+    for index, hash in ipairs(targetHashes) do
+        targetIndexes[hash] = index
+        AddEdge(
+            targetNodeStart + index - 1,
+            sinkNode,
+            1,
+            zeroCost
+        )
+    end
+
+    for memberIndex, member in ipairs(members) do
+        local memberNode = memberNodeStart + memberIndex - 1
+        AddEdge(sourceNode, memberNode, 1, zeroCost)
+
+        for _, option in ipairs(member.PrimaryPlan) do
+            local targetIndex = targetIndexes[option.Hash]
+            local losesStableLock = member.CurrentHash ~= nil
+                and option.Hash ~= member.CurrentHash
+            AddEdge(
+                memberNode,
+                targetNodeStart + targetIndex - 1,
+                1,
+                {
+                    Switches = losesStableLock and 1 or 0,
+                    Physical = option.Score,
+                    Stable = memberIndex * targetIndex,
+                },
+                option
+            )
+        end
+    end
+
+    -- Successive shortest augmenting paths produce maximum cardinality first.
+    -- The vector cost then maximizes retained valid locks before minimizing the
+    -- total physical intercept cost of the whole volley. Unlike a plain DFS,
+    -- this cannot preserve coverage by sending two knives across one another
+    -- toward the most expensive feasible pairing.
+    while true do
+        local distances = {}
+        local previousNodes = {}
+        local previousEdges = {}
+        local inQueue = {}
+        local queue = { sourceNode }
+        local queueHead = 1
+        distances[sourceNode] = zeroCost
+        inQueue[sourceNode] = true
+
+        while queueHead <= #queue do
+            local node = queue[queueHead]
+            queueHead = queueHead + 1
+            inQueue[node] = false
+
+            for edgeIndex, edge in ipairs(graph[node]) do
+                if edge.Capacity > 0 then
+                    local candidateCost = AddAssignmentCost(
+                        distances[node],
+                        edge.Cost
+                    )
+
+                    if IsAssignmentCostLess(
+                        candidateCost,
+                        distances[edge.To]
+                    ) then
+                        distances[edge.To] = candidateCost
+                        previousNodes[edge.To] = node
+                        previousEdges[edge.To] = edgeIndex
+
+                        if not inQueue[edge.To] then
+                            queue[#queue + 1] = edge.To
+                            inQueue[edge.To] = true
+                        end
+                    end
+                end
+            end
+        end
+
+        if previousNodes[sinkNode] == nil then
+            break
+        end
+
+        local node = sinkNode
+
+        while node ~= sourceNode do
+            local previousNode = previousNodes[node]
+            local edge = graph[previousNode][previousEdges[node]]
+            edge.Capacity = edge.Capacity - 1
+            local reverse = graph[node][edge.Reverse]
+            reverse.Capacity = reverse.Capacity + 1
+            node = previousNode
+        end
+    end
+
+    for memberIndex, member in ipairs(members) do
+        local memberNode = memberNodeStart + memberIndex - 1
+
+        for _, edge in ipairs(graph[memberNode]) do
+            if edge.Option ~= nil and edge.Capacity == 0 then
+                assignments[member.Hash] = edge.Option
+                break
+            end
+        end
+    end
+
+    return assignments
 end
 
 function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
@@ -2046,13 +2305,11 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
     local members = self:GetGroupFlightMembers(group)
 
     for _, member in ipairs(members) do
-        self:GetAllocationPlan(member, group.CoveredTargets)
+        self:GetAllocationPlan(member, group.CoveredTargets, frame)
     end
 
-    -- Knives with the fewest choices are matched first. The augmenting-path
-    -- reassignment then finds the maximum number of distinct reachable enemies
-    -- instead of letting an early, flexible knife consume a constrained
-    -- knife's only target.
+    -- Keep the graph order deterministic and let the global solver choose the
+    -- lowest-cost maximum-coverage pairing across all knives at once.
     table.sort(members, function(left, right)
         if #left.PrimaryPlan ~= #right.PrimaryPlan then
             return #left.PrimaryPlan < #right.PrimaryPlan
@@ -2067,31 +2324,7 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
         return left.Hash < right.Hash
     end)
 
-    local assignments = {}
-    local targetOwners = {}
-
-    local function TryAssign(member, visitedTargets)
-        for _, option in ipairs(member.PrimaryPlan) do
-            if not visitedTargets[option.Hash] then
-                visitedTargets[option.Hash] = true
-                local previousOwner = targetOwners[option.Hash]
-
-                if previousOwner == nil
-                    or TryAssign(previousOwner, visitedTargets)
-                then
-                    targetOwners[option.Hash] = member
-                    assignments[member.Hash] = option
-                    return true
-                end
-            end
-        end
-
-        return false
-    end
-
-    for _, member in ipairs(members) do
-        TryAssign(member, {})
-    end
+    local assignments = self:SolveDistinctAssignments(members)
 
     local occupancy = {}
 
@@ -2100,9 +2333,10 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
     end
 
     -- More knives than enemies should not leave a knife idle. After maximum
-    -- unique coverage is established, distribute the extras across the least
-    -- occupied still-unhit targets, preferring enemies not yet crossed by any
-    -- knife in this volley.
+    -- unique coverage is established, distribute extras to the least occupied
+    -- feasible lanes. At equal occupancy prefer an unhit target; this lets a
+    -- just-contacting surplus knife keep its still-active lane instead of
+    -- converging on a target that another knife already owns.
     for _, member in ipairs(members) do
         if assignments[member.Hash] == nil then
             local bestOption
@@ -2122,23 +2356,31 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
                     and EntityHash(member.State.Target) == bestOption.Hash
 
                 if bestOption == nil
-                    or (optionCovered ~= bestCovered and not optionCovered)
-                    or (optionCovered == bestCovered
-                        and optionOccupancy < bestOccupancy)
-                    or (optionCovered == bestCovered
-                        and optionOccupancy == bestOccupancy
+                    or optionOccupancy < bestOccupancy
+                    or (optionOccupancy == bestOccupancy
+                        and optionCovered ~= bestCovered
+                        and not optionCovered)
+                    or (optionOccupancy == bestOccupancy
+                        and optionCovered == bestCovered
                         and optionRetained ~= bestRetained
                         and optionRetained)
-                    or (optionCovered == bestCovered
-                        and optionOccupancy == bestOccupancy
+                    or (optionOccupancy == bestOccupancy
+                        and optionCovered == bestCovered
                         and optionRetained == bestRetained
                         and option.Feasible ~= bestOption.Feasible
                         and option.Feasible)
-                    or (optionCovered == bestCovered
-                        and optionOccupancy == bestOccupancy
+                    or (optionOccupancy == bestOccupancy
+                        and optionCovered == bestCovered
                         and optionRetained == bestRetained
                         and option.Feasible == bestOption.Feasible
                         and option.Score < bestOption.Score)
+                    or (optionOccupancy == bestOccupancy
+                        and optionCovered == bestCovered
+                        and optionRetained == bestRetained
+                        and option.Feasible == bestOption.Feasible
+                        and math.abs(option.Score - bestOption.Score)
+                            <= INTERCEPT_EPSILON
+                        and option.Hash < bestOption.Hash)
                 then
                     bestOption = option
                 end
@@ -2205,9 +2447,20 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
         end)
 
         state.TargetPlan = continuation
-        state.NextTarget = continuation[1]
-                and continuation[1].Target
-            or nil
+        state.NextTarget = nil
+
+        -- Pre-turn only toward a genuinely unassigned, still-unhit enemy. A
+        -- target already owned by another knife may be a valid fallback after
+        -- a later collision, but biasing toward it now makes two otherwise
+        -- well-distributed knives converge and weakens their current contact.
+        for _, option in ipairs(continuation) do
+            if not group.CoveredTargets[option.Hash]
+                and (occupancy[option.Hash] or 0) == 0
+            then
+                state.NextTarget = option.Target
+                break
+            end
+        end
     end
 end
 
@@ -2808,14 +3061,17 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
             state.NextTarget = nil
             state.TargetPlan = {}
             state.HoldTarget = nil
+
+            if state.MultiKnifeGroup and knifeGroup ~= nil then
+                knifeGroup.AssignmentFrame = -1
+            end
         end
 
         if state.MultiKnifeGroup then
-            self:AssignGroupTargets(knifeGroup, frame)
-
-            if state.Target == nil then
-                self:PrepareFarthestHitHold(knife, state)
-            end
+            -- The complete group is reassigned in MC_POST_UPDATE after every
+            -- member has refreshed its radial speed and feasibility state.
+            -- Keep this callback limited to validation and steering with the
+            -- stable assignment prepared at the end of the preceding frame.
         else
             if state.Target ~= nil and state.HoldTarget == nil then
                 local replacement = self:FindRadialMissReplacement(
@@ -2994,6 +3250,8 @@ function MomsKnifeHomingModule:OnKnifeCollision(knife, collider)
 
     local colliderHash = EntityHash(collider)
     state.HitTargets[colliderHash] = true
+    state.LastContactTargetHash = colliderHash
+    state.LastContactFrame = Game():GetFrameCount()
     state.HitTargetDistances = state.HitTargetDistances or {}
 
     if self:IsWithinHoldRange(knife, state, collider) then
