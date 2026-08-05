@@ -187,26 +187,32 @@
 - When Mom's Knife has homing, it continuously replans a short curved intercept
   from each hostile enemy's observed movement, turn, and speed change. Charmed
   or friendly enemies, mechanisms, and other non-target entities are ignored.
-  Steering speed and acceleration are bounded, and the next moving target is
-  prepared before the current hit, so direction changes stay smooth during
-  multi-enemy attacks. A knife that has already passed one target's reachable
-  radial band yields to another feasible enemy, and begins a small contact-safe
+  Angular motion and the extra sideways world speed produced by steering are
+  both speed- and acceleration-bounded. Targets that cannot be intercepted
+  inside those limits are released, even when this reduces homing coverage.
+  A knife that has already passed one target's reachable radial band yields to
+  another feasible enemy, and begins a small contact-safe
   turn toward its next target immediately before the current hit. Multi-shot
   knives reuse the complete native knife layout collected at frame end instead
   of rebuilding item interactions. Each knife independently tracks a different
   reachable enemy whenever possible; additional knives reinforce the least
-  covered targets only after unique enemy coverage is exhausted.
+  covered targets only after unique enemy coverage is exhausted. Every member
+  uses the same selected-direction acquisition sector while retaining its own
+  native launch line.
   Compact symmetric spreads use the middle knife—or the midpoint of an even
   spread—as their shared axis while retaining every native line; backward,
   omnidirectional, and random extra shots retain the player's native held axis.
 - As soon as the last reachable enemy is hit, the knife follows a visible,
   acceleration-bounded deceleration curve and stays in contact with the
-  farthest hit enemy still in range. Native retraction then carries that held
-  position smoothly inward instead of jumping out to the turnaround point.
+  farthest hit enemy still in range. If that enemy dies, its last valid radial
+  distance and direction remain the deceleration anchor. Native retraction then
+  carries that held position smoothly inward instead of jumping out to the turnaround point.
   Native collision damage remains unchanged.
-- Steering stays within 40 degrees to either side of the firing direction and
-  drops a target as soon as it exceeds that throw's calibrated maximum attack
-  range. During the outbound phase, that range center and the live knife follow
+- Acquisition uses a hard sector 40 degrees to either side of the player's
+  selected firing direction, and each knife's steering also stays within 40
+  degrees of its own native launch line. A target is dropped as soon as it
+  leaves that sector or exceeds the throw's calibrated maximum attack range.
+  During the outbound phase, that sector center and the live knife follow
   40% of the owner's displacement from the release point; native retraction
   smoothly raises the follow ratio to 100% so the knife rejoins its owner.
   Burrows and teleports are treated as position discontinuities rather than

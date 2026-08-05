@@ -4,11 +4,15 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 8
+local STATE_VERSION = 9
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local TRACKING_CONE = 40
 local MAX_ANGULAR_SPEED = 15
 local MAX_ANGULAR_ACCELERATION = 6
+local MAX_TANGENTIAL_STEERING_SPEED = 14
+local MAX_TANGENTIAL_STEERING_ACCELERATION = 3.5
+local MIN_STEERING_RADIUS = 24
+local TURN_FEASIBILITY_STEP = 0.5
 local STEERING_RESPONSE = 0.75
 local MIN_INTERCEPT_FRAMES = 1
 local MAX_INTERCEPT_FRAMES = 18
@@ -63,9 +67,15 @@ local function MoveTowards(current, target, maximumStep)
     return current + difference
 end
 
-local function GetBrakingLimitedSpeed(distance)
+local function GetBrakingLimitedSpeed(
+    distance,
+    maximumSpeed,
+    maximumAcceleration
+)
     local low = 0
-    local high = MAX_ANGULAR_SPEED
+    local high = maximumSpeed or MAX_ANGULAR_SPEED
+    local acceleration = maximumAcceleration
+        or MAX_ANGULAR_ACCELERATION
 
     -- Include the current step plus every future step after decelerating by
     -- MAX_ANGULAR_ACCELERATION. This starts braking early enough that ordinary
@@ -77,7 +87,7 @@ local function GetBrakingLimitedSpeed(distance)
 
         while speed > INTERCEPT_EPSILON do
             stoppingDistance = stoppingDistance + speed
-            speed = math.max(0, speed - MAX_ANGULAR_ACCELERATION)
+            speed = math.max(0, speed - acceleration)
         end
 
         if stoppingDistance <= distance then
@@ -484,6 +494,134 @@ function MomsKnifeHomingModule:GetRadialSpeed(knife, state, frame)
     return radialSpeed
 end
 
+function MomsKnifeHomingModule:GetSteeringMotionLimits(knifeDistance)
+    local steeringRadius = math.max(
+        MIN_STEERING_RADIUS,
+        knifeDistance or 0
+    )
+    local maximumAngularSpeed = math.min(
+        MAX_ANGULAR_SPEED,
+        math.deg(MAX_TANGENTIAL_STEERING_SPEED / steeringRadius)
+    )
+    local maximumAngularAcceleration = math.min(
+        MAX_ANGULAR_ACCELERATION,
+        math.deg(
+            MAX_TANGENTIAL_STEERING_ACCELERATION / steeringRadius
+        )
+    )
+
+    return maximumAngularSpeed, maximumAngularAcceleration
+end
+
+function MomsKnifeHomingModule:GetTurnCapacity(
+    state,
+    knifeDistance,
+    radialSpeed,
+    frames,
+    direction
+)
+    if frames <= 0 or direction == 0 then
+        return 0
+    end
+
+    local angularVelocity = state.AngularVelocity or 0
+    local turned = 0
+    local elapsed = 0
+
+    while elapsed < frames - INTERCEPT_EPSILON do
+        local step = math.min(
+            TURN_FEASIBILITY_STEP,
+            frames - elapsed
+        )
+        local projectedDistance = math.max(
+            0,
+            knifeDistance + radialSpeed * (elapsed + step)
+        )
+        local maximumSpeed, maximumAcceleration =
+            self:GetSteeringMotionLimits(projectedDistance)
+        local desiredVelocity = direction * maximumSpeed
+        angularVelocity = MoveTowards(
+            angularVelocity,
+            desiredVelocity,
+            maximumAcceleration * step
+        )
+        angularVelocity = math.max(
+            -maximumSpeed,
+            math.min(maximumSpeed, angularVelocity)
+        )
+        turned = turned + angularVelocity * step
+        elapsed = elapsed + step
+    end
+
+    return math.max(0, turned * direction)
+end
+
+function MomsKnifeHomingModule:GetBoundedSteeringVelocity(
+    state,
+    desiredAngularVelocity,
+    knifeDistance
+)
+    local radius = math.max(MOTION_EPSILON, knifeDistance or 0)
+    local previousAngularVelocity = state.AngularVelocity or 0
+    local previousTangentialVelocity = state.TangentialVelocity
+
+    if previousTangentialVelocity == nil then
+        previousTangentialVelocity = math.rad(previousAngularVelocity)
+            * (state.PreviousControlledDistance or radius)
+    end
+
+    local minimumTangentialVelocity = math.max(
+        -MAX_TANGENTIAL_STEERING_SPEED,
+        previousTangentialVelocity
+            - MAX_TANGENTIAL_STEERING_ACCELERATION
+    )
+    local maximumTangentialVelocity = math.min(
+        MAX_TANGENTIAL_STEERING_SPEED,
+        previousTangentialVelocity
+            + MAX_TANGENTIAL_STEERING_ACCELERATION
+    )
+    local minimumAngularVelocity = math.max(
+        -MAX_ANGULAR_SPEED,
+        previousAngularVelocity - MAX_ANGULAR_ACCELERATION,
+        math.deg(minimumTangentialVelocity / radius)
+    )
+    local maximumAngularVelocity = math.min(
+        MAX_ANGULAR_SPEED,
+        previousAngularVelocity + MAX_ANGULAR_ACCELERATION,
+        math.deg(maximumTangentialVelocity / radius)
+    )
+
+    if minimumAngularVelocity > maximumAngularVelocity then
+        -- Native knife distance changes gradually in normal flight, so these
+        -- intervals ordinarily overlap. If another effect teleports the live
+        -- radial hitbox, prioritize the world-speed boundary that prevents a
+        -- large visible sideways jump.
+        local absoluteLimit = math.min(
+            MAX_ANGULAR_SPEED,
+            math.deg(MAX_TANGENTIAL_STEERING_SPEED / radius)
+        )
+        minimumAngularVelocity = math.max(
+            -absoluteLimit,
+            previousAngularVelocity - MAX_ANGULAR_ACCELERATION
+        )
+        maximumAngularVelocity = math.min(
+            absoluteLimit,
+            previousAngularVelocity + MAX_ANGULAR_ACCELERATION
+        )
+
+        if minimumAngularVelocity > maximumAngularVelocity then
+            minimumAngularVelocity = -absoluteLimit
+            maximumAngularVelocity = absoluteLimit
+        end
+    end
+
+    local angularVelocity = math.max(
+        minimumAngularVelocity,
+        math.min(maximumAngularVelocity, desiredAngularVelocity)
+    )
+    return angularVelocity, math.rad(angularVelocity) * radius
+end
+
 local function AddInterceptCandidate(candidates, value, maximumFrames)
     if value ~= nil
         and value >= MIN_INTERCEPT_FRAMES
@@ -820,6 +958,70 @@ function MomsKnifeHomingModule:GetRotationOrigin(knife, state)
         math.cos(radians) * distance,
         math.sin(radians) * distance
     )
+end
+
+function MomsKnifeHomingModule:GetTrackingAxis(state)
+    return state.BaseAimAngle or state.LaunchAngle
+end
+
+function MomsKnifeHomingModule:IsInsideTrackingSector(
+    knife,
+    state,
+    target,
+    maximumReach
+)
+    if not IsTargetableEnemy(target) then
+        return false
+    end
+
+    local trackingAxis = self:GetTrackingAxis(state)
+
+    if trackingAxis == nil then
+        return false
+    end
+
+    local origin = self:GetRotationOrigin(knife, state)
+    local delta = target.Position - origin
+    local radialDistance = delta:Length()
+
+    if radialDistance <= 0.01 or radialDistance > maximumReach then
+        return false
+    end
+
+    return math.abs(AngleDifference(
+        VectorAngle(delta),
+        trackingAxis
+    )) <= TRACKING_CONE
+end
+
+function MomsKnifeHomingModule:ClampTrackedAngle(state, angle)
+    local trackingAxis = self:GetTrackingAxis(state)
+    local launchAngle = state.LaunchAngle
+
+    if trackingAxis == nil or launchAngle == nil then
+        return angle
+    end
+
+    local launchOffset = AngleDifference(launchAngle, trackingAxis)
+    local minimumOffset = math.max(
+        -TRACKING_CONE,
+        launchOffset - TRACKING_CONE
+    )
+    local maximumOffset = math.min(
+        TRACKING_CONE,
+        launchOffset + TRACKING_CONE
+    )
+
+    if minimumOffset > maximumOffset then
+        return launchAngle
+    end
+
+    local desiredOffset = AngleDifference(angle, trackingAxis)
+    desiredOffset = math.max(
+        minimumOffset,
+        math.min(maximumOffset, desiredOffset)
+    )
+    return trackingAxis + desiredOffset
 end
 
 function MomsKnifeHomingModule:GetHeldAimAngle(knife, group)
@@ -1164,6 +1366,9 @@ function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
             memberState.BaseAimAngle = centralAxis
             memberState.ControlledAngle = launchAngle
             memberState.AngularVelocity = 0
+            memberState.TangentialVelocity = 0
+            memberState.PreviousControlledDistance =
+                entry.Knife:GetKnifeDistance()
             entry.Knife.Rotation = launchAngle
                 - (entry.Knife.RotationOffset or 0)
         end
@@ -1242,20 +1447,29 @@ function MomsKnifeHomingModule:StabilizeMaxDistance(knife, state)
 
     local baseAttackRange = self:GetBaseMaximumAttackRange(knife, state)
     local maximumAttackRange = baseAttackRange * MAX_RANGE_EXTENSION
-    local origin = self:GetRotationOrigin(knife, state)
-    local aimAngle = state.LaunchAngle
     local farthestDistance = baseAttackRange
 
-    if baseAttackRange > 0 and aimAngle ~= nil then
+    if baseAttackRange > 0 and state.LaunchAngle ~= nil then
         for _, target in ipairs(self:GetCandidates()) do
+            local origin = self:GetRotationOrigin(knife, state)
             local delta = target.Position - origin
             local distance = delta:Length()
+            local targetAngle = distance > 0.01
+                    and VectorAngle(delta)
+                or nil
 
-            if distance <= maximumAttackRange
+            if targetAngle ~= nil
+                and self:IsInsideTrackingSector(
+                    knife,
+                    state,
+                    target,
+                    maximumAttackRange
+                )
                 and math.abs(AngleDifference(
-                    VectorAngle(delta),
-                    aimAngle
+                    targetAngle,
+                    state.LaunchAngle
                 )) <= TRACKING_CONE
+                and self:IsTargetMotionFeasible(knife, state, target)
             then
                 farthestDistance = math.max(farthestDistance, distance)
             end
@@ -1379,21 +1593,87 @@ function MomsKnifeHomingModule:IsReachable(
     target,
     cone
 )
-    if not IsTargetableEnemy(target) then
+    local maximumReach = self:GetMaximumAttackRange(knife, state)
+
+    if not self:IsInsideTrackingSector(
+        knife,
+        state,
+        target,
+        maximumReach
+    ) then
         return false
     end
 
     local origin = self:GetRotationOrigin(knife, state)
     local delta = target.Position - origin
-    local radialDistance = delta:Length()
-    local maximumReach = self:GetMaximumAttackRange(knife, state)
-
-    if radialDistance <= 0.01 or radialDistance > maximumReach then
-        return false
-    end
-
     local targetAngle = VectorAngle(delta)
     return math.abs(AngleDifference(targetAngle, state.LaunchAngle)) <= cone
+end
+
+function MomsKnifeHomingModule:GetRadialApproachFrames(
+    knife,
+    state,
+    target,
+    knifeDistance
+)
+    local origin = self:GetRotationOrigin(knife, state)
+    local delta = target.Position - origin
+    local targetDistance = delta:Length()
+    local contactWindow = (target.Size or 0)
+        + (knife.Size or 0)
+        + CONTACT_RADIAL_MARGIN
+    local radialGap = targetDistance - knifeDistance
+
+    if math.abs(radialGap) <= contactWindow then
+        return CONTACT_LEAD_FRAMES
+    end
+
+    local radialSpeed = state.HoldDistance ~= nil
+            and (state.HoldRadialVelocity or 0)
+        or state.RadialSpeed
+        or knife:GetKnifeVelocity()
+    local targetVelocity, _, _, sourceVelocity = self:GetTargetMotion(
+        knife,
+        state,
+        target
+    )
+    local radialUnit = delta * (1 / math.max(MOTION_EPSILON, targetDistance))
+    local relativeTargetVelocity = targetVelocity - sourceVelocity
+    local targetRadialVelocity = Dot(relativeTargetVelocity, radialUnit)
+    local closingSpeed = radialGap > 0
+            and (radialSpeed - targetRadialVelocity)
+        or (targetRadialVelocity - radialSpeed)
+
+    if closingSpeed <= MOTION_EPSILON then
+        return nil
+    end
+
+    local approachFrames = (math.abs(radialGap) - contactWindow)
+        / closingSpeed
+    local maximumTravelFrames = MAX_INTERCEPT_FRAMES
+
+    if radialSpeed > MOTION_EPSILON then
+        maximumTravelFrames = math.max(
+            MIN_INTERCEPT_FRAMES,
+            (self:GetMaximumAttackRange(knife, state) - knifeDistance)
+                / radialSpeed
+        )
+    elseif radialSpeed < -MOTION_EPSILON then
+        maximumTravelFrames = math.max(
+            MIN_INTERCEPT_FRAMES,
+            knifeDistance / -radialSpeed
+        )
+    end
+
+    if approachFrames > math.max(
+        MAX_INTERCEPT_FRAMES,
+        maximumTravelFrames
+    ) + TARGET_TURN_FEASIBILITY_SLACK
+    then
+        return nil
+    end
+
+    return math.max(CONTACT_LEAD_FRAMES, approachFrames)
 end
 
 function MomsKnifeHomingModule:ScoreTarget(knife, state, target)
@@ -1408,12 +1688,37 @@ function MomsKnifeHomingModule:ScoreTarget(knife, state, target)
         knifeDistance
     )
     local delta = predicted - predictedOrigin
-    local targetAngle = VectorAngle(delta)
-    local angleCost = math.abs(
-        AngleDifference(targetAngle, state.ControlledAngle)
+    local targetAngle = self:ClampTrackedAngle(
+        state,
+        VectorAngle(delta)
     )
-    local turnFrames = angleCost / MAX_ANGULAR_SPEED
-    local turnDeficit = math.max(0, turnFrames - interceptFrames)
+    local angleError = AngleDifference(
+        targetAngle,
+        state.ControlledAngle
+    )
+    local angleCost = math.abs(angleError)
+    local radialSpeed = state.HoldDistance ~= nil
+            and (state.HoldRadialVelocity or 0)
+        or state.RadialSpeed
+        or knife:GetKnifeVelocity()
+    local approachFrames = self:GetRadialApproachFrames(
+        knife,
+        state,
+        target,
+        knifeDistance
+    )
+    local steeringFrames = math.max(
+        interceptFrames,
+        approachFrames or 0
+    )
+    local turnCapacity = self:GetTurnCapacity(
+        state,
+        knifeDistance,
+        radialSpeed,
+        steeringFrames,
+        angleError < 0 and -1 or (angleError > 0 and 1 or 0)
+    )
+    local turnDeficit = math.max(0, angleCost - turnCapacity)
 
     local physicalScore = turnDeficit * 100
         + radialError * 8
@@ -1427,6 +1732,7 @@ end
 
 function MomsKnifeHomingModule:IsPlanEntryFeasible(
     knife,
+    state,
     target,
     radialError,
     turnDeficit
@@ -1435,8 +1741,39 @@ function MomsKnifeHomingModule:IsPlanEntryFeasible(
         + (knife.Size or 0)
         + CONTACT_RADIAL_MARGIN
 
-    return radialError <= contactWindow
+    local knifeDistance = state.HoldDistance or knife:GetKnifeDistance()
+    local radialApproach = self:GetRadialApproachFrames(
+        knife,
+        state,
+        target,
+        knifeDistance
+    )
+
+    return (radialError <= contactWindow or radialApproach ~= nil)
         and turnDeficit <= TARGET_TURN_FEASIBILITY_SLACK
+end
+
+function MomsKnifeHomingModule:IsTargetMotionFeasible(
+    knife,
+    state,
+    target
+)
+    if not self:IsReachable(knife, state, target, TRACKING_CONE) then
+        return false
+    end
+
+    local _, _, radialError, turnDeficit = self:ScoreTarget(
+        knife,
+        state,
+        target
+    )
+    return self:IsPlanEntryFeasible(
+        knife,
+        state,
+        target,
+        radialError,
+        turnDeficit
+    )
 end
 
 function MomsKnifeHomingModule:BuildTargetPlan(
@@ -1462,20 +1799,25 @@ function MomsKnifeHomingModule:BuildTargetPlan(
                 state,
                 target
             )
-            plan[#plan + 1] = {
-                Target = target,
-                Score = score,
-                InterceptFrames = interceptFrames,
-                RadialError = radialError,
-                TurnDeficit = turnDeficit,
-                Feasible = self:IsPlanEntryFeasible(
-                    knife,
-                    target,
-                    radialError,
-                    turnDeficit
-                ),
-                Hash = hash,
-            }
+            local feasible = self:IsPlanEntryFeasible(
+                knife,
+                state,
+                target,
+                radialError,
+                turnDeficit
+            )
+
+            if feasible then
+                plan[#plan + 1] = {
+                    Target = target,
+                    Score = score,
+                    InterceptFrames = interceptFrames,
+                    RadialError = radialError,
+                    TurnDeficit = turnDeficit,
+                    Feasible = true,
+                    Hash = hash,
+                }
+            end
         end
     end
 
@@ -1768,6 +2110,8 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
         if assignment ~= nil then
             state.Target = assignment.Target
             state.HoldTarget = nil
+            state.HoldTargetDistance = nil
+            state.HoldAngle = nil
             state.HoldDistance = nil
             state.HoldRadialVelocity = nil
             state.HoldRetracting = false
@@ -1860,6 +2204,7 @@ function MomsKnifeHomingModule:GetSequentialAimAngle(
 
     if not self:IsPlanEntryFeasible(
         knife,
+        state,
         nextTarget,
         nextRadialError,
         nextTurnDeficit
@@ -1894,23 +2239,57 @@ function MomsKnifeHomingModule:GetSequentialAimAngle(
     )
 end
 
-function MomsKnifeHomingModule:IsWithinHoldRange(knife, state, target)
-    if not IsTargetableEnemy(target) then
-        return false
-    end
-
+function MomsKnifeHomingModule:GetFarthestRecordedHitDistance(
+    knife,
+    state
+)
     local maximumReach = self:GetMaximumAttackRange(knife, state)
-    local origin = self:GetRotationOrigin(knife, state)
-    local currentDelta = target.Position - origin
+    local farthestDistance
 
-    if currentDelta:Length() > maximumReach then
-        return false
+    for _, distance in pairs(state.HitTargetDistances or {}) do
+        if type(distance) == "number"
+            and distance >= 0
+            and distance <= maximumReach
+            and (farthestDistance == nil or distance > farthestDistance)
+        then
+            farthestDistance = distance
+        end
     end
 
-    local targetAngle = VectorAngle(currentDelta)
+    return farthestDistance
+end
 
-    return math.abs(AngleDifference(targetAngle, state.LaunchAngle))
-        <= TRACKING_CONE
+function MomsKnifeHomingModule:PrepareFarthestHitHold(
+    knife,
+    state,
+    preferredTarget
+)
+    state.HoldTarget = self:FindFarthestHitTarget(
+        knife,
+        state,
+        preferredTarget
+    )
+
+    if state.HoldTarget ~= nil then
+        local origin = self:GetRotationOrigin(knife, state)
+        state.HoldTargetDistance = math.min(
+            self:GetMaximumAttackRange(knife, state),
+            (state.HoldTarget.Position - origin):Length()
+        )
+        state.Target = state.HoldTarget
+    else
+        state.HoldTargetDistance = state.HoldTargetDistance
+            or self:GetFarthestRecordedHitDistance(knife, state)
+        state.Target = nil
+    end
+
+    state.HoldAngle = state.HoldAngle or state.ControlledAngle
+    state.NextTarget = nil
+    state.TargetPlan = {}
+end
+
+function MomsKnifeHomingModule:IsWithinHoldRange(knife, state, target)
+    return self:IsReachable(knife, state, target, TRACKING_CONE)
 end
 
 function MomsKnifeHomingModule:FindFarthestHitTarget(
@@ -1967,7 +2346,9 @@ function MomsKnifeHomingModule:FindFarthestHitTarget(
 end
 
 function MomsKnifeHomingModule:BeginHoldRadialMotion(knife, state)
-    if state.HoldTarget == nil or state.HoldDistance ~= nil then
+    if (state.HoldTarget == nil and state.HoldTargetDistance == nil)
+        or state.HoldDistance ~= nil
+    then
         return
     end
 
@@ -1986,14 +2367,19 @@ function MomsKnifeHomingModule:BeginHoldRadialMotion(knife, state)
     state.HoldRetracting = false
     state.HoldRetractionNativeStart = nil
     state.HoldRetractionVisualStart = nil
+    state.HoldAngle = state.HoldAngle or state.ControlledAngle
 end
 
 function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
-    if state.HoldTarget == nil and not state.HoldRetracting then
+    if state.HoldTarget == nil
+        and state.HoldTargetDistance == nil
+        and not state.HoldRetracting
+    then
         state.HoldDistance = nil
         state.HoldRadialVelocity = nil
         state.HoldRetractionNativeStart = nil
         state.HoldRetractionVisualStart = nil
+        state.HoldAngle = nil
         return nil
     end
 
@@ -2034,9 +2420,19 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
     end
 
     local origin = self:GetRotationOrigin(knife, state)
+
+    if state.HoldTarget ~= nil
+        and self:IsWithinHoldRange(knife, state, state.HoldTarget)
+    then
+        state.HoldTargetDistance = math.min(
+            baseline,
+            (state.HoldTarget.Position - origin):Length()
+        )
+    end
+
     local desiredDistance = math.min(
         baseline,
-        (state.HoldTarget.Position - origin):Length()
+        state.HoldTargetDistance or state.HoldDistance
     )
 
     local radialError = desiredDistance - state.HoldDistance
@@ -2163,11 +2559,16 @@ function MomsKnifeHomingModule:BeginFlight(knife, state)
         or state.LaunchAngle - (knife.RotationOffset or 0)
     state.ControlledAngle = state.LaunchAngle
     state.AngularVelocity = 0
+    state.TangentialVelocity = 0
+    state.PreviousControlledDistance = knife:GetKnifeDistance()
     state.Target = nil
     state.NextTarget = nil
     state.TargetPlan = {}
     state.HitTargets = {}
+    state.HitTargetDistances = {}
     state.HoldTarget = nil
+    state.HoldTargetDistance = nil
+    state.HoldAngle = nil
     state.HoldDistance = nil
     state.HoldRadialVelocity = nil
     state.HoldRetracting = false
@@ -2232,7 +2633,11 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.NextTarget = nil
         state.TargetPlan = {}
         state.AngularVelocity = 0
+        state.TangentialVelocity = 0
+        state.PreviousControlledDistance = nil
         state.HoldTarget = nil
+        state.HoldTargetDistance = nil
+        state.HoldAngle = nil
         state.HoldDistance = nil
         state.HoldRadialVelocity = nil
         state.HoldRetracting = false
@@ -2311,14 +2716,25 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.NextTarget = nil
         state.TargetPlan = {}
     else
-        if state.Target ~= nil
-            and not self:IsReachable(
+        if state.Target ~= nil and (
+            not self:IsReachable(
                 knife,
                 state,
                 state.Target,
                 TRACKING_CONE
             )
-        then
+            or (state.HoldTarget == nil
+                and not self:IsTargetMotionFeasible(
+                    knife,
+                    state,
+                    state.Target
+                ))
+        ) then
+            if state.Target == state.HoldTarget then
+                state.HoldAngle = state.HoldAngle
+                    or state.ControlledAngle
+            end
+
             state.Target = nil
             state.NextTarget = nil
             state.TargetPlan = {}
@@ -2329,10 +2745,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
             self:AssignGroupTargets(knifeGroup, frame)
 
             if state.Target == nil then
-                state.HoldTarget = self:FindFarthestHitTarget(knife, state)
-                state.Target = state.HoldTarget
-                state.NextTarget = nil
-                state.TargetPlan = {}
+                self:PrepareFarthestHitHold(knife, state)
             end
         else
             if state.Target ~= nil and state.HoldTarget == nil then
@@ -2346,6 +2759,8 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
                     state.Target = replacement
                     state.NextTarget = nil
                     state.TargetPlan = {}
+                    state.HoldTargetDistance = nil
+                    state.HoldAngle = nil
                 end
             end
 
@@ -2354,6 +2769,10 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
 
                 if unhitTarget ~= nil then
                     state.HoldTarget = nil
+                    state.HoldTargetDistance = nil
+                    state.HoldAngle = nil
+                    state.HoldDistance = nil
+                    state.HoldRadialVelocity = nil
                     state.Target = unhitTarget
                     local _, plan = self:FindTarget(
                         knife,
@@ -2364,10 +2783,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
                     state.TargetPlan = plan
                     state.NextTarget = plan[1] and plan[1].Target or nil
                 else
-                    state.HoldTarget = self:FindFarthestHitTarget(knife, state)
-                    state.Target = state.HoldTarget
-                    state.NextTarget = nil
-                    state.TargetPlan = {}
+                    self:PrepareFarthestHitHold(knife, state)
                 end
             end
 
@@ -2377,14 +2793,16 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
                 state.TargetPlan = plan
                 state.NextTarget = plan[2] and plan[2].Target or nil
 
-                if state.Target == nil then
+                if state.Target ~= nil then
+                    state.HoldTargetDistance = nil
+                    state.HoldAngle = nil
+                    state.HoldDistance = nil
+                    state.HoldRadialVelocity = nil
+                else
                     -- After crossing every reachable target, stay aligned with
                     -- the farthest already-hit enemy still inside calibrated
                     -- range. Native timing continues to control retraction.
-                    state.HoldTarget = self:FindFarthestHitTarget(knife, state)
-                    state.Target = state.HoldTarget
-                    state.NextTarget = nil
-                    state.TargetPlan = {}
+                    self:PrepareFarthestHitHold(knife, state)
                 end
             elseif state.HoldTarget == nil then
                 local _, plan = self:FindTarget(
@@ -2400,13 +2818,16 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
     end
 
     local holdDistance = self:UpdateHoldRadialMotion(knife, state)
+    local controlledDistance = holdDistance or knife:GetKnifeDistance()
+    local steeringActive = state.Target ~= nil or holdDistance ~= nil
 
     local desiredAngle = state.HoldRetracting
             and state.ControlledAngle
+        or (holdDistance ~= nil and state.Target == nil)
+            and (state.HoldAngle or state.ControlledAngle)
         or state.LaunchAngle
     if state.Target ~= nil then
         local origin = self:GetRotationOrigin(knife, state)
-        local controlledDistance = holdDistance or knife:GetKnifeDistance()
         local predicted, interceptFrames, _, predictedOrigin =
             self:GetPredictedPosition(
             knife,
@@ -2425,6 +2846,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
             origin,
             controlledDistance
         )
+        desiredAngle = self:ClampTrackedAngle(state, desiredAngle)
     end
 
     desiredAngle = ClampAngleAround(
@@ -2432,39 +2854,58 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.LaunchAngle,
         TRACKING_CONE
     )
+    if steeringActive then
+        desiredAngle = self:ClampTrackedAngle(state, desiredAngle)
+    end
+
     local angleError = AngleDifference(
         desiredAngle,
         state.ControlledAngle
     )
+    local maximumAngularSpeed, maximumAngularAcceleration =
+        self:GetSteeringMotionLimits(controlledDistance)
     local desiredAngularSpeed = math.min(
-        MAX_ANGULAR_SPEED,
+        maximumAngularSpeed,
         math.abs(angleError) * STEERING_RESPONSE,
-        GetBrakingLimitedSpeed(math.abs(angleError))
+        GetBrakingLimitedSpeed(
+            math.abs(angleError),
+            maximumAngularSpeed,
+            maximumAngularAcceleration
+        )
     )
     local desiredAngularVelocity = angleError < 0
             and -desiredAngularSpeed
         or desiredAngularSpeed
-    state.AngularVelocity = MoveTowards(
-        state.AngularVelocity or 0,
-        desiredAngularVelocity,
-        MAX_ANGULAR_ACCELERATION
-    )
+    state.AngularVelocity, state.TangentialVelocity =
+        self:GetBoundedSteeringVelocity(
+            state,
+            desiredAngularVelocity,
+            controlledDistance
+        )
     local previousControlledAngle = state.ControlledAngle
-    state.ControlledAngle = ClampAngleAround(
+    local nextControlledAngle = ClampAngleAround(
         state.ControlledAngle + state.AngularVelocity,
         state.LaunchAngle,
         TRACKING_CONE
     )
+    state.ControlledAngle = nextControlledAngle
     state.AngularVelocity = AngleDifference(
         state.ControlledAngle,
         previousControlledAngle
     )
+    state.TangentialVelocity = math.rad(state.AngularVelocity)
+        * controlledDistance
+    state.PreviousControlledDistance = controlledDistance
+
+    if state.HoldTarget ~= nil then
+        state.HoldAngle = state.ControlledAngle
+    end
 
     knife.Rotation = state.ControlledAngle - (knife.RotationOffset or 0)
     self:ApplyControlledPosition(
         knife,
         state,
-        holdDistance or knife:GetKnifeDistance()
+        controlledDistance
     )
 end
 
@@ -2485,6 +2926,16 @@ function MomsKnifeHomingModule:OnKnifeCollision(knife, collider)
 
     local colliderHash = EntityHash(collider)
     state.HitTargets[colliderHash] = true
+    state.HitTargetDistances = state.HitTargetDistances or {}
+
+    if self:IsWithinHoldRange(knife, state, collider) then
+        local origin = self:GetRotationOrigin(knife, state)
+        state.HitTargetDistances[colliderHash] = math.min(
+            self:GetMaximumAttackRange(knife, state),
+            (collider.Position - origin):Length()
+        )
+    end
+
     local group = state.KnifeGroup
 
     if state.MultiKnifeGroup and group ~= nil then
@@ -2496,7 +2947,7 @@ function MomsKnifeHomingModule:OnKnifeCollision(knife, collider)
     local function IsUsableUnhitTarget(target)
         return target ~= nil
             and state.HitTargets[EntityHash(target)] ~= true
-            and self:IsReachable(knife, state, target, TRACKING_CONE)
+            and self:IsTargetMotionFeasible(knife, state, target)
     end
 
     local nextTarget
@@ -2533,19 +2984,14 @@ function MomsKnifeHomingModule:OnKnifeCollision(knife, collider)
     end
 
     if nextTarget == nil then
-        state.HoldTarget = self:FindFarthestHitTarget(
-            knife,
-            state,
-            collider
-        )
-        state.Target = state.HoldTarget
-        state.NextTarget = nil
-        state.TargetPlan = {}
+        self:PrepareFarthestHitHold(knife, state, collider)
         self:BeginHoldRadialMotion(knife, state)
         return
     end
 
     state.HoldTarget = nil
+    state.HoldTargetDistance = nil
+    state.HoldAngle = nil
     state.HoldDistance = nil
     state.HoldRadialVelocity = nil
     state.HoldRetracting = false
