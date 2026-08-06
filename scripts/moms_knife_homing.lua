@@ -2,9 +2,10 @@ local MomsKnifeHomingModule = {}
 MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 
 local SETTING_KEY = "momsKnifeHomingFix"
+local MOMS_KNIFE_ENTITY_TYPE = 8
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 22
+local STATE_VERSION = 24
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local ACQUISITION_CONE = 40
 local MAX_LAUNCH_DEVIATION = 75
@@ -19,6 +20,7 @@ local MAX_FLIGHT_INWARD_ACCELERATION = 2
 local MAX_FLIGHT_ACCELERATION_CHANGE = 1
 local MAX_FLIGHT_SPEED = 20
 local FLIGHT_POSITION_RESPONSE = 0.4
+local HOLD_FLIGHT_POSITION_RESPONSE = 0.2
 local MAX_FLIGHT_POSITION_CORRECTION = 6
 local MIN_STEERING_RADIUS = 24
 local TURN_FEASIBILITY_STEP = 0.5
@@ -47,6 +49,7 @@ local HOLD_INWARD_ACCELERATION = 2
 local HOLD_RADIAL_RESPONSE = 0.45
 local HOLD_RADIAL_FEED_FORWARD = 0.55
 local HOLD_DISTANCE_EPSILON = 0.25
+local HOLD_CONTACT_INSET = 1
 local PREPARED_DISTANCE_MATCH_EPSILON = 0.5
 local RANGE_MATCH_EPSILON = 0.5
 local LAYOUT_SHAPE_EPSILON = 0.1
@@ -63,6 +66,12 @@ local LAUNCH_CONVERGENCE_FRAMES = 10
 local HOLD_ANGULAR_APPROACH_MARGIN = 12
 local MAX_NATIVE_BASE_EXTENSION = 60
 local NATIVE_RADIAL_MATCH_EPSILON = 8
+local NATIVE_OUTBOUND_DECELERATION_PER_FRAME = 2
+local NATIVE_RETURN_ACCELERATION_PER_FRAME = 5
+local NATIVE_PATH_SUB_UPDATES_PER_FRAME = 2
+local NATIVE_PATH_ENVELOPE_EPSILON = 0.25
+local NATIVE_PATH_STEP_MULTIPLIER = 1.25
+local NATIVE_PATH_STEP_SLACK = 2
 
 local function NormalizeAngle(angle)
     return (angle + 180) % 360 - 180
@@ -99,6 +108,23 @@ local function MoveTowardsAsymmetric(
     end
 
     return current + difference
+end
+
+local function GetNativeEnvelopeVelocity(releaseVelocity, elapsedFrames)
+    local returnStartFrame = math.floor(
+        releaseVelocity / NATIVE_OUTBOUND_DECELERATION_PER_FRAME
+    ) + 1
+
+    if elapsedFrames <= returnStartFrame then
+        return releaseVelocity
+            - NATIVE_OUTBOUND_DECELERATION_PER_FRAME * elapsedFrames
+    end
+
+    local firstReturnVelocity = releaseVelocity
+        - NATIVE_OUTBOUND_DECELERATION_PER_FRAME * returnStartFrame
+    return firstReturnVelocity
+        - NATIVE_RETURN_ACCELERATION_PER_FRAME
+            * (elapsedFrames - returnStartFrame)
 end
 
 local function GetBrakingLimitedSpeed(
@@ -532,10 +558,131 @@ function MomsKnifeHomingModule:GetRadialSpeed(knife, state, frame)
     return radialSpeed
 end
 
+function MomsKnifeHomingModule:CapturePreparedNativeTrajectory(knife, state)
+    local pathDistance = math.max(0, knife:GetKnifeDistance())
+    local pathSpeed = math.abs(knife:GetKnifeVelocity())
+    state.PreparedNativePathDistance = pathDistance
+
+    if pathSpeed > MOTION_EPSILON then
+        state.PreparedNativePathStep = pathSpeed
+    end
+
+    local origin = self:GetRotationOrigin(knife)
+    local actualDistance = (knife.Position - origin):Length()
+    local radialOffset = actualDistance - pathDistance
+
+    -- Prefer the held/charging geometry because it cannot have touched a
+    -- Multidimensional Baby yet. A zero or negative candidate is inconclusive:
+    -- some native states expose the base extension only on the first flying
+    -- callback, where it is calibrated instead.
+    if radialOffset > MOTION_EPSILON
+        and radialOffset <= MAX_NATIVE_BASE_EXTENSION
+    then
+        state.PreparedNativeRadialOffset = radialOffset
+    end
+end
+
+function MomsKnifeHomingModule:GetNativePathEnvelopeStep(state, frame)
+    local releaseVelocity = state.NativeReleaseVelocity
+    local releaseFrame = state.NativeReleaseFrame
+
+    if releaseVelocity == nil
+        or releaseVelocity <= MOTION_EPSILON
+        or releaseFrame == nil
+    then
+        return nil, nil
+    end
+
+    local elapsedFrames = math.max(0, frame - releaseFrame)
+    local currentVelocity = GetNativeEnvelopeVelocity(
+        releaseVelocity,
+        elapsedFrames
+    )
+    local firstUpdateThisFrame = state.NativePathEnvelopeFrame ~= frame
+    local stepVelocity = currentVelocity
+
+    if firstUpdateThisFrame and elapsedFrames > 0 then
+        stepVelocity = GetNativeEnvelopeVelocity(
+            releaseVelocity,
+            elapsedFrames - 1
+        )
+    elseif not firstUpdateThisFrame then
+        state.NativePathSawMultipleUpdates = true
+    end
+
+    state.NativePathEnvelopeFrame = frame
+    return stepVelocity / NATIVE_PATH_SUB_UPDATES_PER_FRAME,
+        currentVelocity
+end
+
+function MomsKnifeHomingModule:SanitizeNativePathDistance(knife, state)
+    local rawDistance = math.max(0, knife:GetKnifeDistance())
+    local previousRawDistance = state.NativeRawPathDistance
+    local acceptedDistance = state.NativePathDistance
+    local stepLimit = state.NativePathStepLimit
+    local frame = Game():GetFrameCount()
+    local envelopeStep = self:GetNativePathEnvelopeStep(state, frame)
+
+    if stepLimit == nil or stepLimit <= MOTION_EPSILON then
+        local liveStep = math.abs(knife:GetKnifeVelocity())
+
+        if liveStep > MOTION_EPSILON then
+            stepLimit = liveStep
+            state.NativePathStepLimit = liveStep
+        end
+    end
+
+    if previousRawDistance == nil or acceptedDistance == nil then
+        acceptedDistance = rawDistance
+    else
+        local rawStep = rawDistance - previousRawDistance
+
+        if envelopeStep ~= nil then
+            local distanceBoost = rawStep > envelopeStep
+                + NATIVE_PATH_ENVELOPE_EPSILON
+
+            if distanceBoost and state.NativePathSawMultipleUpdates then
+                state.NativePathEnvelopeActive = true
+            end
+
+            if state.NativePathEnvelopeActive then
+                -- Multidimensional Baby raises Mom's Knife velocity by small
+                -- increments over several frames. A discontinuity-only clamp
+                -- misses that boost and inherits its longer native flight.
+                -- Once detected, advance from the release-time vanilla
+                -- velocity curve (outbound -2/frame, return -5/frame) so the
+                -- main knife keeps its original range, speed and phase time.
+                rawStep = envelopeStep
+            end
+        elseif stepLimit ~= nil and stepLimit > MOTION_EPSILON then
+            -- Compatibility fallback for a state created before a held knife
+            -- supplied a release frame. This path is not used by normal new
+            -- throws, but still rejects a one-callback distance rewrite.
+            local maximumStep = stepLimit * NATIVE_PATH_STEP_MULTIPLIER
+                + NATIVE_PATH_STEP_SLACK
+            rawStep = math.max(
+                -maximumStep,
+                math.min(maximumStep, rawStep)
+            )
+        end
+
+        acceptedDistance = math.max(0, acceptedDistance + rawStep)
+    end
+
+    -- Multidimensional Baby can rewrite a projectile's native path or world
+    -- position in one callback. Keep the raw sample only for measuring the
+    -- next delta; every controlled radial reference advances from the accepted
+    -- release trajectory, so a one-frame duplication/boost cannot become a
+    -- permanent range or speed increase.
+    state.NativeRawPathDistance = rawDistance
+    state.NativePathDistance = acceptedDistance
+    return acceptedDistance
+end
+
 function MomsKnifeHomingModule:CaptureNativeRadialDistance(knife, state)
     local origin = self:GetRotationOrigin(knife, state)
     local actualDistance = (knife.Position - origin):Length()
-    local pathDistance = knife:GetKnifeDistance()
+    local pathDistance = self:SanitizeNativePathDistance(knife, state)
     local radialOffset = state.NativeRadialOffset
     local stillShowsAppliedPosition = state.AppliedPosition ~= nil
         and (knife.Position - state.AppliedPosition):Length()
@@ -558,6 +705,7 @@ function MomsKnifeHomingModule:CaptureNativeRadialDistance(knife, state)
     then
         state.NativeRadialDistance = actualDistance
         state.NativeRadialOffset = actualDistance - pathDistance
+        state.NativeRadialOffsetLocked = true
     elseif radialOffset ~= nil
         and math.abs(
             actualDistance - (pathDistance + radialOffset)
@@ -569,6 +717,21 @@ function MomsKnifeHomingModule:CaptureNativeRadialDistance(knife, state)
             0,
             pathDistance + (radialOffset or 0)
         )
+    end
+
+    state.NativeOffsetCaptureCount =
+        (state.NativeOffsetCaptureCount or 0) + 1
+
+    if state.NativeRadialOffset == nil
+        and state.NativeOffsetCaptureCount >= 2
+    then
+        -- Do not leave calibration open for a later familiar/projectile
+        -- interaction. Two native callbacks cover the first observed flying
+        -- frame on Repentance+ 1.9.7.15; after that, an unexplained world-space
+        -- delta is an external transform rather than Mom's Knife base length.
+        state.NativeRadialOffset = 0
+        state.NativeRadialOffsetLocked = true
+        state.NativeRadialDistance = pathDistance
     end
 
     if state.PreviousKnifeDistance == nil then
@@ -1224,6 +1387,34 @@ function MomsKnifeHomingModule:GetHeldBaseAimAngle(knife, group)
     end
 
     return GetWorldRotation(knife) - (knife.RotationOffset or 0)
+end
+
+function MomsKnifeHomingModule:IsKnifeSpawnedProjection(knife)
+    local source = knife.SpawnerEntity
+    local parent = knife.Parent
+    return (source ~= nil and source.Type == MOMS_KNIFE_ENTITY_TYPE)
+        or (parent ~= nil and parent.Type == MOMS_KNIFE_ENTITY_TYPE)
+end
+
+function MomsKnifeHomingModule:IsLateExternalKnife(knife, frame)
+    local source = knife.SpawnerEntity
+
+    if source == nil then
+        return false
+    end
+
+    local owner = self:GetSourcePlayer(knife) or source
+    local group = self.KnifeGroups[EntityHash(owner)]
+
+    if group == nil
+        or group.FlightStartFrame == nil
+        or frame <= group.FlightStartFrame + 1
+        or group.LastFlyingFrame < frame - 1
+    then
+        return false
+    end
+
+    return group.Entries[EntityHash(knife)] == nil
 end
 
 function MomsKnifeHomingModule:RegisterKnifeGroup(knife, frame)
@@ -2799,6 +2990,7 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
                 state.HoldAngle = nil
                 state.HoldDistance = nil
                 state.HoldRadialVelocity = nil
+                state.HoldTargetRadialOffset = nil
                 state.HoldRetracting = false
                 state.HoldRetractionNativeStart = nil
                 state.HoldRetractionVisualStart = nil
@@ -3105,6 +3297,24 @@ function MomsKnifeHomingModule:BeginHoldRadialMotion(knife, state)
         0,
         math.min(baseline, appliedDistance)
     )
+    if state.HoldTarget ~= nil and state.HoldTarget.Position ~= nil then
+        local targetDistance = (state.HoldTarget.Position - origin):Length()
+        local contactOffsetLimit = math.max(
+            0,
+            (knife.Size or 0) + (state.HoldTarget.Size or 0)
+                - HOLD_CONTACT_INSET
+        )
+        state.HoldTargetRadialOffset = math.max(
+            -contactOffsetLimit,
+            math.min(
+                contactOffsetLimit,
+                state.HoldDistance - targetDistance
+            )
+        )
+    else
+        state.HoldTargetRadialOffset =
+            state.HoldTargetRadialOffset or 0
+    end
     -- The hold reference starts at the live collision position and derives
     -- future speed from the target's motion. The rendered/damaging knife keeps
     -- its existing AppliedVelocity and AppliedAcceleration; only the final
@@ -3142,6 +3352,7 @@ function MomsKnifeHomingModule:BeginSharedTargetHold(knife, state, target)
     if not sameTarget then
         state.HoldDistance = nil
         state.HoldRadialVelocity = nil
+        state.HoldTargetRadialOffset = nil
         state.HoldRetracting = false
         state.HoldRetractionNativeStart = nil
         state.HoldRetractionVisualStart = nil
@@ -3235,6 +3446,7 @@ function MomsKnifeHomingModule:BeginFinalGroupTargetHold(group, target)
                 state.HoldAngle = nil
                 state.HoldDistance = nil
                 state.HoldRadialVelocity = nil
+                state.HoldTargetRadialOffset = nil
                 state.HoldRetracting = false
                 state.HoldRetractionNativeStart = nil
                 state.HoldRetractionVisualStart = nil
@@ -3255,6 +3467,7 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
     then
         state.HoldDistance = nil
         state.HoldRadialVelocity = nil
+        state.HoldTargetRadialOffset = nil
         state.HoldRetractionNativeStart = nil
         state.HoldRetractionVisualStart = nil
         state.HoldAngle = nil
@@ -3265,7 +3478,8 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
 
     self:BeginHoldRadialMotion(knife, state)
 
-    local nativeDistance = math.max(0, knife:GetKnifeDistance())
+    local nativeDistance = state.NativePathDistance
+        or math.max(0, knife:GetKnifeDistance())
 
     if state.HoldRetracting
         or (state.RadialSpeed or 0) < -MOTION_EPSILON
@@ -3332,9 +3546,13 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
         hasLiveHoldTarget = true
     end
 
-    local desiredDistance = math.min(
-        baseline,
-        state.HoldTargetDistance or state.HoldDistance
+    local desiredDistance = math.max(
+        0,
+        math.min(
+            baseline,
+            (state.HoldTargetDistance or state.HoldDistance)
+                + (state.HoldTargetRadialOffset or 0)
+        )
     )
 
     local radialError = desiredDistance - state.HoldDistance
@@ -3456,8 +3674,11 @@ function MomsKnifeHomingModule:StepFlightMotion(
 
     local positionError = previousDesiredPosition
         - previousAppliedPosition
+    local positionResponse = state.HoldDistance ~= nil
+            and HOLD_FLIGHT_POSITION_RESPONSE
+        or FLIGHT_POSITION_RESPONSE
     local correctionVelocity = ClampVectorLength(
-        positionError * FLIGHT_POSITION_RESPONSE,
+        positionError * positionResponse,
         MAX_FLIGHT_POSITION_CORRECTION
     )
     local desiredVelocity = ClampVectorLength(
@@ -3600,7 +3821,8 @@ function MomsKnifeHomingModule:UpdateOriginRetraction(knife, state)
         return
     end
 
-    local nativeDistance = math.max(0, knife:GetKnifeDistance())
+    local nativeDistance = state.NativePathDistance
+        or math.max(0, knife:GetKnifeDistance())
     state.OriginRetracting = true
     state.OriginRetractionNativeStart = math.max(
         nativeDistance,
@@ -3646,6 +3868,7 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.OriginRetracting = false
     state.OriginRetractionNativeStart = nil
     state.Flying = true
+    state.KnifeIdentityHash = EntityHash(knife)
     -- MC_POST_KNIFE_UPDATE observes the first flying frame only after vanilla
     -- homing has already rotated toward its stale target position. Preserve
     -- the player's last charging/held angle from the preceding idle frame.
@@ -3672,8 +3895,25 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.ControlledAngle = state.LaunchAngle
     state.AngularVelocity = 0
     state.TangentialVelocity = 0
-    state.NativeRadialDistance = nil
-    state.NativeRadialOffset = nil
+    local liveReleaseVelocity = math.abs(knife:GetKnifeVelocity())
+    local releaseVelocity = liveReleaseVelocity > MOTION_EPSILON
+            and liveReleaseVelocity
+        or state.PreparedNativePathStep
+    state.NativePathStepLimit = releaseVelocity
+    state.NativeReleaseVelocity = releaseVelocity
+    state.NativeReleaseFrame = Game():GetFrameCount()
+    state.NativePathEnvelopeFrame = nil
+    state.NativePathEnvelopeActive = false
+    state.NativePathSawMultipleUpdates = false
+    state.NativeRawPathDistance = state.PreparedNativePathDistance
+    state.NativePathDistance = state.PreparedNativePathDistance
+    state.NativeRadialOffset = state.PreparedNativeRadialOffset
+    state.NativeRadialOffsetLocked = state.NativeRadialOffset ~= nil
+    state.NativeOffsetCaptureCount = 0
+    state.NativeRadialDistance = state.NativePathDistance ~= nil
+            and state.NativeRadialOffset ~= nil
+        and state.NativePathDistance + state.NativeRadialOffset
+        or nil
     state.PreviousControlledDistance = nil
     state.MotionReferenceAngle = nil
     state.MotionReferenceDistance = nil
@@ -3704,6 +3944,7 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.HoldAngle = nil
     state.HoldDistance = nil
     state.HoldRadialVelocity = nil
+    state.HoldTargetRadialOffset = nil
     state.HoldRetracting = false
     state.HoldRetractionNativeStart = nil
     state.HoldRetractionVisualStart = nil
@@ -3730,7 +3971,9 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         return
     end
 
-    if state == nil or state.Version ~= STATE_VERSION then
+    local createdState = state == nil or state.Version ~= STATE_VERSION
+
+    if createdState then
         state = {
             Version = STATE_VERSION,
             Flying = false,
@@ -3740,6 +3983,32 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
     end
 
     local frame = Game():GetFrameCount()
+
+    if state.BypassLateExternalKnife then
+        return
+    end
+
+    local knifeIdentityHash = EntityHash(knife)
+    local inheritedFromAnotherKnife = state.KnifeIdentityHash ~= nil
+        and state.KnifeIdentityHash ~= knifeIdentityHash
+    local knifeSpawnedProjection = self:IsKnifeSpawnedProjection(knife)
+
+    if knife:IsFlying()
+        and (knifeSpawnedProjection
+            or inheritedFromAnotherKnife
+            or (createdState
+                and self:IsLateExternalKnife(knife, frame)))
+    then
+        -- Multidimensional Baby's projections are spawned/parented by the
+        -- real knife (type 8), can copy its Lua data, and may appear either on
+        -- release or several frames later. Treating them as volley members
+        -- reopens the native layout and gives them a false release origin.
+        -- Vanilla already owns their behavior; leave them untouched and keep
+        -- the original group stable.
+        state.BypassLateExternalKnife = true
+        return
+    end
+
     local knifeGroup = self:RegisterKnifeGroup(knife, frame)
     state.MultiKnifeGroup = knifeGroup ~= nil and knifeGroup.Count > 1
     state.KnifeGroup = knifeGroup
@@ -3772,6 +4041,16 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.TangentialVelocity = 0
         state.NativeRadialDistance = nil
         state.NativeRadialOffset = nil
+        state.NativeRadialOffsetLocked = nil
+        state.NativeOffsetCaptureCount = nil
+        state.NativeRawPathDistance = nil
+        state.NativePathDistance = nil
+        state.NativePathStepLimit = nil
+        state.NativeReleaseVelocity = nil
+        state.NativeReleaseFrame = nil
+        state.NativePathEnvelopeFrame = nil
+        state.NativePathEnvelopeActive = nil
+        state.NativePathSawMultipleUpdates = nil
         state.PreviousControlledDistance = nil
         state.MotionReferenceAngle = nil
         state.MotionReferenceDistance = nil
@@ -3797,6 +4076,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.HoldAngle = nil
         state.HoldDistance = nil
         state.HoldRadialVelocity = nil
+        state.HoldTargetRadialOffset = nil
         state.HoldRetracting = false
         state.HoldRetractionNativeStart = nil
         state.HoldRetractionVisualStart = nil
@@ -3818,6 +4098,12 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.PreparedMaxDistance = knife.MaxDistance
         state.PreparedCharge = knife.Charge or 0
         state.PreparedSourceRange = self:GetSourceRange(knife)
+        if finishedFlight then
+            state.PreparedNativeRadialOffset = nil
+            state.PreparedNativePathDistance = nil
+            state.PreparedNativePathStep = nil
+        end
+        self:CapturePreparedNativeTrajectory(knife, state)
         -- Build observed velocity, turn-rate and acceleration history while
         -- the homing knife is held. The first release then leads a moving
         -- target immediately instead of spending one throw learning motion.
@@ -3947,6 +4233,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
                     state.NextTarget = nil
                     state.TargetPlan = {}
                     state.HoldTargetDistance = nil
+                    state.HoldTargetRadialOffset = nil
                     state.HoldAngle = nil
                 end
             end
@@ -3960,6 +4247,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
                     state.HoldAngle = nil
                     state.HoldDistance = nil
                     state.HoldRadialVelocity = nil
+                    state.HoldTargetRadialOffset = nil
                     state.Target = unhitTarget
                     local _, plan = self:FindTarget(
                         knife,
@@ -3985,6 +4273,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
                     state.HoldAngle = nil
                     state.HoldDistance = nil
                     state.HoldRadialVelocity = nil
+                    state.HoldTargetRadialOffset = nil
                 else
                     -- After crossing every reachable target, stay aligned with
                     -- the farthest already-hit enemy still inside calibrated
@@ -4185,6 +4474,7 @@ function MomsKnifeHomingModule:OnKnifeCollision(knife, collider)
     state.HoldAngle = nil
     state.HoldDistance = nil
     state.HoldRadialVelocity = nil
+    state.HoldTargetRadialOffset = nil
     state.HoldRetracting = false
     state.HoldRetractionNativeStart = nil
     state.HoldRetractionVisualStart = nil
