@@ -504,20 +504,6 @@ local MENU_SETTINGS = {
             "My Stuff explains the floor's sign and Zodiac.",
         },
     },
-    {
-        key = "momsKnifeHomingFix",
-        group = "general",
-        zhName = "妈妈的菜刀追踪修复",
-        enName = "Mom's Knife Homing Fix",
-        zhInfo = {
-            "逐帧预判运动，平滑转向并在命中后转火。",
-            "锁定限左右40°、射程130%；往返距离固定。",
-        },
-        enInfo = {
-            "Replans smooth intercepts throughout each throw.",
-            "Locks within ±40°/130%; distance stays fixed.",
-        },
-    },
 }
 
 function ModConfigMenuModule.New(context)

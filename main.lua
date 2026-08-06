@@ -19,7 +19,6 @@ local DEFAULT_SETTINGS = {
     bethanyWispExplosionProtection = true,
     familiarCapacity = true,
     incubusCSectionAnimation = true,
-    momsKnifeHomingFix = true,
     smallPlayerPickupRange = true,
     clogGroundDamage = true,
     lostSoulWhiteFireFix = true,
@@ -201,7 +200,6 @@ local FamiliarCapacityModule = include("scripts/familiar_capacity")
 local IncubusCSectionAnimationModule = include(
     "scripts/incubus_c_section_animation"
 )
-local MomsKnifeHomingModule = include("scripts/moms_knife_homing")
 local PickupRangeModule = include("scripts/pickup_range")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local LostSoulWhiteFireModule = include(
@@ -291,10 +289,6 @@ Context:RegisterModule(
 Context:RegisterModule(
     "incubusCSectionAnimation",
     IncubusCSectionAnimationModule.New(Context)
-)
-Context:RegisterModule(
-    "momsKnifeHomingFix",
-    MomsKnifeHomingModule.New(Context)
 )
 Context:RegisterModule(
     "smallPlayerPickupRange",

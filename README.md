@@ -23,7 +23,6 @@
   <a href="#coupon-full-shop-discount">Coupon Full-Shop Discount</a> •
   <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
-  <a href="#moms-knife-homing-fix">Mom's Knife Homing Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
   <a href="#lost-soul-white-fire-fix">Lost Soul White Fire Fix</a> •
@@ -181,63 +180,6 @@
   again when not firing. Shooting animations, behavior, and other familiars
   remain unchanged.
 
-<a id="moms-knife-homing-fix"></a>
-## Mom's Knife Homing Fix
-
-- When Mom's Knife has homing, it continuously replans a short curved intercept
-  from each hostile enemy's observed movement, turn, and speed change. Charmed
-  or friendly enemies, mechanisms, and other non-target entities are ignored.
-  Angular motion and the extra sideways world speed produced by steering are
-  both speed- and acceleration-bounded. Final world-space movement limits
-  outward acceleration to +1 and inward acceleration/braking to -2, while also
-  limiting how quickly acceleration itself can change. Speeding up, braking,
-  turning, final-target hold, and movement of the range center therefore cannot
-  create a one-frame velocity jump. Targets that cannot be intercepted inside
-  those limits are released, even when this reduces homing coverage. The engine's
-  ordinary outward and return trajectory remains the reference and its native
-  flight timer is unchanged, while both native sub-updates receive continuous
-  physical motion for smoother animation.
-  A knife that has already passed one target's reachable radial band yields to
-  another feasible enemy, and begins a small contact-safe
-  turn toward its next target immediately before the current hit. Multi-shot
-  knives reuse the complete native knife layout collected at frame end instead
-  of rebuilding item interactions. Each knife independently tracks a different
-  reachable enemy whenever possible; additional knives reinforce the least
-  covered targets only after unique enemy coverage is exhausted. When only one
-  target remains, every reachable knife converges on it. Target ownership is
-  shared, but each blade starts continuous acceleration-bounded deceleration
-  tracking only after its own hitbox actually collides, so outer blades keep
-  curving until they connect. Every member
-  uses the same selected-direction acquisition sector while retaining its own
-  native launch line.
-  Compact symmetric spreads use the middle knife—or the midpoint of an even
-  spread—as their shared axis while retaining every native line; backward,
-  omnidirectional, and random extra shots retain the player's native held axis.
-- On the confirmed hit against the last reachable enemy—not from an early
-  distance estimate—the knife begins a visible, acceleration-bounded braking
-  curve while continuing to turn and adapt its speed to that target's live
-  radial movement. A stationary target may produce a smooth zero-speed dwell,
-  while a moving target remains actively followed. If that enemy dies, its
-  last valid radial distance and direction remain the deceleration anchor.
-  Native retraction then
-  carries that held position smoothly inward instead of jumping out to the turnaround point.
-  Native collision damage remains unchanged.
-- Acquisition uses a hard sector 40 degrees to either side of the player's
-  selected firing direction. Independently, each knife may steer by up to 75
-  degrees from its own native launch line so wide Conjoined lanes can converge
-  on the same central target. A target is dropped as soon as it
-  leaves that sector or exceeds the throw's calibrated maximum attack range.
-  During the outbound phase, that sector center and the live knife follow
-  80% of the owner's displacement from the release point; native retraction
-  smoothly raises the follow ratio to 100% so the knife rejoins its owner.
-  Burrows and teleports are treated as position discontinuities rather than
-  high-speed movement, allowing another in-range enemy to take priority.
-  Targets inside native range keep the original distance and timing. The
-  farthest valid target present at release may extend only that throw by the
-  distance it actually needs, up to 30%; that target-derived range and timer do
-  not expand later when an enemy moves outward. Targets that cross it are
-  dropped. Non-homing knives and other homing attacks stay vanilla.
-
 <a id="small-player-pickup-range"></a>
 ## Small Player Pickup Range Fix
 
@@ -318,7 +260,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirty-one gameplay settings remain independently configurable:
+All thirty gameplay settings remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Soul of Eve Bird Fixes
@@ -333,24 +275,23 @@ All thirty-one gameplay settings remain independently configurable:
 11. Ocular Rift Sound Fix
 12. Pill Rewind Fix
 13. Show Zodiac's Floor Item
-14. Mom's Knife Homing Fix
-15. Keep 1.00x Damage Multiplier
-16. Keep Dead Bird Active
-17. Eden Starting Passive Choice
-18. Eden's Blessing Choice
-19. Starting Wooden Cross
-20. Blue Baby Deal Prices
-21. Poop Queue Overflow Fix
-22. Keep Health on Reroll
-23. Keep Absorbed Stats
-24. Reveal Pills with Rerolled PHD
-25. Esau Jr. Pickup Effects
-26. TMTRAINER Reroll Chance
-27. Double Soul Charges
-28. Soul Charge Shield
-29. Shield Effects
-30. Gello Wisp Orbit Fix
-31. Explosion-proof Wisps
+14. Keep 1.00x Damage Multiplier
+15. Keep Dead Bird Active
+16. Eden Starting Passive Choice
+17. Eden's Blessing Choice
+18. Starting Wooden Cross
+19. Blue Baby Deal Prices
+20. Poop Queue Overflow Fix
+21. Keep Health on Reroll
+22. Keep Absorbed Stats
+23. Reveal Pills with Rerolled PHD
+24. Esau Jr. Pickup Effects
+25. TMTRAINER Reroll Chance
+26. Double Soul Charges
+27. Soul Charge Shield
+28. Shield Effects
+29. Gello Wisp Orbit Fix
+30. Explosion-proof Wisps
 
 Options are grouped under the tabs `General`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. The integration supports both Mod
