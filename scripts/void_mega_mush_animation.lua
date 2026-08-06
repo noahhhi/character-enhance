@@ -6,6 +6,7 @@ local MEGA_MUSH = CollectibleType.COLLECTIBLE_MEGA_MUSH
 local VOID_USE_FLAG = UseFlag.USE_VOID
 local MAX_SAVED_PLAYERS = 8
 local TRANSFORM_SKIP_FRAMES = 3
+local NATIVE_TRANSFORM_WAIT_FRAMES = 3
 
 function VoidMegaMushAnimationModule.New(context)
     local savedData = context:GetSavedModuleData(SETTING_KEY)
@@ -13,7 +14,8 @@ function VoidMegaMushAnimationModule.New(context)
         Context = context,
         VoidEffectByPlayerIndex = {},
         TransformSkipByPlayerIndex = {},
-        TransformSkipRegistered = false,
+        NativeTransformByPlayerIndex = {},
+        AnimationCallbackRegistered = false,
     }, VoidMegaMushAnimationModule)
 
     if type(savedData.voidEffectPlayerIndices) == "table" then
@@ -55,10 +57,11 @@ function VoidMegaMushAnimationModule.New(context)
     return self
 end
 
-function VoidMegaMushAnimationModule:CancelTransformSkips()
+function VoidMegaMushAnimationModule:CancelAnimationCallbacks()
     self.TransformSkipByPlayerIndex = {}
+    self.NativeTransformByPlayerIndex = {}
 
-    if not self.TransformSkipRegistered then
+    if not self.AnimationCallbackRegistered then
         return
     end
 
@@ -66,31 +69,58 @@ function VoidMegaMushAnimationModule:CancelTransformSkips()
         ModCallbacks.MC_POST_PLAYER_UPDATE,
         self.TransformSkipCallback
     )
-    self.TransformSkipRegistered = false
+    self.AnimationCallbackRegistered = false
 end
 
-function VoidMegaMushAnimationModule:ScheduleTransformSkip(playerIndex)
-    self.TransformSkipByPlayerIndex[playerIndex] = TRANSFORM_SKIP_FRAMES
-
-    if self.TransformSkipRegistered then
+function VoidMegaMushAnimationModule:EnsureAnimationCallback()
+    if self.AnimationCallbackRegistered then
         return
     end
 
-    self.TransformSkipRegistered = true
+    self.AnimationCallbackRegistered = true
     self.Context.Mod:AddCallback(
         ModCallbacks.MC_POST_PLAYER_UPDATE,
         self.TransformSkipCallback
     )
 end
 
-function VoidMegaMushAnimationModule:FinishTransformSkip(playerIndex)
-    self.TransformSkipByPlayerIndex[playerIndex] = nil
-
-    if next(self.TransformSkipByPlayerIndex) ~= nil then
+function VoidMegaMushAnimationModule:RemoveAnimationCallbackIfIdle()
+    if next(self.TransformSkipByPlayerIndex) ~= nil
+        or next(self.NativeTransformByPlayerIndex) ~= nil
+    then
         return
     end
 
-    self:CancelTransformSkips()
+    self:CancelAnimationCallbacks()
+end
+
+function VoidMegaMushAnimationModule:ScheduleTransformSkip(playerIndex)
+    if self.NativeTransformByPlayerIndex[playerIndex] then
+        return
+    end
+
+    self.TransformSkipByPlayerIndex[playerIndex] = TRANSFORM_SKIP_FRAMES
+    self:EnsureAnimationCallback()
+end
+
+function VoidMegaMushAnimationModule:FinishTransformSkip(playerIndex)
+    self.TransformSkipByPlayerIndex[playerIndex] = nil
+    self:RemoveAnimationCallbackIfIdle()
+end
+
+function VoidMegaMushAnimationModule:StartNativeTransform(playerIndex)
+    self.TransformSkipByPlayerIndex[playerIndex] = nil
+    self.NativeTransformByPlayerIndex[playerIndex] = {
+        Started = false,
+        Seen = false,
+        FramesLeft = NATIVE_TRANSFORM_WAIT_FRAMES,
+    }
+    self:EnsureAnimationCallback()
+end
+
+function VoidMegaMushAnimationModule:FinishNativeTransform(playerIndex)
+    self.NativeTransformByPlayerIndex[playerIndex] = nil
+    self:RemoveAnimationCallbackIfIdle()
 end
 
 function VoidMegaMushAnimationModule:GetPlayerIndex(player)
@@ -142,15 +172,33 @@ function VoidMegaMushAnimationModule:OnUseMegaMush(player, useFlags)
         return
     end
 
-    -- A real activation must keep Mega Mush's native Transform animation.
-    -- Cancel any bounded room-repair skip before recording its provenance.
-    if self.TransformSkipByPlayerIndex[playerIndex] then
-        self:FinishTransformSkip(playerIndex)
-    end
-
     local usedByVoid = type(useFlags) == "number"
         and (useFlags & VOID_USE_FLAG) ~= 0
     self:SetVoidEffect(playerIndex, usedByVoid)
+
+    if usedByVoid and self.Context:IsEnabled(SETTING_KEY) then
+        -- Physical active-item input can finish Void's indirect Mega Mush use
+        -- on its giant idle frame without exposing Transform to the room-only
+        -- skip callback. Give the real activation priority and guarantee that
+        -- the native transformation starts on the next player update.
+        self:StartNativeTransform(playerIndex)
+    else
+        self.TransformSkipByPlayerIndex[playerIndex] = nil
+        self.NativeTransformByPlayerIndex[playerIndex] = nil
+        self:RemoveAnimationCallbackIfIdle()
+    end
+end
+
+function VoidMegaMushAnimationModule:ReplaceMegaMushCostume(player)
+    local itemConfig = Isaac.GetItemConfig():GetCollectible(MEGA_MUSH)
+
+    if not itemConfig then
+        return false
+    end
+
+    player:TryRemoveCollectibleCostume(MEGA_MUSH, true)
+    player:AddCostume(itemConfig, true)
+    return true
 end
 
 function VoidMegaMushAnimationModule:RepairPlayer(player, playerIndex)
@@ -170,18 +218,14 @@ function VoidMegaMushAnimationModule:RepairPlayer(player, playerIndex)
         return false
     end
 
-    local itemConfig = Isaac.GetItemConfig():GetCollectible(MEGA_MUSH)
-
-    if not itemConfig then
-        return false
-    end
-
     -- Void leaves Mega Mush's timed effect active across rooms, but the engine
     -- loses its costume-rendering state. Fully replace the persistent active
     -- costume instead of stacking another copy. Do not use the active item
     -- again or mutate the read-only TemporaryEffect object.
-    player:TryRemoveCollectibleCostume(MEGA_MUSH, true)
-    player:AddCostume(itemConfig, true)
+    if not self:ReplaceMegaMushCostume(player) then
+        return false
+    end
+
     self:ScheduleTransformSkip(playerIndex)
     return true
 end
@@ -198,6 +242,53 @@ end
 
 function VoidMegaMushAnimationModule:OnPostPlayerUpdate(player)
     local playerIndex = self:GetPlayerIndex(player)
+    local nativeTransform = playerIndex ~= nil
+        and self.NativeTransformByPlayerIndex[playerIndex]
+
+    if nativeTransform then
+        local sprite = player:GetSprite()
+
+        if not sprite then
+            nativeTransform.FramesLeft = nativeTransform.FramesLeft - 1
+
+            if nativeTransform.FramesLeft <= 0 then
+                self:FinishNativeTransform(playerIndex)
+            end
+
+            return
+        end
+
+        if not nativeTransform.Started then
+            nativeTransform.Started = true
+
+            if sprite:IsPlaying("Transform") then
+                nativeTransform.Seen = true
+            elseif not self:ReplaceMegaMushCostume(player) then
+                self:FinishNativeTransform(playerIndex)
+            end
+
+            return
+        end
+
+        if sprite:IsPlaying("Transform") then
+            nativeTransform.Seen = true
+            return
+        end
+
+        if nativeTransform.Seen then
+            self:FinishNativeTransform(playerIndex)
+            return
+        end
+
+        nativeTransform.FramesLeft = nativeTransform.FramesLeft - 1
+
+        if nativeTransform.FramesLeft <= 0 then
+            self:FinishNativeTransform(playerIndex)
+        end
+
+        return
+    end
+
     local framesLeft = playerIndex ~= nil
         and self.TransformSkipByPlayerIndex[playerIndex]
 
@@ -231,7 +322,7 @@ function VoidMegaMushAnimationModule:OnNewRoom()
 end
 
 function VoidMegaMushAnimationModule:OnGameStarted(isContinued)
-    self:CancelTransformSkips()
+    self:CancelAnimationCallbacks()
 
     if not isContinued then
         self.VoidEffectByPlayerIndex = {}
@@ -242,7 +333,7 @@ function VoidMegaMushAnimationModule:OnSettingChanged(enabled)
     if enabled then
         self:RepairAllPlayers()
     else
-        self:CancelTransformSkips()
+        self:CancelAnimationCallbacks()
     end
 end
 

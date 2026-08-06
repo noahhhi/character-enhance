@@ -454,11 +454,11 @@ local MENU_SETTINGS = {
         zhName = "虚空超级蘑菇动画修复",
         enName = "Void Mega Mush Animation Fix",
         zhInfo = {
-            "虚空触发超级蘑菇后，换房无缝保持巨型外观。",
+            "虚空触发时正常变身，换房保持巨型外观。",
             "不延长持续时间，也不重复增加属性。",
         },
         enInfo = {
-            "Void's Mega Mush form stays seamless across rooms.",
+            "Void transforms, then stays giant across rooms.",
             "Duration and stat bonuses are not increased.",
         },
     },
