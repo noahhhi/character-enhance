@@ -5,7 +5,7 @@ local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_ENTITY_TYPE = 8
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 25
+local STATE_VERSION = 28
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local ACQUISITION_CONE = 40
 local MAX_LAUNCH_DEVIATION = 75
@@ -16,7 +16,7 @@ local MAX_TANGENTIAL_STEERING_ACCELERATION = 3.5
 local MAX_LAUNCH_TANGENTIAL_STEERING_SPEED = 24
 local MAX_LAUNCH_TANGENTIAL_STEERING_ACCELERATION = 8
 local MAX_FLIGHT_OUTWARD_ACCELERATION = 1
-local MAX_FLIGHT_INWARD_ACCELERATION = 1.4
+local MAX_FLIGHT_INWARD_ACCELERATION = 1.2
 local MAX_FLIGHT_ACCELERATION_CHANGE = 1
 local MAX_FLIGHT_SPEED = 20
 local FLIGHT_POSITION_RESPONSE = 0.4
@@ -45,7 +45,7 @@ local MAX_RANGE_EXTENSION = 1.3
 local HOLD_SWITCH_MARGIN = 6
 local HOLD_MAX_RADIAL_SPEED = 8
 local HOLD_OUTWARD_ACCELERATION = 1
-local HOLD_INWARD_ACCELERATION = 1.4
+local HOLD_INWARD_ACCELERATION = 1.2
 local HOLD_RADIAL_RESPONSE = 0.45
 local HOLD_RADIAL_FEED_FORWARD = 0.55
 local HOLD_DISTANCE_EPSILON = 0.25
@@ -55,6 +55,7 @@ local RANGE_MATCH_EPSILON = 0.5
 local LAYOUT_SHAPE_EPSILON = 0.1
 local LAYOUT_OFFSET_SYMMETRY_EPSILON = 0.5
 local WIDE_LAYOUT_SPAN = 179.5
+local LAYOUT_COLLECTION_FRAMES = 1
 local FLIGHT_ORIGIN_FOLLOW = 0.8
 local TARGET_TURN_FEASIBILITY_SLACK = 1
 local SEQUENCE_LOOKAHEAD_FRAMES = 1
@@ -70,6 +71,7 @@ local NATIVE_OUTBOUND_DECELERATION_PER_FRAME = 2
 local NATIVE_RETURN_ACCELERATION_PER_FRAME = 5
 local NATIVE_PATH_SUB_UPDATES_PER_FRAME = 2
 local NATIVE_PATH_ENVELOPE_EPSILON = 0.25
+local NATIVE_PATH_VELOCITY_BOOST_EPSILON = 0.5
 local NATIVE_PATH_STEP_MULTIPLIER = 1.25
 local NATIVE_PATH_STEP_SLACK = 2
 local RETURN_STOPPING_DISTANCE_MARGIN = 8
@@ -635,7 +637,8 @@ function MomsKnifeHomingModule:SanitizeNativePathDistance(knife, state)
         return state.NativePathDistance
     end
 
-    local envelopeStep = self:GetNativePathEnvelopeStep(state, frame)
+    local envelopeStep, envelopeVelocity =
+        self:GetNativePathEnvelopeStep(state, frame)
 
     if stepLimit == nil or stepLimit <= MOTION_EPSILON then
         local liveStep = math.abs(knife:GetKnifeVelocity())
@@ -655,7 +658,15 @@ function MomsKnifeHomingModule:SanitizeNativePathDistance(knife, state)
             local distanceBoost = rawStep > envelopeStep
                 + NATIVE_PATH_ENVELOPE_EPSILON
 
-            if distanceBoost and state.NativePathSawMultipleUpdates then
+            local liveVelocity = math.abs(knife:GetKnifeVelocity())
+            local velocityBoost = envelopeVelocity ~= nil
+                and liveVelocity > math.abs(envelopeVelocity)
+                    + NATIVE_PATH_VELOCITY_BOOST_EPSILON
+
+            if distanceBoost
+                and state.NativePathSawMultipleUpdates
+                and (state.FamiliarCorrectionActive or velocityBoost)
+            then
                 state.NativePathEnvelopeActive = true
             end
 
@@ -693,7 +704,82 @@ function MomsKnifeHomingModule:SanitizeNativePathDistance(knife, state)
     return acceptedDistance
 end
 
+function MomsKnifeHomingModule:SynchronizeProjectionSourceTrajectory(
+    knife,
+    state
+)
+    if not state.IsKnifeProjection then
+        return false
+    end
+
+    local projectionSource = state.ProjectionTrajectorySourceKnife
+        or self:GetProjectionTrajectorySourceKnife(knife)
+        or state.ProjectionSourceKnife
+        or self:GetProjectionSourceKnife(knife)
+
+    if projectionSource == nil or not projectionSource:Exists() then
+        return false
+    end
+
+    local sourceState = projectionSource:GetData()[STATE_KEY]
+
+    if sourceState == nil
+        or sourceState == state
+        or not sourceState.Flying
+        or sourceState.NativePathDistance == nil
+        or sourceState.NativeRadialDistance == nil
+    then
+        return false
+    end
+
+    -- A Multidimensional Baby projection is another independently targetable
+    -- knife, not a second radial clock. Copy the source knife's accepted path
+    -- sample on every native callback so both projections preserve the exact
+    -- unboosted outbound/return cadence until their tracking choices actually
+    -- diverge. Their own boosted GetKnifeDistance/velocity samples are kept out
+    -- of the controller entirely.
+    local frame = Game():GetFrameCount()
+
+    if sourceState.ProjectionClockFrame ~= frame then
+        sourceState.ProjectionClockFrame = frame
+        sourceState.ProjectionClockPathDistance =
+            sourceState.NativePathDistance
+        sourceState.ProjectionClockRadialDistance =
+            sourceState.NativeRadialDistance
+        sourceState.ProjectionClockRadialOffset =
+            sourceState.NativeRadialOffset or 0
+        sourceState.ProjectionClockEnvelopeFrame =
+            sourceState.NativePathEnvelopeFrame
+    end
+
+    state.NativePathDistance = sourceState.ProjectionClockPathDistance
+    state.NativeRadialDistance = sourceState.ProjectionClockRadialDistance
+    state.NativeRadialOffset = sourceState.ProjectionClockRadialOffset or 0
+    state.NativeRadialOffsetLocked = true
+    state.NativePathEnvelopeFrame =
+        sourceState.ProjectionClockEnvelopeFrame
+    state.NativePathEnvelopeActive = true
+    state.NativePathSawMultipleUpdates = true
+    state.NativeReleaseVelocity = sourceState.NativeReleaseVelocity
+        or state.NativeReleaseVelocity
+    state.NativeReleaseFrame = sourceState.NativeReleaseFrame
+        or state.NativeReleaseFrame
+    state.NativePathStepLimit = sourceState.NativePathStepLimit
+        or state.NativePathStepLimit
+    state.ProjectionSourceSampleFrame = frame
+    return true
+end
+
 function MomsKnifeHomingModule:CaptureNativeRadialDistance(knife, state)
+    if self:SynchronizeProjectionSourceTrajectory(knife, state) then
+        if state.PreviousKnifeDistance == nil then
+            state.PreviousKnifeDistance = state.NativeRadialDistance
+            state.DistanceFrame = Game():GetFrameCount()
+        end
+
+        return state.NativeRadialDistance
+    end
+
     local origin = self:GetRotationOrigin(knife, state)
     local actualDistance = (knife.Position - origin):Length()
     local pathDistance = self:SanitizeNativePathDistance(knife, state)
@@ -1206,6 +1292,30 @@ function MomsKnifeHomingModule:GetProjectionSourceKnife(knife)
     return nil
 end
 
+function MomsKnifeHomingModule:GetProjectionTrajectorySourceKnife(knife)
+    local sourceKnife = self:GetProjectionSourceKnife(knife)
+
+    -- A familiar may create a short knife-to-knife projection chain. Resolve
+    -- the first real knife in that chain so sibling and nested projections all
+    -- read one accepted radial clock rather than sampling one another at
+    -- different callback phases.
+    for _ = 1, 4 do
+        if sourceKnife == nil then
+            break
+        end
+
+        local parentKnife = self:GetProjectionSourceKnife(sourceKnife)
+
+        if parentKnife == nil then
+            break
+        end
+
+        sourceKnife = parentKnife
+    end
+
+    return sourceKnife
+end
+
 function MomsKnifeHomingModule:GetRootKnifeSource(knife)
     local source = knife.SpawnerEntity or knife.Parent
 
@@ -1379,11 +1489,22 @@ function MomsKnifeHomingModule:ApplyControlledTransform(
         state.LaunchAngle,
         MAX_LAUNCH_DEVIATION
     )
-    local appliedAngle = self:ApplyControlledPosition(
+    local appliedAngle, passiveNativeTransform = self:ApplyControlledPosition(
         knife,
         state,
         controlledDistance
     )
+
+    if passiveNativeTransform then
+        -- With no lock and no familiar range correction, vanilla owns the
+        -- complete transform. Writing only Rotation/SpriteRotation here still
+        -- perturbs native multi-shot layouts even when Position is untouched:
+        -- stacked shot multipliers can expose their final offsets one callback
+        -- later than their first world angle. Preserve all three together so
+        -- a targetless volley is byte-for-byte the engine trajectory.
+        return appliedAngle
+    end
+
     knife.Rotation = appliedAngle - (knife.RotationOffset or 0)
 
     -- EntityKnife's rendered sprite points along SpriteRotation + 90 degrees.
@@ -1393,6 +1514,7 @@ function MomsKnifeHomingModule:ApplyControlledTransform(
     -- knife's own independent launch cone on every flying frame.
     knife.SpriteRotation = appliedAngle
         - KNIFE_SPRITE_FORWARD_OFFSET
+    return appliedAngle
 end
 
 function MomsKnifeHomingModule:GetHeldAimAngle(knife, group)
@@ -1437,8 +1559,60 @@ function MomsKnifeHomingModule:GetHeldBaseAimAngle(knife, group)
     return GetWorldRotation(knife) - (knife.RotationOffset or 0)
 end
 
-function MomsKnifeHomingModule:IsKnifeSpawnedProjection(knife)
-    return self:GetProjectionSourceKnife(knife) ~= nil
+function MomsKnifeHomingModule:IsKnifeSpawnedProjection(
+    knife,
+    frame,
+    projectionSource
+)
+    local state = knife:GetData()[STATE_KEY]
+
+    if state ~= nil then
+        if state.NativeReleaseMember then
+            return false
+        end
+
+        if state.IsKnifeProjection then
+            return true
+        end
+    end
+
+    projectionSource = projectionSource
+        or self:GetProjectionSourceKnife(knife)
+
+    if projectionSource == nil then
+        return false
+    end
+
+    local sourceState = projectionSource:GetData()[STATE_KEY]
+
+    if sourceState == nil or not sourceState.Flying then
+        return false
+    end
+
+    if sourceState.FamiliarCorrectionActive then
+        return true
+    end
+
+    local releaseVelocity = sourceState.NativeReleaseVelocity
+    local liveVelocity = math.abs(knife:GetKnifeVelocity())
+
+    if releaseVelocity ~= nil
+        and liveVelocity > releaseVelocity
+            + NATIVE_PATH_VELOCITY_BOOST_EPSILON
+    then
+        return true
+    end
+
+    frame = frame or Game():GetFrameCount()
+    local releaseFrame = sourceState.NativeReleaseFrame
+
+    -- Inner Eye, 20/20, Mutant Spider, Conjoined and their stacks can create
+    -- most lanes from another knife on the release callback (or expose the
+    -- stable spread one update later). Those are native volley members, not
+    -- familiar projections. A new knife appearing only after that bounded
+    -- release window is the standard-API signature available for a true
+    -- mid-flight Multidimensional Baby projection.
+    return releaseFrame ~= nil and frame > releaseFrame + 1
 end
 
 function MomsKnifeHomingModule:IsLateExternalKnife(knife, frame)
@@ -1494,6 +1668,8 @@ function MomsKnifeHomingModule:RegisterKnifeGroup(knife, frame)
         group.LayoutCandidateAngles = nil
         group.LayoutCandidateOffsets = nil
         group.LayoutShape = nil
+        group.LayoutSymmetryCorrected = false
+        group.LayoutCollectionStartFrame = frame
         group.CoveredTargets = {}
         group.FinalHoldTarget = nil
         group.AssignmentFrame = -1
@@ -1524,7 +1700,7 @@ function MomsKnifeHomingModule:RegisterKnifeGroup(knife, frame)
 
     knifeEntry.Knife = knife
     knifeEntry.SeenFrame = frame
-    knifeEntry.IsProjection = self:IsKnifeSpawnedProjection(knife)
+    knifeEntry.IsProjection = self:IsKnifeSpawnedProjection(knife, frame)
 
     if not flying then
         knifeEntry.NativeHeldAngle = GetWorldRotation(knife)
@@ -1551,14 +1727,24 @@ function MomsKnifeHomingModule:RegisterKnifeGroup(knife, frame)
             -- allocation without reopening or redefining the already proven
             -- vanilla launch layout of the original volley.
             knifeEntry.NativeLaunchAngle = GetWorldRotation(knife)
-        elseif group.FlightReady then
-            -- A genuinely late native member invalidates the completed
-            -- snapshot. Re-open collection instead of assigning that knife an
-            -- item-specific guessed angle.
-            group.FlightReady = false
-            group.LayoutCandidateAngles = nil
-            group.LayoutCandidateOffsets = nil
-            group.LayoutShape = nil
+        else
+            -- Native multiplier lanes can begin their independent flight
+            -- callbacks over several frames. Restart the bounded collection
+            -- window whenever a new lane arrives so the first knife cannot
+            -- finalize a partial Conjoined/Inner Eye/20/20/Mutant Spider
+            -- layout. This work occurs only once per member per throw.
+            group.LayoutCollectionStartFrame = frame
+
+            if group.FlightReady then
+                -- A genuinely late native member invalidates the completed
+                -- snapshot. Re-open collection instead of assigning that
+                -- knife an item-specific guessed angle.
+                group.FlightReady = false
+                group.LayoutCandidateAngles = nil
+                group.LayoutCandidateOffsets = nil
+                group.LayoutShape = nil
+                group.LayoutSymmetryCorrected = false
+            end
         end
     end
 
@@ -1723,36 +1909,181 @@ function MomsKnifeHomingModule:GetNativeCentralAxis(group, angles, offsets)
             or math.max(maximumOffset, offset)
     end
 
+    local compactLayout = GetCircularSpan(angleList) < WIDE_LAYOUT_SPAN
     local symmetricNativeOffsets = minimumOffset ~= nil
         and maximumOffset ~= nil
         and math.abs(minimumOffset + maximumOffset)
             <= LAYOUT_OFFSET_SYMMETRY_EPSILON
-    local compactLayout = GetCircularSpan(angleList) < WIDE_LAYOUT_SPAN
 
-    -- Ordinary shot multipliers expose a compact spread with symmetric native
-    -- offsets: odd groups use the middle knife and even groups use the middle
-    -- pair. Omnidirectional/backward/random emitters do not have one geometric
-    -- middle that represents the player's shot; retain the held vanilla axis
-    -- for those layouts while still preserving every individual launch line.
-    if (#angleList > 1 and (not symmetricNativeOffsets or not compactLayout))
-        and group.PreflightAimAngle ~= nil
-    then
+    if #angleList > 1 and compactLayout and symmetricNativeOffsets then
+        local reference = angleList[1]
+        local minimumDifference = 0
+        local maximumDifference = 0
+
+        for _, angle in ipairs(angleList) do
+            local difference = AngleDifference(angle, reference)
+            minimumDifference = math.min(minimumDifference, difference)
+            maximumDifference = math.max(maximumDifference, difference)
+        end
+
+        -- A compact layout whose native offset envelope is bilateral is an
+        -- ordinary forward multi-shot fan. Its two outer rays define the
+        -- vanilla firing axis. Unlike a median, this remains centered when
+        -- nested multipliers place extra inner lanes on only one side (the
+        -- live six- and seven-knife Conjoined stacks). It also works for even
+        -- groups without guessing which member should be the nonexistent
+        -- middle knife.
+        return reference
+            + (minimumDifference + maximumDifference) * 0.5
+    end
+
+    -- Omnidirectional/backward/random emitters either span a wide arc or have
+    -- a one-sided native offset envelope. Preserve the selected vanilla axis
+    -- while retaining every individual launch line unchanged.
+    if #angleList > 1 and group.PreflightAimAngle ~= nil then
         return group.PreflightAimAngle
     end
 
     return GetMedianAngle(angleList) or group.PreflightAimAngle
 end
 
+function MomsKnifeHomingModule:GetSymmetricNativeAngles(
+    group,
+    angles,
+    centralAxis
+)
+    local lanes = {}
+    local symmetricAngles = {}
+
+    for hash, angle in pairs(angles) do
+        local difference = AngleDifference(angle, centralAxis)
+
+        -- Wide/backward/random emitters do not represent a forward multi-shot
+        -- fan. Preserve them exactly; only the ordinary independently homing
+        -- lanes inside their permitted launch cone are mirror-normalized.
+        if math.abs(difference)
+            > MAX_LAUNCH_DEVIATION + LAYOUT_SHAPE_EPSILON
+        then
+            return angles, false
+        end
+
+        lanes[#lanes + 1] = {
+            Hash = hash,
+            Angle = angle,
+            Difference = difference,
+            Held = group.Entries[hash] ~= nil
+                and group.Entries[hash].NativeHeldAngle ~= nil,
+        }
+    end
+
+    if #lanes <= 1 then
+        return angles, false
+    end
+
+    local centerLane
+
+    if #lanes % 2 == 1 then
+        table.sort(lanes, function(left, right)
+            local leftDistance = math.abs(left.Difference)
+            local rightDistance = math.abs(right.Difference)
+
+            if math.abs(leftDistance - rightDistance)
+                > INTERCEPT_EPSILON
+            then
+                return leftDistance < rightDistance
+            end
+
+            if left.Held ~= right.Held then
+                return left.Held
+            end
+
+            return left.Hash < right.Hash
+        end)
+        centerLane = table.remove(lanes, 1)
+        symmetricAngles[centerLane.Hash] = centralAxis
+    end
+
+    table.sort(lanes, function(left, right)
+        local leftDistance = math.abs(left.Difference)
+        local rightDistance = math.abs(right.Difference)
+
+        if math.abs(leftDistance - rightDistance) > INTERCEPT_EPSILON then
+            return leftDistance > rightDistance
+        end
+
+        return left.Hash < right.Hash
+    end)
+
+    for index = 1, #lanes, 2 do
+        local first = lanes[index]
+        local second = lanes[index + 1]
+
+        if second == nil then
+            return angles, false
+        end
+
+        local magnitude = (
+            math.abs(first.Difference)
+                + math.abs(second.Difference)
+        ) * 0.5
+        local firstSign
+        local secondSign
+
+        if first.Difference * second.Difference < 0 then
+            firstSign = first.Difference < 0 and -1 or 1
+            secondSign = -firstSign
+        else
+            local sharedNegative = first.Difference < 0
+                or (first.Difference == 0 and second.Difference < 0)
+            local sharedSign = sharedNegative and -1 or 1
+            firstSign = sharedSign
+            secondSign = -sharedSign
+        end
+
+        symmetricAngles[first.Hash] = centralAxis + firstSign * magnitude
+        symmetricAngles[second.Hash] = centralAxis + secondSign * magnitude
+    end
+
+    local changed = false
+
+    for hash, angle in pairs(angles) do
+        if math.abs(AngleDifference(symmetricAngles[hash], angle))
+            > LAYOUT_SHAPE_EPSILON
+        then
+            changed = true
+            break
+        end
+    end
+
+    return symmetricAngles, changed
+end
+
 function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
-    local angles = group.LayoutCandidateAngles
+    local nativeAngles = group.LayoutCandidateAngles
     local offsets = group.LayoutCandidateOffsets
 
-    if angles == nil or offsets == nil then
+    if nativeAngles == nil or offsets == nil then
         return
     end
 
-    local centralAxis = self:GetNativeCentralAxis(group, angles, offsets)
+    local centralAxis = self:GetNativeCentralAxis(
+        group,
+        nativeAngles,
+        offsets
+    )
+    local angles, symmetryCorrected = self:GetSymmetricNativeAngles(
+        group,
+        nativeAngles,
+        centralAxis
+    )
+    local nativeMemberCount = 0
+
+    for _ in pairs(angles) do
+        nativeMemberCount = nativeMemberCount + 1
+    end
+
     group.NativeCentralAimAngle = centralAxis
+    group.LayoutSymmetryCorrected = symmetryCorrected
     group.FlightReady = true
     group.NativeLayoutFrame = frame
 
@@ -1770,6 +2101,13 @@ function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
             entry.NativeLaunchAngle = launchAngle
             entry.NativeLaunchCaptureFrame = frame
             memberState.NativeLaunchAngle = launchAngle
+            memberState.NativeEngineLaunchAngle = nativeAngles[hash]
+            memberState.LayoutLaunchTransformActive = nativeMemberCount > 0
+            memberState.LayoutSymmetryCorrected = symmetryCorrected
+                and math.abs(AngleDifference(
+                    launchAngle,
+                    nativeAngles[hash]
+                )) > LAYOUT_SHAPE_EPSILON
             memberState.BaseAimAngle = centralAxis
             memberState.LaunchAngle = launchAngle
             memberState.ControlledAngle = memberState.LaunchAngle
@@ -1803,6 +2141,25 @@ function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
                 memberState.NativeRadialDistance
                 or entry.Knife:GetKnifeDistance()
             memberState.LastSteeringFrame = frame
+
+            if memberState.LayoutLaunchTransformActive then
+                local origin = self:GetRotationOrigin(
+                    entry.Knife,
+                    memberState
+                )
+                local distance = memberState.NativeRadialDistance
+                    or (entry.Knife.Position - origin):Length()
+                self:PreserveLaunchRayNativeMotion(
+                    entry.Knife,
+                    memberState,
+                    distance,
+                    origin
+                )
+                entry.Knife.Rotation = launchAngle
+                    - (entry.Knife.RotationOffset or 0)
+                entry.Knife.SpriteRotation = launchAngle
+                    - KNIFE_SPRITE_FORWARD_OFFSET
+            end
         end
     end
 
@@ -1871,9 +2228,14 @@ function MomsKnifeHomingModule:OnPostUpdate()
                 end
 
                 local memberCount = #layout.Members
-                local elapsed = frame - group.FlightStartFrame
+                local elapsed = frame - (
+                    group.LayoutCollectionStartFrame
+                        or group.FlightStartFrame
+                )
 
-                if memberCount == 1 or elapsed >= 1 then
+                if memberCount == 1
+                    or elapsed >= LAYOUT_COLLECTION_FRAMES
+                then
                     self:FinalizeKnifeLayout(group, frame)
                 end
             end
@@ -3922,6 +4284,115 @@ function MomsKnifeHomingModule:StepFlightMotion(
     return appliedPosition
 end
 
+function MomsKnifeHomingModule:PreservePassiveNativeMotion(
+    knife,
+    state,
+    desiredAngle,
+    desiredDistance,
+    desiredOrigin
+)
+    local nativePosition = CopyVector(knife.Position)
+    local nativeAngle = GetWorldRotation(knife)
+    local previousPosition = state.AppliedPosition
+    local previousVelocity = state.AppliedVelocity
+    local radialDelta = nativePosition - desiredOrigin
+    local radialLength = radialDelta:Length()
+    local radialUnit = radialLength > MOTION_EPSILON
+            and radialDelta * (1 / radialLength)
+        or state.MotionRadialUnit
+        or Vector(1, 0)
+    local observedVelocity
+
+    if previousPosition ~= nil then
+        observedVelocity = nativePosition - previousPosition
+    end
+
+    local observedAcceleration = Vector(0, 0)
+
+    if observedVelocity ~= nil and previousVelocity ~= nil then
+        observedAcceleration = ClampFlightAcceleration(
+            observedVelocity - previousVelocity,
+            radialUnit
+        )
+    end
+
+    -- With no acquired target and no familiar correction, the engine already
+    -- provides the canonical straight multi-knife trajectory. Do not feed
+    -- each lane through a separately phased position integrator: merely
+    -- observe the native kinematics so a later real target can enter the same
+    -- bounded controller without a cold-start velocity jump.
+    state.MotionReferenceAngle = nativeAngle
+    state.MotionReferenceDistance = desiredDistance
+    state.MotionReferenceOrigin = CopyVector(desiredOrigin)
+    state.MotionReferenceHoldActive = false
+    state.MotionReferencePosition = CopyVector(nativePosition)
+    state.MotionRadialUnit = radialUnit
+    state.MotionInterpolationFrame = nil
+    state.MotionInterpolationStep = nil
+    state.MotionFrameStartAngle = nil
+    state.MotionFrameTargetAngle = nil
+    state.MotionFrameStartDistance = nil
+    state.MotionFrameTargetDistance = nil
+    state.AppliedPosition = CopyVector(nativePosition)
+    state.AppliedVelocity = observedVelocity ~= nil
+            and CopyVector(observedVelocity)
+        or nil
+    state.AppliedAcceleration = observedAcceleration
+    state.PreviousTargetAcceleration = CopyVector(observedAcceleration)
+    state.AppliedAngle = nativeAngle
+    state.PassiveNativeTransform = true
+    return nativePosition, nativeAngle
+end
+
+function MomsKnifeHomingModule:PreserveLaunchRayNativeMotion(
+    knife,
+    state,
+    desiredDistance,
+    desiredOrigin
+)
+    local radians = math.rad(state.LaunchAngle)
+    local nativePosition = desiredOrigin + Vector(
+        math.cos(radians) * desiredDistance,
+        math.sin(radians) * desiredDistance
+    )
+    local previousPosition = state.AppliedPosition
+    local previousVelocity = state.AppliedVelocity
+    local observedVelocity = previousPosition ~= nil
+            and nativePosition - previousPosition
+        or nil
+    local radialUnit = Vector(math.cos(radians), math.sin(radians))
+    local observedAcceleration = Vector(0, 0)
+
+    if observedVelocity ~= nil and previousVelocity ~= nil then
+        observedAcceleration = ClampFlightAcceleration(
+            observedVelocity - previousVelocity,
+            radialUnit
+        )
+    end
+
+    -- Layout stabilization (including optional mirror-normalization) changes
+    -- only the persistent launch ray. Radial distance and timing remain the
+    -- single native value, so every targetless lane advances with identical
+    -- speed instead of accepting a later engine angle rewrite or entering an
+    -- independently phased motion controller.
+    knife.Position = nativePosition
+    state.MotionReferenceAngle = state.LaunchAngle
+    state.MotionReferenceDistance = desiredDistance
+    state.MotionReferenceOrigin = CopyVector(desiredOrigin)
+    state.MotionReferenceHoldActive = false
+    state.MotionReferencePosition = CopyVector(nativePosition)
+    state.MotionRadialUnit = radialUnit
+    state.AppliedPosition = CopyVector(nativePosition)
+    state.AppliedVelocity = observedVelocity ~= nil
+            and CopyVector(observedVelocity)
+        or nil
+    state.AppliedAcceleration = observedAcceleration
+    state.PreviousTargetAcceleration = CopyVector(observedAcceleration)
+    state.AppliedAngle = state.LaunchAngle
+    state.PassiveNativeTransform = false
+    return state.LaunchAngle
+end
+
 function MomsKnifeHomingModule:ApplyControlledPosition(
     knife,
     state,
@@ -3936,6 +4407,39 @@ function MomsKnifeHomingModule:ApplyControlledPosition(
     local holdActive = state.HoldDistance ~= nil
     local desiredOrigin = self:GetRotationOrigin(knife, state)
     local frame = Game():GetFrameCount()
+
+    if state.Target ~= nil
+        or holdActive
+        or state.IsKnifeProjection
+        or state.NativePathEnvelopeActive
+    then
+        -- Once a throw has actually tracked or required familiar correction,
+        -- keep ownership until it ends so losing a target cannot snap from the
+        -- controlled curve back onto a differently phased native position.
+        state.WorldMotionActive = true
+    end
+
+    if not state.WorldMotionActive then
+        if state.LayoutLaunchTransformActive then
+            return self:PreserveLaunchRayNativeMotion(
+                knife,
+                state,
+                desiredDistance,
+                desiredOrigin
+            ), false
+        end
+
+        local _, nativeAngle = self:PreservePassiveNativeMotion(
+            knife,
+            state,
+            desiredAngle,
+            desiredDistance,
+            desiredOrigin
+        )
+        return nativeAngle, true
+    end
+
+    state.PassiveNativeTransform = false
 
     if state.MotionInterpolationFrame ~= frame then
         state.MotionInterpolationFrame = frame
@@ -3964,6 +4468,11 @@ function MomsKnifeHomingModule:ApplyControlledPosition(
             state.MotionFrameTargetAngle,
             state.MotionFrameStartAngle
         ) * interpolation
+    appliedDesiredAngle = ClampAngleAround(
+        appliedDesiredAngle,
+        state.LaunchAngle,
+        MAX_LAUNCH_DEVIATION
+    )
     local appliedDesiredDistance = desiredDistance
 
     if holdActive and state.MotionReferenceHoldActive then
@@ -3987,7 +4496,7 @@ function MomsKnifeHomingModule:ApplyControlledPosition(
     -- and renders Mom's Knife twice inside that frame. Continue the physical
     -- velocity on both native sub-updates and pass every source of motion
     -- through one world-space acceleration limiter. Outward acceleration is
-    -- capped at +1, inward acceleration/braking at -1.4, and the acceleration
+    -- capped at +1, inward acceleration/braking at -1.2, and the acceleration
     -- vector itself may change by at most one unit per native sub-update. This
     -- preserves a continuous speed curve through acceleration, contact hold,
     -- optional zero-speed dwell, and native return. Native damage and the
@@ -4009,7 +4518,7 @@ function MomsKnifeHomingModule:ApplyControlledPosition(
         MAX_LAUNCH_DEVIATION
     )
     state.AppliedAngle = appliedAngle
-    return appliedAngle
+    return appliedAngle, false
 end
 
 function MomsKnifeHomingModule:UpdateOriginRetraction(knife, state)
@@ -4066,6 +4575,10 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.OriginRetracting = false
     state.OriginRetractionNativeStart = nil
     state.ReturnOriginBraking = false
+    state.WorldMotionActive = false
+    state.LayoutLaunchTransformActive = false
+    state.LayoutSymmetryCorrected = false
+    state.NativeEngineLaunchAngle = nil
     state.Flying = true
     state.KnifeIdentityHash = EntityHash(knife)
     -- MC_POST_KNIFE_UPDATE observes the first flying frame only after vanilla
@@ -4104,6 +4617,12 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.NativePathEnvelopeFrame = nil
     state.NativePathEnvelopeActive = false
     state.NativePathSawMultipleUpdates = false
+    state.FamiliarCorrectionActive = false
+    state.ProjectionClockFrame = nil
+    state.ProjectionClockPathDistance = nil
+    state.ProjectionClockRadialDistance = nil
+    state.ProjectionClockRadialOffset = nil
+    state.ProjectionClockEnvelopeFrame = nil
     state.NativeRawPathDistance = state.PreparedNativePathDistance
     state.NativePathDistance = state.PreparedNativePathDistance
     state.NativeRadialOffset = state.PreparedNativeRadialOffset
@@ -4173,6 +4692,10 @@ function MomsKnifeHomingModule:AdoptProjectionSourceTrajectory(
         return false
     end
 
+    sourceState.FamiliarCorrectionActive = true
+    sourceState.WorldMotionActive = true
+    state.FamiliarCorrectionActive = true
+
     local sourcePathDistance = sourceState.NativePathDistance
         or math.max(0, projectionSource:GetKnifeDistance())
     local sourceRadialDistance = sourceState.NativeRadialDistance
@@ -4183,6 +4706,7 @@ function MomsKnifeHomingModule:AdoptProjectionSourceTrajectory(
         or state.BaselineMaxDistance
 
     state.ProjectionTimelineAdopted = true
+    state.WorldMotionActive = true
     state.NativeReleaseVelocity = sourceState.NativeReleaseVelocity
         or state.NativeReleaseVelocity
     state.NativeReleaseFrame = sourceState.NativeReleaseFrame
@@ -4285,8 +4809,10 @@ function MomsKnifeHomingModule:BeginProjectionFlight(
     knifeGroup,
     projectionSource
 )
-    local sourceState = projectionSource
-        and projectionSource:GetData()[STATE_KEY]
+    local trajectorySource = self:GetProjectionTrajectorySourceKnife(knife)
+        or projectionSource
+    local sourceState = trajectorySource
+        and trajectorySource:GetData()[STATE_KEY]
         or nil
     local baseline = sourceState
             and sourceState.BaselineMaxDistance
@@ -4324,14 +4850,16 @@ function MomsKnifeHomingModule:BeginProjectionFlight(
     self:BeginFlight(knife, state, knifeGroup)
     state.IsKnifeProjection = true
     state.ProjectionSourceKnife = projectionSource
+    state.ProjectionTrajectorySourceKnife = trajectorySource
     state.ProjectionSourceHash = projectionSource
             and EntityHash(projectionSource)
         or nil
     state.ProjectionTimelineAdopted = false
+    state.WorldMotionActive = true
     self:AdoptProjectionSourceTrajectory(
         knife,
         state,
-        projectionSource
+        trajectorySource
     )
 end
 
@@ -4347,16 +4875,17 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         return
     end
 
+    local frame = Game():GetFrameCount()
     local knifeIdentityHash = EntityHash(knife)
     local projectionSource = self:GetProjectionSourceKnife(knife)
-    local knifeSpawnedProjection = projectionSource ~= nil
-    local inheritedProjectionState = knifeSpawnedProjection
+    local knifeHasKnifeSource = projectionSource ~= nil
+    local inheritedKnifeState = knifeHasKnifeSource
         and state ~= nil
         and state.KnifeIdentityHash ~= nil
         and state.KnifeIdentityHash ~= knifeIdentityHash
     local createdState = state == nil
         or state.Version ~= STATE_VERSION
-        or inheritedProjectionState
+        or inheritedKnifeState
 
     if createdState then
         state = {
@@ -4367,7 +4896,22 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         data[STATE_KEY] = state
     end
 
-    local frame = Game():GetFrameCount()
+    local knifeSpawnedProjection = self:IsKnifeSpawnedProjection(
+        knife,
+        frame,
+        projectionSource
+    )
+
+    if knife:IsFlying()
+        and knifeHasKnifeSource
+        and not knifeSpawnedProjection
+    then
+        -- Native shot multipliers frequently create their release lanes from
+        -- the first knife entity. Latch that classification for the throw so
+        -- those members cannot become "late projections" merely because they
+        -- remain alive beyond the two-frame layout collection window.
+        state.NativeReleaseMember = true
+    end
 
     if state.BypassLateExternalKnife then
         return
@@ -4377,7 +4921,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         and state.KnifeIdentityHash ~= knifeIdentityHash
 
     if knife:IsFlying()
-        and not knifeSpawnedProjection
+        and not knifeHasKnifeSource
         and (inheritedFromAnotherKnife
             or (createdState
                 and self:IsLateExternalKnife(knife, frame)))
@@ -4431,6 +4975,12 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.NativePathEnvelopeFrame = nil
         state.NativePathEnvelopeActive = nil
         state.NativePathSawMultipleUpdates = nil
+        state.FamiliarCorrectionActive = false
+        state.ProjectionClockFrame = nil
+        state.ProjectionClockPathDistance = nil
+        state.ProjectionClockRadialDistance = nil
+        state.ProjectionClockRadialOffset = nil
+        state.ProjectionClockEnvelopeFrame = nil
         state.PreviousControlledDistance = nil
         state.MotionReferenceAngle = nil
         state.MotionReferenceDistance = nil
@@ -4465,6 +5015,10 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.OriginRetracting = false
         state.OriginRetractionNativeStart = nil
         state.ReturnOriginBraking = false
+        state.WorldMotionActive = false
+        state.LayoutLaunchTransformActive = false
+        state.LayoutSymmetryCorrected = false
+        state.NativeEngineLaunchAngle = nil
         state.FlightMaxDistance = nil
         state.TrackingAttackRange = nil
         state.RangeCalibrated = nil
