@@ -5,13 +5,15 @@ local SETTING_KEY = "voidMegaMushAnimation"
 local MEGA_MUSH = CollectibleType.COLLECTIBLE_MEGA_MUSH
 local VOID_USE_FLAG = UseFlag.USE_VOID
 local MAX_SAVED_PLAYERS = 8
+local TRANSFORM_SKIP_FRAMES = 3
 
 function VoidMegaMushAnimationModule.New(context)
     local savedData = context:GetSavedModuleData(SETTING_KEY)
     local self = setmetatable({
         Context = context,
         VoidEffectByPlayerIndex = {},
-        RepairScheduled = false,
+        TransformSkipByPlayerIndex = {},
+        TransformSkipRegistered = false,
     }, VoidMegaMushAnimationModule)
 
     if type(savedData.voidEffectPlayerIndices) == "table" then
@@ -26,8 +28,8 @@ function VoidMegaMushAnimationModule.New(context)
         end
     end
 
-    self.RepairCallback = function()
-        self:OnPostUpdate()
+    self.TransformSkipCallback = function(_, player)
+        self:OnPostPlayerUpdate(player)
     end
 
     context.Mod:AddCallback(
@@ -51,6 +53,44 @@ function VoidMegaMushAnimationModule.New(context)
     )
 
     return self
+end
+
+function VoidMegaMushAnimationModule:CancelTransformSkips()
+    self.TransformSkipByPlayerIndex = {}
+
+    if not self.TransformSkipRegistered then
+        return
+    end
+
+    self.Context.Mod:RemoveCallback(
+        ModCallbacks.MC_POST_PLAYER_UPDATE,
+        self.TransformSkipCallback
+    )
+    self.TransformSkipRegistered = false
+end
+
+function VoidMegaMushAnimationModule:ScheduleTransformSkip(playerIndex)
+    self.TransformSkipByPlayerIndex[playerIndex] = TRANSFORM_SKIP_FRAMES
+
+    if self.TransformSkipRegistered then
+        return
+    end
+
+    self.TransformSkipRegistered = true
+    self.Context.Mod:AddCallback(
+        ModCallbacks.MC_POST_PLAYER_UPDATE,
+        self.TransformSkipCallback
+    )
+end
+
+function VoidMegaMushAnimationModule:FinishTransformSkip(playerIndex)
+    self.TransformSkipByPlayerIndex[playerIndex] = nil
+
+    if next(self.TransformSkipByPlayerIndex) ~= nil then
+        return
+    end
+
+    self:CancelTransformSkips()
 end
 
 function VoidMegaMushAnimationModule:GetPlayerIndex(player)
@@ -102,36 +142,18 @@ function VoidMegaMushAnimationModule:OnUseMegaMush(player, useFlags)
         return
     end
 
+    -- A real activation must keep Mega Mush's native Transform animation.
+    -- Cancel any bounded room-repair skip before recording its provenance.
+    if self.TransformSkipByPlayerIndex[playerIndex] then
+        self:FinishTransformSkip(playerIndex)
+    end
+
     local usedByVoid = type(useFlags) == "number"
         and (useFlags & VOID_USE_FLAG) ~= 0
     self:SetVoidEffect(playerIndex, usedByVoid)
 end
 
-function VoidMegaMushAnimationModule:CancelScheduledRepair()
-    if not self.RepairScheduled then
-        return
-    end
-
-    self.Context.Mod:RemoveCallback(
-        ModCallbacks.MC_POST_UPDATE,
-        self.RepairCallback
-    )
-    self.RepairScheduled = false
-end
-
-function VoidMegaMushAnimationModule:ScheduleRepair()
-    if self.RepairScheduled then
-        return
-    end
-
-    self.RepairScheduled = true
-    self.Context.Mod:AddCallback(
-        ModCallbacks.MC_POST_UPDATE,
-        self.RepairCallback
-    )
-end
-
-function VoidMegaMushAnimationModule:RepairPlayer(player)
+function VoidMegaMushAnimationModule:RepairPlayer(player, playerIndex)
     if not player or player:IsDead() then
         return false
     end
@@ -155,10 +177,12 @@ function VoidMegaMushAnimationModule:RepairPlayer(player)
     end
 
     -- Void leaves Mega Mush's timed effect active across rooms, but the engine
-    -- loses its costume-rendering state. Reattach only that state: do not use
-    -- the active item again or mutate the read-only TemporaryEffect object.
-    player:TryRemoveCollectibleCostume(MEGA_MUSH, false)
+    -- loses its costume-rendering state. Fully replace the persistent active
+    -- costume instead of stacking another copy. Do not use the active item
+    -- again or mutate the read-only TemporaryEffect object.
+    player:TryRemoveCollectibleCostume(MEGA_MUSH, true)
     player:AddCostume(itemConfig, true)
+    self:ScheduleTransformSkip(playerIndex)
     return true
 end
 
@@ -167,27 +191,47 @@ function VoidMegaMushAnimationModule:RepairAllPlayers()
 
     for playerIndex = 0, game:GetNumPlayers() - 1 do
         if self.VoidEffectByPlayerIndex[playerIndex] then
-            self:RepairPlayer(Isaac.GetPlayer(playerIndex))
+            self:RepairPlayer(Isaac.GetPlayer(playerIndex), playerIndex)
         end
     end
 end
 
-function VoidMegaMushAnimationModule:OnPostUpdate()
-    self:CancelScheduledRepair()
+function VoidMegaMushAnimationModule:OnPostPlayerUpdate(player)
+    local playerIndex = self:GetPlayerIndex(player)
+    local framesLeft = playerIndex ~= nil
+        and self.TransformSkipByPlayerIndex[playerIndex]
 
-    if self.Context:IsEnabled(SETTING_KEY) then
-        self:RepairAllPlayers()
+    if not framesLeft then
+        return
+    end
+
+    local sprite = player:GetSprite()
+
+    if sprite and sprite:IsPlaying("Transform") then
+        sprite:Play("WalkIdle", true)
+        self:FinishTransformSkip(playerIndex)
+        return
+    end
+
+    framesLeft = framesLeft - 1
+
+    if framesLeft <= 0 then
+        self:FinishTransformSkip(playerIndex)
+    else
+        self.TransformSkipByPlayerIndex[playerIndex] = framesLeft
     end
 end
 
 function VoidMegaMushAnimationModule:OnNewRoom()
     if self.Context:IsEnabled(SETTING_KEY) then
-        self:ScheduleRepair()
+        -- Match vanilla held-Mega-Mush timing: rebuild the active costume
+        -- during room initialization, before the first visible player frame.
+        self:RepairAllPlayers()
     end
 end
 
 function VoidMegaMushAnimationModule:OnGameStarted(isContinued)
-    self:CancelScheduledRepair()
+    self:CancelTransformSkips()
 
     if not isContinued then
         self.VoidEffectByPlayerIndex = {}
@@ -196,9 +240,9 @@ end
 
 function VoidMegaMushAnimationModule:OnSettingChanged(enabled)
     if enabled then
-        self:ScheduleRepair()
+        self:RepairAllPlayers()
     else
-        self:CancelScheduledRepair()
+        self:CancelTransformSkips()
     end
 end
 
