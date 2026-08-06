@@ -4,7 +4,7 @@ MomsKnifeHomingModule.__index = MomsKnifeHomingModule
 local SETTING_KEY = "momsKnifeHomingFix"
 local MOMS_KNIFE_VARIANT = 0
 local STATE_KEY = "CharacterEnhanceMomsKnifeHoming"
-local STATE_VERSION = 19
+local STATE_VERSION = 22
 local HOMING_FLAG = TearFlags.TEAR_HOMING
 local ACQUISITION_CONE = 40
 local MAX_LAUNCH_DEVIATION = 75
@@ -14,9 +14,9 @@ local MAX_TANGENTIAL_STEERING_SPEED = 14
 local MAX_TANGENTIAL_STEERING_ACCELERATION = 3.5
 local MAX_LAUNCH_TANGENTIAL_STEERING_SPEED = 24
 local MAX_LAUNCH_TANGENTIAL_STEERING_ACCELERATION = 8
-local BASE_FLIGHT_ACCELERATION = 1
-local HOLD_FLIGHT_ACCELERATION = 1.5
-local MAX_LAUNCH_FLIGHT_ACCELERATION = 1.75
+local MAX_FLIGHT_OUTWARD_ACCELERATION = 1
+local MAX_FLIGHT_INWARD_ACCELERATION = 2
+local MAX_FLIGHT_ACCELERATION_CHANGE = 1
 local MAX_FLIGHT_SPEED = 20
 local FLIGHT_POSITION_RESPONSE = 0.4
 local MAX_FLIGHT_POSITION_CORRECTION = 6
@@ -42,7 +42,8 @@ local MAX_DISTANCE_PERCENT = 100
 local MAX_RANGE_EXTENSION = 1.3
 local HOLD_SWITCH_MARGIN = 6
 local HOLD_MAX_RADIAL_SPEED = 8
-local HOLD_RADIAL_ACCELERATION = 1.5
+local HOLD_OUTWARD_ACCELERATION = 1
+local HOLD_INWARD_ACCELERATION = 2
 local HOLD_RADIAL_RESPONSE = 0.45
 local HOLD_RADIAL_FEED_FORWARD = 0.55
 local HOLD_DISTANCE_EPSILON = 0.25
@@ -78,6 +79,23 @@ local function MoveTowards(current, target, maximumStep)
         difference = maximumStep
     elseif difference < -maximumStep then
         difference = -maximumStep
+    end
+
+    return current + difference
+end
+
+local function MoveTowardsAsymmetric(
+    current,
+    target,
+    maximumIncrease,
+    maximumDecrease
+)
+    local difference = target - current
+
+    if difference > maximumIncrease then
+        difference = maximumIncrease
+    elseif difference < -maximumDecrease then
+        difference = -maximumDecrease
     end
 
     return current + difference
@@ -1521,6 +1539,7 @@ function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
             memberState.MotionReferenceOrigin = nil
             memberState.MotionReferenceHoldActive = false
             memberState.MotionReferencePosition = nil
+            memberState.MotionRadialUnit = nil
             memberState.MotionInterpolationFrame = nil
             memberState.MotionInterpolationStep = nil
             memberState.MotionFrameStartAngle = nil
@@ -1530,6 +1549,7 @@ function MomsKnifeHomingModule:FinalizeKnifeLayout(group, frame)
             memberState.AppliedPosition = nil
             memberState.AppliedVelocity = nil
             memberState.AppliedAcceleration = nil
+            memberState.PreviousTargetAcceleration = nil
             memberState.AppliedAngle = nil
             memberState.TrackingAttackRange =
                 group.TrackingAttackRange
@@ -2658,24 +2678,6 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
         )
     end
 
-    local feasibleTargetCount = 0
-    local feasibleTargetSeen = {}
-    local soleTargetHash
-
-    for _, member in ipairs(members) do
-        for _, option in ipairs(member.FullPlan) do
-            if not feasibleTargetSeen[option.Hash] then
-                feasibleTargetSeen[option.Hash] = true
-                feasibleTargetCount = feasibleTargetCount + 1
-                soleTargetHash = option.Hash
-            end
-        end
-    end
-
-    if feasibleTargetCount ~= 1 then
-        soleTargetHash = nil
-    end
-
     -- Keep the graph order deterministic and let the global solver choose the
     -- lowest-cost maximum-coverage pairing across all knives at once.
     table.sort(members, function(left, right)
@@ -2766,47 +2768,17 @@ function MomsKnifeHomingModule:AssignGroupTargets(group, frame)
         end
     end
 
-    local groupApproachingSoleTarget = false
-
-    if soleTargetHash ~= nil then
-        for _, member in ipairs(members) do
-            local assignment = assignments[member.Hash]
-
-            if assignment ~= nil
-                and assignment.Hash == soleTargetHash
-                and self:ShouldBeginTargetApproachHold(
-                    member.Knife,
-                    member.State,
-                    assignment.Target
-                )
-            then
-                groupApproachingSoleTarget = true
-                break
-            end
-        end
-    end
-
     for _, member in ipairs(members) do
         local state = member.State
         local assignment = assignments[member.Hash]
 
         if assignment ~= nil then
-            local assignmentCovered =
-                group.CoveredTargets[assignment.Hash] == true
-            local beginsGroupApproach = groupApproachingSoleTarget
-                and soleTargetHash == assignment.Hash
-
-            if (assignmentCovered or beginsGroupApproach)
-                and self:IsTargetAngularlyReadyForHold(
-                    member.Knife,
-                    state,
-                    assignment.Target
-                )
+            if state.HitTargets[assignment.Hash] == true
             then
-                -- Once any member reaches the final remaining lane, every
-                -- surplus knife that can still reach it decelerates toward the
-                -- same live target. Preserve an existing hold controller so
-                -- frame-end allocation never creates a stop/forward/stop loop.
+                -- Target ownership is shared across the volley, but radial
+                -- braking is not. Each knife starts its hold controller only
+                -- after its own damaging hitbox has actually collided with
+                -- this target.
                 self:BeginSharedTargetHold(
                     member.Knife,
                     state,
@@ -3126,19 +3098,27 @@ function MomsKnifeHomingModule:BeginHoldRadialMotion(knife, state)
     end
 
     local baseline = self:GetMaximumAttackRange(knife, state)
-    local controlledDistance = self:GetControlledRadialDistance(knife, state)
-    local controlledVelocity = self:GetControlledRadialSpeed(knife, state)
+    local origin = self:GetRotationOrigin(knife, state)
+    local appliedPosition = state.AppliedPosition or knife.Position
+    local appliedDistance = (appliedPosition - origin):Length()
     state.HoldDistance = math.max(
         0,
-        math.min(baseline, controlledDistance)
+        math.min(baseline, appliedDistance)
     )
-    state.HoldRadialVelocity = math.max(
-        -HOLD_MAX_RADIAL_SPEED,
-        math.min(
-            HOLD_MAX_RADIAL_SPEED,
-            controlledVelocity
-        )
-    )
+    -- The hold reference starts at the live collision position and derives
+    -- future speed from the target's motion. The rendered/damaging knife keeps
+    -- its existing AppliedVelocity and AppliedAcceleration; only the final
+    -- world controller may change them under the asymmetric acceleration and
+    -- jerk bounds. Separating these states prevents a 30+ unit native logical
+    -- speed from dragging the post-hit reference far beyond the target without
+    -- creating a visible velocity reset.
+    state.HoldRadialVelocity = 0
+
+    if state.AppliedPosition ~= nil then
+        state.MotionReferencePosition = CopyVector(state.AppliedPosition)
+    else
+        state.MotionReferencePosition = CopyVector(knife.Position)
+    end
     state.HoldRetracting = false
     state.HoldRetractionNativeStart = nil
     state.HoldRetractionVisualStart = nil
@@ -3146,9 +3126,18 @@ function MomsKnifeHomingModule:BeginHoldRadialMotion(knife, state)
 end
 
 function MomsKnifeHomingModule:BeginSharedTargetHold(knife, state, target)
+    local targetHash = EntityHash(target)
+
+    -- A shared assignment may make several knives steer toward one remaining
+    -- enemy, but it must never start radial deceleration before this knife's
+    -- own collision callback records a real hit.
+    if state.HitTargets[targetHash] ~= true then
+        return false
+    end
+
     local sameTarget = state.HoldTarget ~= nil
         and state.HoldTarget:Exists()
-        and EntityHash(state.HoldTarget) == EntityHash(target)
+        and EntityHash(state.HoldTarget) == targetHash
 
     if not sameTarget then
         state.HoldDistance = nil
@@ -3171,6 +3160,7 @@ function MomsKnifeHomingModule:BeginSharedTargetHold(knife, state, target)
     state.NextTarget = nil
     state.TargetPlan = {}
     self:BeginHoldRadialMotion(knife, state)
+    return true
 end
 
 function MomsKnifeHomingModule:BeginFinalGroupTargetHold(group, target)
@@ -3223,14 +3213,7 @@ function MomsKnifeHomingModule:BeginFinalGroupTargetHold(group, target)
                 and EntityHash(state.HoldTarget) == targetHash
             local collided = state.HitTargets[targetHash] == true
 
-            if alreadyHolding
-                or collided
-                or self:IsTargetAngularlyReadyForHold(
-                    member.Knife,
-                    state,
-                    target
-                )
-            then
+            if alreadyHolding or collided then
                 self:BeginSharedTargetHold(
                     member.Knife,
                     state,
@@ -3238,10 +3221,9 @@ function MomsKnifeHomingModule:BeginFinalGroupTargetHold(group, target)
                 )
                 started = true
             else
-                -- The group owns one final target, but a wide outer lane must
-                -- keep flying and curving until its own live hitbox approaches
-                -- the contact angle. Sharing the target must not share the
-                -- center knife's radial brake state.
+                -- The group owns one final target, but every unhit lane keeps
+                -- flying and curving until its own collision. Sharing target
+                -- ownership must not share another knife's radial brake state.
                 state.Target = target
                 state.LaunchConvergenceTargetHash = targetHash
                 state.LaunchConvergenceUntilFrame = math.max(
@@ -3264,74 +3246,6 @@ function MomsKnifeHomingModule:BeginFinalGroupTargetHold(group, target)
     end
 
     return started
-end
-
-function MomsKnifeHomingModule:ShouldBeginTargetApproachHold(
-    knife,
-    state,
-    target
-)
-    if state.HoldRetracting
-        or not self:IsTargetAngularlyReadyForHold(knife, state, target)
-    then
-        return false
-    end
-
-    local origin = self:GetRotationOrigin(knife, state)
-    local targetDelta = target.Position - origin
-    local targetDistance = targetDelta:Length()
-
-    if targetDistance <= MOTION_EPSILON then
-        return true
-    end
-
-    local controlledDistance = self:GetControlledRadialDistance(knife, state)
-    local radialGap = targetDistance - controlledDistance
-    local approachMargin = math.min(
-        CONTACT_RADIAL_MARGIN,
-        math.max(4, (target.Size or 0) * 0.25)
-    )
-
-    if radialGap <= approachMargin then
-        return true
-    end
-
-    local radialUnit = targetDelta * (1 / targetDistance)
-    local targetVelocity, _, _, sourceVelocity = self:GetTargetMotion(
-        knife,
-        state,
-        target
-    )
-    local targetRadialVelocity = Dot(
-        targetVelocity - sourceVelocity,
-        radialUnit
-    )
-    local appliedRadialSpeed = 0
-
-    if state.AppliedVelocity ~= nil then
-        appliedRadialSpeed = Dot(state.AppliedVelocity, radialUnit)
-    end
-
-    -- Repentance+ can expose one short native sub-update immediately before a
-    -- much longer one at release. Basing braking only on the last measured
-    -- RadialSpeed underestimates the next-frame approach by more than one
-    -- whole contact radius. The native flight speed is the conservative
-    -- forward envelope; AppliedVelocity covers an already faster controlled
-    -- hitbox without changing the absolute acceleration cap itself.
-    local incomingRadialSpeed = math.max(
-        self:GetControlledRadialSpeed(knife, state),
-        knife:GetKnifeVelocity(),
-        appliedRadialSpeed
-    )
-    local closingSpeed = math.max(
-        0,
-        incomingRadialSpeed - targetRadialVelocity
-    )
-    local brakingDistance = closingSpeed * closingSpeed
-            / (2 * HOLD_RADIAL_ACCELERATION)
-        + closingSpeed * 0.5
-
-    return radialGap <= approachMargin + brakingDistance
 end
 
 function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
@@ -3429,7 +3343,7 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
         GetBrakingLimitedSpeed(
             math.abs(radialError),
             HOLD_MAX_RADIAL_SPEED,
-            HOLD_RADIAL_ACCELERATION
+            HOLD_INWARD_ACCELERATION
         )
     )
 
@@ -3452,23 +3366,13 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
         desiredVelocity = 0
     end
 
-    state.HoldRadialVelocity = MoveTowards(
+    state.HoldRadialVelocity = MoveTowardsAsymmetric(
         state.HoldRadialVelocity or 0,
         desiredVelocity,
-        HOLD_RADIAL_ACCELERATION
+        HOLD_OUTWARD_ACCELERATION,
+        HOLD_INWARD_ACCELERATION
     )
-    local nextDistance
-
-    if not hasLiveHoldTarget
-        and math.abs(radialError) <= HOLD_DISTANCE_EPSILON
-        and math.abs(state.HoldRadialVelocity)
-            <= HOLD_RADIAL_ACCELERATION
-    then
-        nextDistance = desiredDistance
-        state.HoldRadialVelocity = 0
-    else
-        nextDistance = state.HoldDistance + state.HoldRadialVelocity
-    end
+    local nextDistance = state.HoldDistance + state.HoldRadialVelocity
 
     local clampedDistance = math.max(
         0,
@@ -3476,59 +3380,62 @@ function MomsKnifeHomingModule:UpdateHoldRadialMotion(knife, state)
     )
 
     if math.abs(clampedDistance - nextDistance) > INTERCEPT_EPSILON then
-        state.HoldRadialVelocity = 0
+        -- Record the distance actually travelled at a hard range boundary.
+        -- The next update then eases this velocity toward its target instead
+        -- of inventing an immediate zero-speed frame.
+        state.HoldRadialVelocity = clampedDistance - state.HoldDistance
     end
 
     state.HoldDistance = clampedDistance
     return state.HoldDistance
 end
 
-function MomsKnifeHomingModule:GetFlightAccelerationLimit(state)
-    -- Final-target radial tracking deliberately changes its reference speed
-    -- by HOLD_RADIAL_ACCELERATION each logical frame. Give the physical
-    -- hitbox the matching absolute acceleration budget; otherwise the
-    -- reference brakes while the rendered/damaging knife keeps its old world
-    -- velocity and flies through the enemy. This remains below the temporary
-    -- wide-lane launch-convergence budget and still caps acceleration,
-    -- deceleration and turning through the single vector limiter below.
-    if state ~= nil and state.HoldDistance ~= nil then
-        return HOLD_FLIGHT_ACCELERATION
+local function ClampFlightAcceleration(requested, radialUnit)
+    local radialAcceleration = Dot(requested, radialUnit)
+    local tangentialAcceleration = requested
+        - radialUnit * radialAcceleration
+    local tangentialMagnitude = tangentialAcceleration:Length()
+    local radialLimit = radialAcceleration < 0
+            and MAX_FLIGHT_INWARD_ACCELERATION
+        or MAX_FLIGHT_OUTWARD_ACCELERATION
+    local normalizedMagnitude =
+        (radialAcceleration / radialLimit) ^ 2
+        + (tangentialMagnitude
+            / MAX_FLIGHT_OUTWARD_ACCELERATION) ^ 2
+
+    if normalizedMagnitude > 1 then
+        local scale = 1 / math.sqrt(normalizedMagnitude)
+        radialAcceleration = radialAcceleration * scale
+        tangentialAcceleration = tangentialAcceleration * scale
     end
 
-    if state == nil or state.LaunchConvergenceTargetHash == nil then
-        return BASE_FLIGHT_ACCELERATION
-    end
-
-    local launchAngle = state.LaunchAngle
-    local centralAngle = state.BaseAimAngle
-
-    if launchAngle == nil or centralAngle == nil then
-        return BASE_FLIGHT_ACCELERATION
-    end
-
-    -- The vanilla full-charge benchmark changes straight-line world speed by
-    -- roughly one unit per native sub-update. A spread lane needs additional
-    -- lateral acceleration to reproduce vanilla's early curve, but that extra
-    -- budget belongs only to that knife and scales with its own native offset.
-    local launchOffset = math.abs(AngleDifference(
-        launchAngle,
-        centralAngle
-    ))
-    local convergence = math.min(1, launchOffset / 45)
-    return BASE_FLIGHT_ACCELERATION
-        + (MAX_LAUNCH_FLIGHT_ACCELERATION
-            - BASE_FLIGHT_ACCELERATION) * convergence
+    return radialUnit * radialAcceleration + tangentialAcceleration
 end
 
-function MomsKnifeHomingModule:StepFlightMotion(state, desiredPosition)
+function MomsKnifeHomingModule:StepFlightMotion(
+    state,
+    desiredPosition,
+    desiredOrigin
+)
     local previousDesiredPosition = state.MotionReferencePosition
     local previousAppliedPosition = state.AppliedPosition
+    local radialDelta = desiredPosition
+        - (desiredOrigin or Vector(0, 0))
+
+    if radialDelta:Length() > MOTION_EPSILON then
+        state.MotionRadialUnit = radialDelta * (1 / radialDelta:Length())
+    elseif state.MotionRadialUnit == nil then
+        state.MotionRadialUnit = Vector(1, 0)
+    end
+
+    local radialUnit = state.MotionRadialUnit
 
     if previousDesiredPosition == nil or previousAppliedPosition == nil then
         state.MotionReferencePosition = CopyVector(desiredPosition)
         state.AppliedPosition = CopyVector(desiredPosition)
         state.AppliedVelocity = nil
         state.AppliedAcceleration = Vector(0, 0)
+        state.PreviousTargetAcceleration = Vector(0, 0)
         return CopyVector(desiredPosition)
     end
 
@@ -3541,6 +3448,7 @@ function MomsKnifeHomingModule:StepFlightMotion(state, desiredPosition)
         -- hitch that the engine itself did not produce.
         state.AppliedVelocity = CopyVector(referenceVelocity)
         state.AppliedAcceleration = Vector(0, 0)
+        state.PreviousTargetAcceleration = Vector(0, 0)
         state.AppliedPosition = CopyVector(desiredPosition)
         state.MotionReferencePosition = CopyVector(desiredPosition)
         return CopyVector(desiredPosition)
@@ -3558,9 +3466,31 @@ function MomsKnifeHomingModule:StepFlightMotion(state, desiredPosition)
     )
     local requestedAcceleration = desiredVelocity
         - state.AppliedVelocity
-    local appliedAcceleration = ClampVectorLength(
+    local rawTargetAcceleration = ClampFlightAcceleration(
         requestedAcceleration,
-        self:GetFlightAccelerationLimit(state)
+        radialUnit
+    )
+    local previousAcceleration = state.AppliedAcceleration
+        or Vector(0, 0)
+    -- The engine's two native sub-updates can alternate between a fresh radial
+    -- reference change and a near-zero one. Average consecutive raw requests
+    -- before the jerk limiter so this engine cadence produces one smooth slope
+    -- instead of a visible 0/brake/0/brake rhythm.
+    local previousTargetAcceleration =
+        state.PreviousTargetAcceleration or previousAcceleration
+    local targetAcceleration = ClampFlightAcceleration(
+        (rawTargetAcceleration + previousTargetAcceleration) * 0.5,
+        radialUnit
+    )
+    state.PreviousTargetAcceleration = CopyVector(rawTargetAcceleration)
+    local appliedAcceleration = previousAcceleration
+        + ClampVectorLength(
+            targetAcceleration - previousAcceleration,
+            MAX_FLIGHT_ACCELERATION_CHANGE
+        )
+    appliedAcceleration = ClampFlightAcceleration(
+        appliedAcceleration,
+        radialUnit
     )
     local appliedVelocity = state.AppliedVelocity
         + appliedAcceleration
@@ -3630,15 +3560,18 @@ function MomsKnifeHomingModule:ApplyControlledPosition(
     )
     local appliedPosition = self:StepFlightMotion(
         state,
-        desiredPosition
+        desiredPosition,
+        desiredOrigin
     )
 
     -- Target planning remains once per Game frame, but Repentance+ advances
     -- and renders Mom's Knife twice inside that frame. Continue the physical
     -- velocity on both native sub-updates and pass every source of motion
-    -- through one world-space acceleration limiter. Its vector-magnitude cap
-    -- is symmetric: accelerating, braking and turning cannot bypass it by
-    -- changing different radial/tangential controllers. Native damage and the
+    -- through one world-space acceleration limiter. Outward acceleration is
+    -- capped at +1, inward acceleration/braking at -2, and the acceleration
+    -- vector itself may change by at most one unit per native sub-update. This
+    -- preserves a continuous speed curve through acceleration, contact hold,
+    -- optional zero-speed dwell, and native return. Native damage and the
     -- native flight timer remain untouched.
     knife.Position = appliedPosition
 
@@ -3747,6 +3680,7 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.MotionReferenceOrigin = nil
     state.MotionReferenceHoldActive = false
     state.MotionReferencePosition = nil
+    state.MotionRadialUnit = nil
     state.MotionInterpolationFrame = nil
     state.MotionInterpolationStep = nil
     state.MotionFrameStartAngle = nil
@@ -3756,6 +3690,7 @@ function MomsKnifeHomingModule:BeginFlight(knife, state, knifeGroup)
     state.AppliedPosition = nil
     state.AppliedVelocity = nil
     state.AppliedAcceleration = nil
+    state.PreviousTargetAcceleration = nil
     state.AppliedAngle = nil
     state.LaunchConvergenceTargetHash = nil
     state.LaunchConvergenceUntilFrame = nil
@@ -3843,6 +3778,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.MotionReferenceOrigin = nil
         state.MotionReferenceHoldActive = false
         state.MotionReferencePosition = nil
+        state.MotionRadialUnit = nil
         state.MotionInterpolationFrame = nil
         state.MotionInterpolationStep = nil
         state.MotionFrameStartAngle = nil
@@ -3852,6 +3788,7 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
         state.AppliedPosition = nil
         state.AppliedVelocity = nil
         state.AppliedAcceleration = nil
+        state.PreviousTargetAcceleration = nil
         state.AppliedAngle = nil
         state.LaunchConvergenceTargetHash = nil
         state.LaunchConvergenceUntilFrame = nil
@@ -4016,20 +3953,8 @@ function MomsKnifeHomingModule:OnKnifeUpdate(knife)
 
             if state.HoldTarget ~= nil then
                 local unhitTarget = self:FindTarget(knife, state, false)
-                local sameApproachTarget = unhitTarget ~= nil
-                    and EntityHash(unhitTarget)
-                        == EntityHash(state.HoldTarget)
 
-                if sameApproachTarget then
-                    -- A sole-target predictive hold begins before the first
-                    -- collision so the absolute acceleration cap has enough
-                    -- distance to brake. The ordinary unhit-target search
-                    -- necessarily rediscovers that same enemy on the next
-                    -- frame; preserve the radial controller instead of
-                    -- treating it as a replacement and restoring full-speed
-                    -- vanilla flight.
-                    state.Target = state.HoldTarget
-                elseif unhitTarget ~= nil then
+                if unhitTarget ~= nil then
                     state.HoldTarget = nil
                     state.HoldTargetDistance = nil
                     state.HoldAngle = nil

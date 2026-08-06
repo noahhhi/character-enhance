@@ -188,11 +188,12 @@
   from each hostile enemy's observed movement, turn, and speed change. Charmed
   or friendly enemies, mechanisms, and other non-target entities are ignored.
   Angular motion and the extra sideways world speed produced by steering are
-  both speed- and acceleration-bounded. Every final world-space movement also
-  shares one symmetric absolute acceleration limit, so speeding up, braking,
-  turning, final-target hold, and movement of the range center cannot create a
-  one-frame velocity jump. Targets that cannot be intercepted inside those
-  limits are released, even when this reduces homing coverage. The engine's
+  both speed- and acceleration-bounded. Final world-space movement limits
+  outward acceleration to +1 and inward acceleration/braking to -2, while also
+  limiting how quickly acceleration itself can change. Speeding up, braking,
+  turning, final-target hold, and movement of the range center therefore cannot
+  create a one-frame velocity jump. Targets that cannot be intercepted inside
+  those limits are released, even when this reduces homing coverage. The engine's
   ordinary outward and return trajectory remains the reference and its native
   flight timer is unchanged, while both native sub-updates receive continuous
   physical motion for smoother animation.
@@ -203,19 +204,20 @@
   of rebuilding item interactions. Each knife independently tracks a different
   reachable enemy whenever possible; additional knives reinforce the least
   covered targets only after unique enemy coverage is exhausted. When only one
-  target remains, every reachable knife converges on it; entering its braking
-  approach starts continuous acceleration-bounded deceleration tracking for
-  the whole assigned volley so the outer blades connect instead of flying
-  through. Every member
+  target remains, every reachable knife converges on it. Target ownership is
+  shared, but each blade starts continuous acceleration-bounded deceleration
+  tracking only after its own hitbox actually collides, so outer blades keep
+  curving until they connect. Every member
   uses the same selected-direction acquisition sector while retaining its own
   native launch line.
   Compact symmetric spreads use the middle knife—or the midpoint of an even
   spread—as their shared axis while retaining every native line; backward,
   omnidirectional, and random extra shots retain the player's native held axis.
-- While approaching the last reachable enemy, the knife begins a visible,
-  acceleration-bounded braking curve while continuing to turn and match that
-  target's live radial movement; a confirmed hit retains the live farthest-hit
-  enemy instead of stopping at its previous position. If that enemy dies, its
+- On the confirmed hit against the last reachable enemy—not from an early
+  distance estimate—the knife begins a visible, acceleration-bounded braking
+  curve while continuing to turn and adapt its speed to that target's live
+  radial movement. A stationary target may produce a smooth zero-speed dwell,
+  while a moving target remains actively followed. If that enemy dies, its
   last valid radial distance and direction remain the deceleration anchor.
   Native retraction then
   carries that held position smoothly inward instead of jumping out to the turnaround point.
