@@ -449,6 +449,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "voidMegaMushAnimation",
+        group = "general",
+        zhName = "虚空超级蘑菇动画修复",
+        enName = "Void Mega Mush Animation Fix",
+        zhInfo = {
+            "虚空正常变身；换房、下层保持巨型。",
+            "不延长持续时间，也不重复增加属性。",
+        },
+        enInfo = {
+            "Void transforms; stays giant across rooms/floors.",
+            "Duration and stat bonuses are not increased.",
+        },
+    },
+    {
         key = "kidsDrawingFormFix",
         group = "general",
         zhName = "儿童涂鸦套装修复",

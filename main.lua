@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.21.0"
+local VERSION = "1.23.8"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     soulOfEveBirdFixes = true,
@@ -24,6 +24,7 @@ local DEFAULT_SETTINGS = {
     lostSoulWhiteFireFix = true,
     lostSoulWhiteFireMantle = true,
     heldItemProtection = true,
+    voidMegaMushAnimation = true,
     kidsDrawingFormFix = true,
     ocularRiftSoundFix = true,
     pillRewindIdentification = true,
@@ -206,6 +207,9 @@ local LostSoulWhiteFireModule = include(
     "scripts/lost_soul_white_fire_phase"
 )
 local HeldItemProtectionModule = include("scripts/held_item_protection")
+local VoidMegaMushAnimationModule = include(
+    "scripts/void_mega_mush_animation"
+)
 local KidsDrawingFormModule = include("scripts/kids_drawing_form")
 local OcularRiftSoundModule = include("scripts/ocular_rift_sound")
 local PillRewindIdentificationModule = include(
@@ -311,6 +315,10 @@ Context:RegisterModule(
     HeldItemProtectionModule.New(Context)
 )
 Context:RegisterModule(
+    "voidMegaMushAnimation",
+    VoidMegaMushAnimationModule.New(Context)
+)
+Context:RegisterModule(
     "kidsDrawingFormFix",
     KidsDrawingFormModule.New(Context)
 )
@@ -353,6 +361,7 @@ if Game():GetFrameCount() > 0 then
         "pillRewindIdentification",
         "zodiacFloorItemDisplay",
         "couponSteamSale",
+        "voidMegaMushAnimation",
     }) do
         local module = Context.Modules[moduleKey]
 

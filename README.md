@@ -27,6 +27,7 @@
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
   <a href="#lost-soul-white-fire-fix">Lost Soul White Fire Fix</a> •
   <a href="#held-item-protection">Pickup Animation Fix</a> •
+  <a href="#void-mega-mush-animation-fix">Void Mega Mush Animation Fix</a> •
   <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
   <a href="#ocular-rift-sound-fix">Ocular Rift Sound Fix</a> •
   <a href="#pill-rewind-fix">Pill Rewind Fix</a> •
@@ -213,6 +214,15 @@
   disappearing before it reaches the inventory. In multiplayer, each player's
   pending pickup is completed independently.
 
+<a id="void-mega-mush-animation-fix"></a>
+## Void Mega Mush Animation Fix
+
+- When Void has absorbed Mega Mush, activating it through Void plays Mega
+  Mush's native transformation, then keeps the giant player appearance
+  seamlessly after entering another room or descending to a new floor without
+  replaying that animation. Direct Mega Mush use remains vanilla. The repair
+  does not extend the effect, stack its stat bonuses, or consume another charge.
+
 <a id="kids-drawing-form-fix"></a>
 ## Kid's Drawing Form Fix
 
@@ -260,7 +270,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirty gameplay settings remain independently configurable:
+All thirty-one gameplay settings remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Soul of Eve Bird Fixes
@@ -271,27 +281,28 @@ All thirty gameplay settings remain independently configurable:
 7. Lost Soul White Fire Fix
 8. White Fire Grants Mantle
 9. Pickup Animation Fix
-10. Kid's Drawing Form Fix
-11. Ocular Rift Sound Fix
-12. Pill Rewind Fix
-13. Show Zodiac's Floor Item
-14. Keep 1.00x Damage Multiplier
-15. Keep Dead Bird Active
-16. Eden Starting Passive Choice
-17. Eden's Blessing Choice
-18. Starting Wooden Cross
-19. Blue Baby Deal Prices
-20. Poop Queue Overflow Fix
-21. Keep Health on Reroll
-22. Keep Absorbed Stats
-23. Reveal Pills with Rerolled PHD
-24. Esau Jr. Pickup Effects
-25. TMTRAINER Reroll Chance
-26. Double Soul Charges
-27. Soul Charge Shield
-28. Shield Effects
-29. Gello Wisp Orbit Fix
-30. Explosion-proof Wisps
+10. Void Mega Mush Animation Fix
+11. Kid's Drawing Form Fix
+12. Ocular Rift Sound Fix
+13. Pill Rewind Fix
+14. Show Zodiac's Floor Item
+15. Keep 1.00x Damage Multiplier
+16. Keep Dead Bird Active
+17. Eden Starting Passive Choice
+18. Eden's Blessing Choice
+19. Starting Wooden Cross
+20. Blue Baby Deal Prices
+21. Poop Queue Overflow Fix
+22. Keep Health on Reroll
+23. Keep Absorbed Stats
+24. Reveal Pills with Rerolled PHD
+25. Esau Jr. Pickup Effects
+26. TMTRAINER Reroll Chance
+27. Double Soul Charges
+28. Soul Charge Shield
+29. Shield Effects
+30. Gello Wisp Orbit Fix
+31. Explosion-proof Wisps
 
 Options are grouped under the tabs `General`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. The integration supports both Mod
