@@ -50,7 +50,7 @@ function EdenChoicesModule.New(context)
         RedirectedPickupSeeds = {},
     }, EdenChoicesModule)
 
-    self.PendingRewards = self:SanitizePendingRewards(
+    self:OnSaveDataLoaded(
         context:GetSavedModuleData(BLESSING_CHOICE_KEY)
     )
 
@@ -143,6 +143,10 @@ function EdenChoicesModule:SanitizePendingRewards(savedData)
     end
 
     return math.max(0, math.min(99, math.floor(pendingRewards)))
+end
+
+function EdenChoicesModule:OnSaveDataLoaded(savedData)
+    self.PendingRewards = self:SanitizePendingRewards(savedData)
 end
 
 function EdenChoicesModule:GetPlayerKey(player)

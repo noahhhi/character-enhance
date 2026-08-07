@@ -115,7 +115,7 @@ end
 function ZodiacFloorItemDisplayModule.New(context)
     local self = setmetatable({
         Context = context,
-        SavedData = context:GetSavedModuleData(SETTING_KEY),
+        SavedData = {},
         RunSeed = nil,
         RunActive = false,
         Players = {},
@@ -129,6 +129,8 @@ function ZodiacFloorItemDisplayModule.New(context)
         RestoringGame = false,
         MissingProxyWarningLogged = false,
     }, ZodiacFloorItemDisplayModule)
+
+    self:OnSaveDataLoaded(context:GetSavedModuleData(SETTING_KEY))
 
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
@@ -193,6 +195,10 @@ function ZodiacFloorItemDisplayModule.New(context)
     end
 
     return self
+end
+
+function ZodiacFloorItemDisplayModule:OnSaveDataLoaded(savedData)
+    self.SavedData = type(savedData) == "table" and savedData or {}
 end
 
 function ZodiacFloorItemDisplayModule:SanitizeInteger(

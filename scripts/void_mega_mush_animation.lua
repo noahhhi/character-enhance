@@ -13,7 +13,6 @@ local MAX_SAVED_PLAYERS = 8
 local MAX_NATIVE_REPLAY_WAIT_FRAMES = 120
 
 function VoidMegaMushAnimationModule.New(context)
-    local savedData = context:GetSavedModuleData(SETTING_KEY)
     local self = setmetatable({
         Context = context,
         VoidEffectByPlayerIndex = {},
@@ -22,17 +21,7 @@ function VoidMegaMushAnimationModule.New(context)
         ReplayCallbacksRegistered = false,
     }, VoidMegaMushAnimationModule)
 
-    if type(savedData.voidEffectPlayerIndices) == "table" then
-        for _, playerIndex in ipairs(savedData.voidEffectPlayerIndices) do
-            if type(playerIndex) == "number"
-                and playerIndex == math.floor(playerIndex)
-                and playerIndex >= 0
-                and playerIndex < MAX_SAVED_PLAYERS
-            then
-                self.VoidEffectByPlayerIndex[playerIndex] = true
-            end
-        end
-    end
+    self:OnSaveDataLoaded(context:GetSavedModuleData(SETTING_KEY))
 
     self.ReplayWaitCallback = function(_, player)
         self:OnPostPlayerUpdate(player)
@@ -70,6 +59,26 @@ function VoidMegaMushAnimationModule.New(context)
     )
 
     return self
+end
+
+function VoidMegaMushAnimationModule:OnSaveDataLoaded(savedData)
+    self.VoidEffectByPlayerIndex = {}
+
+    if type(savedData) ~= "table"
+        or type(savedData.voidEffectPlayerIndices) ~= "table"
+    then
+        return
+    end
+
+    for _, playerIndex in ipairs(savedData.voidEffectPlayerIndices) do
+        if type(playerIndex) == "number"
+            and playerIndex == math.floor(playerIndex)
+            and playerIndex >= 0
+            and playerIndex < MAX_SAVED_PLAYERS
+        then
+            self.VoidEffectByPlayerIndex[playerIndex] = true
+        end
+    end
 end
 
 function VoidMegaMushAnimationModule:GetPlayerIndex(player)
