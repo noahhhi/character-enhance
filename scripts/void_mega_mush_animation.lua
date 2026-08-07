@@ -3,6 +3,7 @@ VoidMegaMushAnimationModule.__index = VoidMegaMushAnimationModule
 
 local SETTING_KEY = "voidMegaMushAnimation"
 local MEGA_MUSH = CollectibleType.COLLECTIBLE_MEGA_MUSH
+local VOID = CollectibleType.COLLECTIBLE_VOID
 local OWNED_USE_FLAG = UseFlag.USE_OWNED
 local VOID_USE_FLAG = UseFlag.USE_VOID
 local SUPPRESSED_PRESENTATION_FLAGS = UseFlag.USE_NOANIM
@@ -18,7 +19,7 @@ function VoidMegaMushAnimationModule.New(context)
         VoidEffectByPlayerIndex = {},
         PendingNativeUseByPlayerIndex = {},
         NativeReplayByPlayerHash = {},
-        ReplayCallbackRegistered = false,
+        ReplayCallbacksRegistered = false,
     }, VoidMegaMushAnimationModule)
 
     if type(savedData.voidEffectPlayerIndices) == "table" then
@@ -33,8 +34,11 @@ function VoidMegaMushAnimationModule.New(context)
         end
     end
 
-    self.ReplayCallback = function(_, player)
+    self.ReplayWaitCallback = function(_, player)
         self:OnPostPlayerUpdate(player)
+    end
+    self.ReplayStartCallback = function(_, player)
+        self:OnPostPEffectUpdate(player)
     end
 
     context.Mod:AddCallback(
@@ -50,6 +54,13 @@ function VoidMegaMushAnimationModule.New(context)
             self:OnUseMegaMush(player, useFlags)
         end,
         MEGA_MUSH
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_USE_ITEM,
+        function(_, _, _, player)
+            self:OnUseVoid(player)
+        end,
+        VOID
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
@@ -114,29 +125,37 @@ function VoidMegaMushAnimationModule:IsPresentationSuppressed(useFlags)
 end
 
 function VoidMegaMushAnimationModule:EnsureReplayCallback()
-    if self.ReplayCallbackRegistered then
+    if self.ReplayCallbacksRegistered then
         return
     end
 
-    self.ReplayCallbackRegistered = true
+    self.ReplayCallbacksRegistered = true
+    self.Context.Mod:AddCallback(
+        ModCallbacks.MC_POST_PEFFECT_UPDATE,
+        self.ReplayStartCallback
+    )
     self.Context.Mod:AddCallback(
         ModCallbacks.MC_POST_PLAYER_UPDATE,
-        self.ReplayCallback
+        self.ReplayWaitCallback
     )
 end
 
 function VoidMegaMushAnimationModule:RemoveReplayCallbackIfIdle()
     if next(self.PendingNativeUseByPlayerIndex) ~= nil
-        or not self.ReplayCallbackRegistered
+        or not self.ReplayCallbacksRegistered
     then
         return
     end
 
     self.Context.Mod:RemoveCallback(
-        ModCallbacks.MC_POST_PLAYER_UPDATE,
-        self.ReplayCallback
+        ModCallbacks.MC_POST_PEFFECT_UPDATE,
+        self.ReplayStartCallback
     )
-    self.ReplayCallbackRegistered = false
+    self.Context.Mod:RemoveCallback(
+        ModCallbacks.MC_POST_PLAYER_UPDATE,
+        self.ReplayWaitCallback
+    )
+    self.ReplayCallbacksRegistered = false
 end
 
 function VoidMegaMushAnimationModule:CancelPendingNativeUses()
@@ -157,6 +176,11 @@ function VoidMegaMushAnimationModule:QueueNativeUse(
             PlayerHash = GetPtrHash(player),
             UseFlags = {},
             WaitFrames = 0,
+            SawOuterAnimation = false,
+            LastOuterAnimationFrame = nil,
+            ReadyToReplay = false,
+            ReadyFrame = nil,
+            CleanedVoidAnimation = false,
         }
         self.PendingNativeUseByPlayerIndex[playerIndex] = pending
     end
@@ -189,15 +213,44 @@ function VoidMegaMushAnimationModule:OnPreUseMegaMush(player, useFlags)
 
     -- Void invokes absorbed actives with USE_NOANIM, USE_NOCOSTUME, and
     -- USE_VOID. Cancel only that suppressed Mega Mush use before it creates an
-    -- effect, then wait for Void's own extra animation to finish before
-    -- replaying it with the same USE_OWNED semantics as a direct Mega Mush
-    -- activation. Starting Transform while Void is still lowering the held
-    -- item makes the two native player animations alternately flatten and
-    -- stretch the body before the giant costume snaps into place. The engine
-    -- still owns the one real timed effect, complete animation, sounds,
-    -- costume, and transition behavior.
+    -- effect, then wait until Void's own extra animation has first started and
+    -- subsequently finished before replaying it with the same USE_OWNED
+    -- semantics as a direct Mega Mush activation. The nested callback can run
+    -- before Void starts its outer animation, when IsExtraAnimationFinished()
+    -- still reports true. Treating that pre-start state as completion makes
+    -- the giant costume flash before Void raises the item and lets the two
+    -- native animations overwrite each other. The engine still owns the one
+    -- real timed effect, complete animation, sounds, costume, and transition
+    -- behavior.
     self:QueueNativeUse(player, playerIndex, useFlags)
     return true
+end
+
+function VoidMegaMushAnimationModule:OnUseVoid(player)
+    local playerIndex = self:GetPlayerIndex(player)
+    local pending = playerIndex ~= nil
+        and self.PendingNativeUseByPlayerIndex[playerIndex]
+
+    if not pending
+        or pending.PlayerHash ~= GetPtrHash(player)
+        or pending.CleanedVoidAnimation
+    then
+        return
+    end
+
+    pending.CleanedVoidAnimation = true
+
+    -- Even though MC_PRE_USE_ITEM cancels Void's suppressed Mega Mush effect,
+    -- the nested native call has already copied Mega Mush's active costume
+    -- into Void's extra-animation snapshot. That snapshot produces a giant
+    -- flash followed by a detached tiny body. MC_USE_ITEM for the outer Void
+    -- call is the first point after vanilla has finished writing that state
+    -- and still precedes rendering. Discard only the leaked costume record,
+    -- then restart Void's own official held-item animation. The later native
+    -- Mega Mush replay adds its real persistent costume itself.
+    player:TryRemoveCollectibleCostume(MEGA_MUSH, false)
+    player:StopExtraAnimation()
+    player:AnimateCollectible(VOID, "UseItem", "PlayerPickupSparkle")
 end
 
 function VoidMegaMushAnimationModule:OnUseMegaMush(player, useFlags)
@@ -233,11 +286,56 @@ function VoidMegaMushAnimationModule:OnPostPlayerUpdate(player)
         return
     end
 
-    pending.WaitFrames = pending.WaitFrames + 1
+    if pending.ReadyToReplay then
+        return
+    end
 
-    if not player:IsExtraAnimationFinished()
+    pending.WaitFrames = pending.WaitFrames + 1
+    local animationFinished = player:IsExtraAnimationFinished()
+    local gameFrame = Game():GetFrameCount()
+
+    if not animationFinished then
+        pending.SawOuterAnimation = true
+        pending.LastOuterAnimationFrame = gameFrame
+    end
+
+    local finishedAfterRenderedFrame = pending.LastOuterAnimationFrame ~= nil
+        and gameFrame > pending.LastOuterAnimationFrame
+
+    if (not pending.SawOuterAnimation
+            or not animationFinished
+            or not finishedAfterRenderedFrame)
         and pending.WaitFrames < MAX_NATIVE_REPLAY_WAIT_FRAMES
     then
+        return
+    end
+
+    -- Starting the item here is too late for this render frame: its costume
+    -- becomes visible immediately, while Transform does not initialize until
+    -- the next player update. Arm the replay and let MC_POST_PEFFECT_UPDATE on
+    -- the next game frame start it before the player animation is rendered.
+    pending.ReadyToReplay = true
+    pending.ReadyFrame = gameFrame
+end
+
+function VoidMegaMushAnimationModule:OnPostPEffectUpdate(player)
+    local playerIndex = self:GetPlayerIndex(player)
+    local pending = playerIndex ~= nil
+        and self.PendingNativeUseByPlayerIndex[playerIndex]
+
+    if not pending or not pending.ReadyToReplay then
+        return
+    end
+
+    local playerHash = GetPtrHash(player)
+
+    if pending.PlayerHash ~= playerHash then
+        self.PendingNativeUseByPlayerIndex[playerIndex] = nil
+        self:RemoveReplayCallbackIfIdle()
+        return
+    end
+
+    if Game():GetFrameCount() <= pending.ReadyFrame then
         return
     end
 
