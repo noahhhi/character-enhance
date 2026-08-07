@@ -219,9 +219,9 @@
 
 - When Void has absorbed Mega Mush, activating it through Void plays Mega
   Mush's native transformation, then keeps the giant player appearance
-  seamlessly after entering another room without replaying that animation.
-  The repair does not extend the effect, stack its stat bonuses, or consume
-  another charge.
+  seamlessly after entering another room or descending to a new floor without
+  replaying that animation. Direct Mega Mush use remains vanilla. The repair
+  does not extend the effect, stack its stat bonuses, or consume another charge.
 
 <a id="kids-drawing-form-fix"></a>
 ## Kid's Drawing Form Fix
