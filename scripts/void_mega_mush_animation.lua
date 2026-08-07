@@ -3,10 +3,13 @@ VoidMegaMushAnimationModule.__index = VoidMegaMushAnimationModule
 
 local SETTING_KEY = "voidMegaMushAnimation"
 local MEGA_MUSH = CollectibleType.COLLECTIBLE_MEGA_MUSH
+local OWNED_USE_FLAG = UseFlag.USE_OWNED
 local VOID_USE_FLAG = UseFlag.USE_VOID
 local SUPPRESSED_PRESENTATION_FLAGS = UseFlag.USE_NOANIM
     | UseFlag.USE_NOCOSTUME
+local VOID_REPLAY_FLAGS = SUPPRESSED_PRESENTATION_FLAGS | VOID_USE_FLAG
 local MAX_SAVED_PLAYERS = 8
+local MAX_NATIVE_REPLAY_WAIT_FRAMES = 120
 
 function VoidMegaMushAnimationModule.New(context)
     local savedData = context:GetSavedModuleData(SETTING_KEY)
@@ -153,12 +156,13 @@ function VoidMegaMushAnimationModule:QueueNativeUse(
         pending = {
             PlayerHash = GetPtrHash(player),
             UseFlags = {},
+            WaitFrames = 0,
         }
         self.PendingNativeUseByPlayerIndex[playerIndex] = pending
     end
 
-    pending.UseFlags[#pending.UseFlags + 1] = useFlags
-        & ~SUPPRESSED_PRESENTATION_FLAGS
+    pending.UseFlags[#pending.UseFlags + 1] = (useFlags & ~VOID_REPLAY_FLAGS)
+        | OWNED_USE_FLAG
     self:EnsureReplayCallback()
 end
 
@@ -183,11 +187,15 @@ function VoidMegaMushAnimationModule:OnPreUseMegaMush(player, useFlags)
         return
     end
 
-    -- Void invokes absorbed actives with USE_NOANIM and USE_NOCOSTUME. Cancel
-    -- only that suppressed Mega Mush use before it creates an effect, then
-    -- replay it once on the next safe player update with those two flags
-    -- cleared. The engine therefore owns the one real timed effect, complete
-    -- item animation, sounds, persistent costume, and transition behavior.
+    -- Void invokes absorbed actives with USE_NOANIM, USE_NOCOSTUME, and
+    -- USE_VOID. Cancel only that suppressed Mega Mush use before it creates an
+    -- effect, then wait for Void's own extra animation to finish before
+    -- replaying it with the same USE_OWNED semantics as a direct Mega Mush
+    -- activation. Starting Transform while Void is still lowering the held
+    -- item makes the two native player animations alternately flatten and
+    -- stretch the body before the giant costume snaps into place. The engine
+    -- still owns the one real timed effect, complete animation, sounds,
+    -- costume, and transition behavior.
     self:QueueNativeUse(player, playerIndex, useFlags)
     return true
 end
@@ -199,7 +207,13 @@ function VoidMegaMushAnimationModule:OnUseMegaMush(player, useFlags)
         return
     end
 
-    self:SetVoidEffect(playerIndex, self:IsVoidUse(useFlags))
+    local playerHash = GetPtrHash(player)
+    local isVoidReplay = self.NativeReplayByPlayerHash[playerHash] == true
+
+    self:SetVoidEffect(
+        playerIndex,
+        self:IsVoidUse(useFlags) or isVoidReplay
+    )
 end
 
 function VoidMegaMushAnimationModule:OnPostPlayerUpdate(player)
@@ -216,6 +230,14 @@ function VoidMegaMushAnimationModule:OnPostPlayerUpdate(player)
     if pending.PlayerHash ~= playerHash then
         self.PendingNativeUseByPlayerIndex[playerIndex] = nil
         self:RemoveReplayCallbackIfIdle()
+        return
+    end
+
+    pending.WaitFrames = pending.WaitFrames + 1
+
+    if not player:IsExtraAnimationFinished()
+        and pending.WaitFrames < MAX_NATIVE_REPLAY_WAIT_FRAMES
+    then
         return
     end
 
