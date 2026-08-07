@@ -103,9 +103,7 @@ local EMPTY_STATS = {
 function RerollHealthModule.New(context)
     local self = setmetatable({
         Context = context,
-        SavedData = context.GetSavedModuleData
-            and context:GetSavedModuleData(REROLL_SETTING_KEY)
-            or {},
+        SavedData = {},
         PreservedData = {},
         Players = {},
         PendingSyncPlayers = {},
@@ -123,6 +121,12 @@ function RerollHealthModule.New(context)
         UpdateCallbackRegistered = false,
         DiceUpdateCallbackRegistered = false,
     }, RerollHealthModule)
+
+    self:OnSaveDataLoaded(
+        context.GetSavedModuleData
+            and context:GetSavedModuleData(REROLL_SETTING_KEY)
+            or {}
+    )
 
     self.UpdateCallback = function()
         self:OnUpdate()
@@ -207,9 +211,12 @@ function RerollHealthModule.New(context)
         EntityType.ENTITY_PLAYER
     )
 
-    self.PreservedData = self:SanitizeSavedData(self.SavedData)
-
     return self
+end
+
+function RerollHealthModule:OnSaveDataLoaded(savedData)
+    self.SavedData = type(savedData) == "table" and savedData or {}
+    self.PreservedData = self:SanitizeSavedData(self.SavedData)
 end
 
 function RerollHealthModule:SetUpdateCallbackEnabled(enabled)
