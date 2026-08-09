@@ -179,6 +179,26 @@ function Context:SetSetting(settingKey, value)
     self:Save()
 end
 
+local function ReloadActiveSaveData()
+    Config.ReloadActiveSaveData(Context, JSON)
+end
+
+-- Mod data has one saveX.dat file per game save, but LoadData() reads slot 1
+-- while the file-select menu is open. Refresh after the selected slot becomes
+-- active and before any module processes MC_POST_GAME_STARTED.
+if type(CharacterEnhance.AddPriorityCallback) == "function" then
+    CharacterEnhance:AddPriorityCallback(
+        ModCallbacks.MC_POST_GAME_STARTED,
+        CallbackPriority.IMPORTANT,
+        ReloadActiveSaveData
+    )
+else
+    CharacterEnhance:AddCallback(
+        ModCallbacks.MC_POST_GAME_STARTED,
+        ReloadActiveSaveData
+    )
+end
+
 local TaintedLostModule = include("scripts/tainted_lost")
 local EveDamageMultiplierModule = include("scripts/eve_damage_multiplier")
 local EveDeadBirdModule = include("scripts/eve_dead_bird")

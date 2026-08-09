@@ -60,4 +60,34 @@ function Config.Load(mod, defaults, jsonCodec)
     return settings, rawSaveData
 end
 
+function Config.ReloadActiveSaveData(context, jsonCodec)
+    local loadedSettings, rawSaveData = Config.Load(
+        context.Mod,
+        context.Defaults,
+        jsonCodec
+    )
+
+    -- Keep this table alive because menu callbacks and gameplay modules retain
+    -- the Context reference created while the file-select menu was open.
+    for settingKey in pairs(context.Settings) do
+        if context.Defaults[settingKey] == nil then
+            context.Settings[settingKey] = nil
+        end
+    end
+
+    for settingKey in pairs(context.Defaults) do
+        context.Settings[settingKey] = loadedSettings[settingKey]
+    end
+
+    context.RawSaveData = rawSaveData
+
+    for moduleKey, module in pairs(context.Modules) do
+        if module.OnSaveDataLoaded then
+            module:OnSaveDataLoaded(context:GetSavedModuleData(moduleKey))
+        end
+    end
+
+    return rawSaveData
+end
+
 return Config

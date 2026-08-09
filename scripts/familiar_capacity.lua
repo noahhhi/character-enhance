@@ -24,7 +24,7 @@ local RELEASE_RETARGET_INTERVAL = 10
 function FamiliarCapacityModule.New(context)
     local self = setmetatable({
         Context = context,
-        SavedData = context:GetSavedModuleData(SETTING_KEY),
+        SavedData = {},
         TemporaryBank = {},
         BankedCount = 0,
         Snapshot = {
@@ -57,6 +57,8 @@ function FamiliarCapacityModule.New(context)
         LastRoomTimeCounter = nil,
         UpdateCallbackRegistered = false,
     }, FamiliarCapacityModule)
+
+    self:OnSaveDataLoaded(context:GetSavedModuleData(SETTING_KEY))
 
     self.UpdateCallback = function()
         self:OnUpdate()
@@ -136,6 +138,10 @@ function FamiliarCapacityModule.New(context)
     self:LoadBank(true)
 
     return self
+end
+
+function FamiliarCapacityModule:OnSaveDataLoaded(savedData)
+    self.SavedData = type(savedData) == "table" and savedData or {}
 end
 
 function FamiliarCapacityModule:RefreshUpdateCallback()

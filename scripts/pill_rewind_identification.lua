@@ -12,15 +12,19 @@ local LAST_PILL_COLOR = PillColor.NUM_PILLS - 1
 function PillRewindIdentificationModule.New(context)
     local self = setmetatable({
         Context = context,
-        SavedData = context.GetSavedModuleData
-            and context:GetSavedModuleData(SETTING_KEY)
-            or {},
+        SavedData = {},
         KnownPillColors = {},
         PendingPills = {},
         RestoreFrames = 0,
         UpdateCallbackRegistered = false,
         RunActive = false,
     }, PillRewindIdentificationModule)
+
+    self:OnSaveDataLoaded(
+        context.GetSavedModuleData
+            and context:GetSavedModuleData(SETTING_KEY)
+            or {}
+    )
 
     self.UpdateCallback = function()
         self:OnUpdate()
@@ -53,6 +57,10 @@ function PillRewindIdentificationModule.New(context)
     )
 
     return self
+end
+
+function PillRewindIdentificationModule:OnSaveDataLoaded(savedData)
+    self.SavedData = type(savedData) == "table" and savedData or {}
 end
 
 function PillRewindIdentificationModule:GetRunSeed()

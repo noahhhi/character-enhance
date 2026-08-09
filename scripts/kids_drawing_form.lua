@@ -9,14 +9,14 @@ local GUPPYS_TAIL = CollectibleType.COLLECTIBLE_GUPPYS_TAIL
 function KidsDrawingFormModule.New(context)
     local self = setmetatable({
         Context = context,
-        SavedData = context:GetSavedModuleData(SETTING_KEY),
+        SavedData = {},
         PreservedData = {},
         Applied = {},
         RunSeed = nil,
         RunActive = false,
     }, KidsDrawingFormModule)
 
-    self.PreservedData = self:SanitizeSavedData(self.SavedData)
+    self:OnSaveDataLoaded(context:GetSavedModuleData(SETTING_KEY))
 
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
@@ -32,6 +32,11 @@ function KidsDrawingFormModule.New(context)
     )
 
     return self
+end
+
+function KidsDrawingFormModule:OnSaveDataLoaded(savedData)
+    self.SavedData = type(savedData) == "table" and savedData or {}
+    self.PreservedData = self:SanitizeSavedData(self.SavedData)
 end
 
 function KidsDrawingFormModule:SanitizeSavedData(savedData)
