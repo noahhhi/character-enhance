@@ -21,6 +21,13 @@ local POCKET_ITEM_SLOTS = 2
 local TRINKET_SLOTS = 2
 local CHOICE_SPACING = 80
 local GROUP_SPACING = 88
+local STARTING_PLAYER_OFFSET = 80
+local STARTING_FADE_FRAMES = 60
+local STARTING_FADE_SPRITE =
+    "gfx/character-enhance/ce_black_fade.anm2"
+local STARTING_FADE_TEXTURE_WIDTH = 120
+local STARTING_FADE_TEXTURE_HEIGHT = 68
+local STARTING_PLACEMENT_UPDATES = 10
 local SEED_STEP = 104729
 local STARTING_SEED_SALT = 32452843
 local BLESSING_SEED_SALT = 49979687
@@ -71,6 +78,9 @@ function EdenChoicesModule.New(context)
         RedirectedPickupSeeds = {},
         RemovedStartingEntities = {},
         StartingRewind = nil,
+        StartingFade = nil,
+        StartingFadeSprite = nil,
+        StartingPlacement = nil,
     }, EdenChoicesModule)
 
     self:OnSaveDataLoaded(
@@ -156,6 +166,12 @@ function EdenChoicesModule.New(context)
         ModCallbacks.MC_POST_GAME_STARTED,
         function(_, isContinued)
             self:OnGameStarted(isContinued)
+        end
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_RENDER,
+        function()
+            self:OnPostRender()
         end
     )
     context.Mod:AddCallback(
@@ -508,6 +524,12 @@ function EdenChoicesModule:RecordQueuedPickup(playerKey, queuedItem)
 end
 
 function EdenChoicesModule:OnPlayerEffectUpdate(player)
+    if self:GetPlayerKey(player)
+        == self:GetPlayerKey(Isaac.GetPlayer(0))
+    then
+        self:ApplyStartingPlacement()
+    end
+
     self:ProcessStartingRewind(player)
 
     local playerKey = self:GetPlayerKey(player)
@@ -954,7 +976,7 @@ function EdenChoicesModule:IssueStartingRewind()
 
     rewind.phase = "rewinding"
     rewind.waitUpdates = 0
-    Debug("requesting one native starting-room rewind before room fade-in")
+    Debug("requesting one native starting-room rewind during black transition")
 
     local succeeded, result = pcall(Isaac.ExecuteCommand, "rewind")
 
@@ -974,9 +996,7 @@ function EdenChoicesModule:ProcessStartingRewind(player)
         return
     end
 
-    if rewind.phase == "request" then
-        self:IssueStartingRewind()
-    elseif rewind.phase == "rewinding" then
+    if rewind.phase == "rewinding" then
         rewind.waitUpdates = rewind.waitUpdates + 1
 
         if rewind.waitUpdates >= REWIND_TIMEOUT_UPDATES then
@@ -999,6 +1019,104 @@ function EdenChoicesModule:ProcessStartingRewind(player)
         self.StartingRewind = nil
         self:RemoveRejectedPassivesWithoutRewind(rewind)
         self:CompleteChoiceSetup(rewind.groups, rewind.excluded)
+    end
+end
+
+function EdenChoicesModule:OnPostRender()
+    local rewind = self.StartingRewind
+
+    if rewind and rewind.phase == "request" then
+        -- Rewind from the first still-black render. The command clears the
+        -- engine's pending room fade, so this render callback restores the same
+        -- black-to-room transition after setup is complete. Repentance+ calls
+        -- this callback twice per visible fade step, so sixty callback passes
+        -- match the ordinary transition captured from an unmodified start.
+        self:IssueStartingRewind()
+    end
+
+    self:RenderStartingFade()
+end
+
+function EdenChoicesModule:GetStartingFadeSprite()
+    if self.StartingFadeSprite then
+        return self.StartingFadeSprite
+    end
+
+    local sprite = Sprite()
+    sprite:Load(STARTING_FADE_SPRITE, true)
+    sprite:Play("Idle", true)
+    self.StartingFadeSprite = sprite
+    return sprite
+end
+
+function EdenChoicesModule:BeginStartingFade()
+    if self.StartingFade then
+        return
+    end
+
+    self.StartingFade = {
+        remaining = STARTING_FADE_FRAMES,
+        total = STARTING_FADE_FRAMES,
+    }
+    Debug("armed standard-timing starting-room fade-in")
+end
+
+function EdenChoicesModule:RenderStartingFade()
+    local fade = self.StartingFade
+
+    if not fade then
+        return
+    end
+
+    local width = Isaac.GetScreenWidth()
+    local height = Isaac.GetScreenHeight()
+    local sprite = self:GetStartingFadeSprite()
+    sprite.Scale = Vector(
+        width / STARTING_FADE_TEXTURE_WIDTH,
+        height / STARTING_FADE_TEXTURE_HEIGHT
+    )
+    sprite.Color = Color(
+        1,
+        1,
+        1,
+        fade.remaining / fade.total,
+        0,
+        0,
+        0
+    )
+    sprite:Render(Vector(width / 2, height / 2))
+
+    fade.remaining = fade.remaining - 1
+
+    if fade.remaining <= 0 then
+        self.StartingFade = nil
+    end
+end
+
+function EdenChoicesModule:ApplyStartingPlacement()
+    local placement = self.StartingPlacement
+
+    if not placement or not placement.remainingUpdates then
+        return
+    end
+
+    local room = Game():GetRoom()
+
+    for playerIndex, target in pairs(placement.targets) do
+        local player = Isaac.GetPlayer(playerIndex)
+        player.Position = room:FindFreePickupSpawnPosition(
+            Vector(target.x, target.y),
+            0,
+            true
+        )
+        player.Velocity = Vector.Zero
+    end
+
+    placement.remainingUpdates = placement.remainingUpdates - 1
+
+    if placement.remainingUpdates <= 0 then
+        self.StartingPlacement = nil
+        Debug("finished restoring Eden placement after internal continuation")
     end
 end
 
@@ -1056,6 +1174,7 @@ function EdenChoicesModule:CompleteChoiceSetup(groups, excluded)
     end
 
     local unspawnedRewards = 0
+    local positionedStartingPlayers = {}
 
     for groupIndex, group in ipairs(groups) do
         local player = Isaac.GetPlayer(group.playerIndex)
@@ -1071,6 +1190,9 @@ function EdenChoicesModule:CompleteChoiceSetup(groups, excluded)
                 groupIndex,
                 table.concat(existingChoices, ",")
             ))
+            if group.kind == "starting" then
+                positionedStartingPlayers[group.playerIndex] = true
+            end
         else
             local choices = self:DrawChoices(
                 player,
@@ -1079,15 +1201,53 @@ function EdenChoicesModule:CompleteChoiceSetup(groups, excluded)
                 excluded
             )
 
-            if not self:SpawnChoiceGroup(
+            local spawned = self:SpawnChoiceGroup(
                 player,
                 choices,
                 groupIndex,
                 #groups
-            ) and group.kind == "blessing" then
+            )
+
+            if spawned and group.kind == "starting" then
+                positionedStartingPlayers[group.playerIndex] = true
+            elseif not spawned and group.kind == "blessing" then
                 unspawnedRewards = unspawnedRewards + 1
             end
         end
+    end
+
+    local room = Game():GetRoom()
+    local center = room:GetCenterPos()
+    local bottomRowOffset = math.max(0, (#groups - 1) / 2)
+        * GROUP_SPACING
+    local target = center + Vector(
+        0,
+        bottomRowOffset + STARTING_PLAYER_OFFSET
+    )
+    local placementTargets = {}
+
+    for playerIndex in pairs(positionedStartingPlayers) do
+        local player = Isaac.GetPlayer(playerIndex)
+        player.Position = room:FindFreePickupSpawnPosition(target, 0, true)
+        player.Velocity = Vector.Zero
+        placementTargets[playerIndex] = {
+            x = player.Position.X,
+            y = player.Position.Y,
+        }
+        Debug(string.format(
+            "positioned Eden player %d below starting choices at %.1f,%.1f",
+            playerIndex,
+            player.Position.X,
+            player.Position.Y
+        ))
+    end
+
+    if next(positionedStartingPlayers) then
+        self.StartingPlacement = {
+            targets = placementTargets,
+            remainingUpdates = nil,
+        }
+        self:BeginStartingFade()
     end
 
     self.PendingRewards = self.PendingRewards + unspawnedRewards
@@ -1102,7 +1262,18 @@ function EdenChoicesModule:OnGameStarted(isContinued)
     self.RedirectedPickupSeeds = {}
     self.StartingRewind = nil
 
+    if not isContinued then
+        self.StartingFade = nil
+        self.StartingPlacement = nil
+    end
+
     if isContinued then
+        if self.StartingPlacement then
+            self.StartingPlacement.remainingUpdates =
+                STARTING_PLACEMENT_UPDATES
+            Debug("scheduled Eden placement after internal continuation")
+        end
+
         self.PlayerBaselines = {}
         self.SuppressedPickupCounts = {}
         self.RemovedStartingEntities = {}
@@ -1178,11 +1349,9 @@ function EdenChoicesModule:OnGameStarted(isContinued)
             snapshots = snapshots,
             rejectedPassives = rejectedPassives,
         }
-        -- MC_POST_GAME_STARTED runs after vanilla has assigned Eden's items,
-        -- but before the starting room finishes fading in. Rewind here instead
-        -- of waiting for the first player-effect update so its transition stays
-        -- behind the new-run loading screen.
-        self:IssueStartingRewind()
+        -- Wait until the first black render so the rewind never appears over
+        -- the room. Once restoration finishes, a standard-timing fade replaces
+        -- the engine fade that the command necessarily clears.
         return
     end
 

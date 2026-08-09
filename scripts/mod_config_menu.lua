@@ -160,11 +160,11 @@ local MENU_SETTINGS = {
         zhName = "初始被动三选一",
         enName = "Starting Passive Choice",
         zhInfo = {
-            "淡入前将伊甸初始被动放回原道具池。",
+            "按原版节奏淡入并放回伊甸初始被动。",
             "从全部非“非伊甸”道具中三选一，主动也会出现。",
         },
         enInfo = {
-            "Returns Eden's passive to its pools before fade-in.",
+            "Returns Eden's passive with the standard fade.",
             "Choose 1 of 3 eligible items; actives can appear.",
         },
     },
