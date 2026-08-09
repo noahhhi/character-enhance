@@ -16,6 +16,8 @@ local MAX_BANKED_PER_TYPE = 2147483647
 local REWIND_HISTORY_LIMIT = 16
 local REWIND_RELEASE_DELAY = 5
 local REWIND_REMOVAL_TAG = "CharacterEnhanceFamiliarCapacityRewindRemoval"
+local RELEASE_SURPLUS_REMOVAL_TAG =
+    "CharacterEnhanceFamiliarCapacityReleaseSurplusRemoval"
 local RELEASE_TARGET_DISTANCE = 10000
 local SPIDER_TARGET_GAP = 20
 local RELEASE_TARGET_RETRY_INTERVAL = 10
@@ -840,12 +842,14 @@ function FamiliarCapacityModule:OnPreEntitySpawn(
     if releaseRequest
         and releaseRequest.variant == variant
         and self:IsBankableVariant(variant)
+        and type(seed) == "number"
         and self:GetPlayerIndex(releaseOwner) == releaseRequest.playerIndex
     then
         -- A refill is committed only after its synchronous familiar-init
         -- callback confirms that EntityFactory really allocated the slot.
         -- Bypass normal overflow banking for this already-accounted request.
-        releaseRequest.seed = seed
+        releaseRequest.seeds[seed] =
+            (releaseRequest.seeds[seed] or 0) + 1
         self:ReserveFamiliarSpawn(seed)
         return nil
     end
@@ -1002,11 +1006,20 @@ function FamiliarCapacityModule:OnFamiliarInit(familiar)
 
     local releaseRequest = self.ActiveReleaseRequest
 
-    if releaseRequest
+    local releaseSeedCount = releaseRequest
         and releaseRequest.variant == familiar.Variant
-        and releaseRequest.seed == familiar.InitSeed
-    then
-        releaseRequest.confirmed = true
+        and releaseRequest.seeds[familiar.InitSeed]
+        or 0
+    local isReleaseFamiliar = releaseSeedCount > 0
+
+    if isReleaseFamiliar then
+        if releaseSeedCount == 1 then
+            releaseRequest.seeds[familiar.InitSeed] = nil
+        else
+            releaseRequest.seeds[familiar.InitSeed] = releaseSeedCount - 1
+        end
+
+        releaseRequest.familiars[#releaseRequest.familiars + 1] = familiar
     end
 
     local pending = self:IsBankableVariant(familiar.Variant)
@@ -1026,6 +1039,15 @@ function FamiliarCapacityModule:OnFamiliarInit(familiar)
     end
 
     if self:IsBankableVariant(familiar.Variant) then
+        if isReleaseFamiliar then
+            -- Fish Tail and comparable native multipliers can initialize more
+            -- than one familiar for a single AddBlueFlies/AddBlueSpider call.
+            -- Defer soft-limit accounting until TryRelease can reconcile the
+            -- whole synchronous batch against real cache credit and free slots.
+            self:GuardFamiliarPoolSlot(familiar)
+            return
+        end
+
         -- Reservations for queued overflow are already included in total and
         -- will be removed by their own init callbacks. Exclude those future
         -- removals so an earlier allowed familiar is not banked as well.
@@ -1053,6 +1075,8 @@ function FamiliarCapacityModule:OnEntityRemove(entity)
     local familiar = entity:ToFamiliar()
     local wasRewindDuplicate = familiar
         and familiar:GetData()[REWIND_REMOVAL_TAG] == true
+    local wasReleaseSurplus = familiar
+        and familiar:GetData()[RELEASE_SURPLUS_REMOVAL_TAG] == true
     local wasModuleGuarded = familiar
         and familiar:GetData()[POOL_GUARD_TAG] == true
 
@@ -1064,8 +1088,9 @@ function FamiliarCapacityModule:OnEntityRemove(entity)
     -- the pool even when only a few live familiars remain in the room.
     self:ReleaseFamiliarPoolSlot(familiar)
 
-    if wasRewindDuplicate then
+    if wasRewindDuplicate or wasReleaseSurplus then
         familiar:GetData()[REWIND_REMOVAL_TAG] = nil
+        familiar:GetData()[RELEASE_SURPLUS_REMOVAL_TAG] = nil
         return
     end
 
@@ -1394,50 +1419,76 @@ function FamiliarCapacityModule:AssignReleaseTarget(
     familiar.Target = target
 end
 
-function FamiliarCapacityModule:TryRelease(playerIndex, player, variant)
+function FamiliarCapacityModule:TryRelease(
+    playerIndex,
+    player,
+    variant,
+    releaseLimit
+)
     local bank = self:GetPlayerBank(playerIndex)
     local field = variant == BLUE_FLY and "blueFlies" or "blueSpiders"
+    local acceptedLimit = math.min(
+        bank[field] or 0,
+        math.max(0, releaseLimit or 0)
+    )
 
-    if (bank[field] or 0) <= 0 then
-        return false
+    if acceptedLimit <= 0 then
+        return 0
     end
 
     local releaseRequest = {
         playerIndex = playerIndex,
         variant = variant,
-        seed = nil,
-        confirmed = false,
+        seeds = {},
+        familiars = {},
     }
     self.ActiveReleaseRequest = releaseRequest
     local target = self:GetReleaseTarget(playerIndex, player)
-    local releasedEntity = nil
-
     if variant == BLUE_FLY then
-        releasedEntity = player:AddBlueFlies(
+        player:AddBlueFlies(
             1,
             player.Position,
             target
         )
     else
-        releasedEntity = player:AddBlueSpider(
+        player:AddBlueSpider(
             self:GetSpiderReleasePosition(player, target)
         )
-        self:AssignReleaseTarget(releasedEntity, target, true)
     end
 
     self.ActiveReleaseRequest = nil
 
-    if not releaseRequest.confirmed then
-        return false
+    local acceptedCount = 0
+
+    for _, familiar in ipairs(releaseRequest.familiars) do
+        if familiar and familiar:Exists() then
+            if acceptedCount < acceptedLimit then
+                acceptedCount = acceptedCount + 1
+
+                if variant == BLUE_SPIDER then
+                    self:AssignReleaseTarget(familiar, target, true)
+                end
+
+                self:TrackReleasedFamiliar(familiar, playerIndex)
+            else
+                self:InvalidateExpendableCandidate(familiar)
+                familiar:GetData()[RELEASE_SURPLUS_REMOVAL_TAG] = true
+                self:ReleaseFamiliarPoolSlot(familiar)
+                familiar:Remove()
+                self.Snapshot.total = math.max(0, self.Snapshot.total - 1)
+            end
+        end
     end
 
-    self:TrackReleasedFamiliar(releasedEntity, playerIndex)
+    if acceptedCount <= 0 then
+        return 0
+    end
 
-    bank[field] = bank[field] - 1
-    self.BankedCount = math.max(0, self.BankedCount - 1)
+    bank[field] = bank[field] - acceptedCount
+    self.BankedCount = math.max(0, self.BankedCount - acceptedCount)
     self:MarkBankDirty()
 
-    return true
+    return acceptedCount
 end
 
 function FamiliarCapacityModule:ReleaseBankedFamiliars()
@@ -1490,25 +1541,31 @@ function FamiliarCapacityModule:ReleaseBankedFamiliars()
         local alternateVariant = self.ReleaseSpiderNext
             and BLUE_FLY
             or BLUE_SPIDER
-        local released = false
+        local releasedCount = 0
 
         if player and not player:IsDead() then
-            released = self:TryRelease(
+            releasedCount = self:TryRelease(
                 playerIndex,
                 player,
-                preferredVariant
-            ) or self:TryRelease(
-                playerIndex,
-                player,
-                alternateVariant
+                preferredVariant,
+                releaseBudget
             )
+
+            if releasedCount <= 0 then
+                releasedCount = self:TryRelease(
+                    playerIndex,
+                    player,
+                    alternateVariant,
+                    releaseBudget
+                )
+            end
         end
 
         self.ReleaseSpiderNext = not self.ReleaseSpiderNext
         self.ReleasePlayerCursor = (playerIndex + 1) % playerCount
 
-        if released then
-            releaseBudget = releaseBudget - 1
+        if releasedCount > 0 then
+            releaseBudget = releaseBudget - releasedCount
             attemptsWithoutRelease = 0
         else
             attemptsWithoutRelease = attemptsWithoutRelease + 1
