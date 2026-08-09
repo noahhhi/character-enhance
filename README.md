@@ -64,17 +64,23 @@
 - Eden's native random starting passive is returned to its original item pools
   without leaving its pickup-only health, consumables, visuals, or spawned
   pickups behind. The starting active, charge, resources, card or pill, and
-  trinket are preserved, while the retained active is removed from the pools
-  again. This finishes before the starting room fades in, so no rewind
-  transition is shown. In place of the passive, three random collectible
-  pedestals appear and only one can be taken.
+  trinket are preserved. The retained active and Eden's generated trinket are
+  removed from their pools again. The internal reset and final placement finish
+  while the starting room
+  is black, then match the normal fade-in timing without showing a rewind or
+  position correction. In place of the passive, three random collectible
+  pedestals appear, Eden starts centered below them, and only one can be taken.
 - Each Eden's Blessing collected creates its own three-pedestal choice at the
   start of the next run instead of adding one collectible directly.
 - Both choices draw from all available active, passive, and familiar
-  collectibles except items tagged `noeden`. Already-owned collectibles are
-  excluded, and separate choices in the same starting room do not repeat one
-  another. Every generated option is removed from the run's item pools, whether
-  selected or not, so normal item-pool sources cannot offer it again.
+  pool-backed collectibles except items tagged `noeden`. Already-owned
+  collectibles are excluded, and separate choices in the same starting room do
+  not repeat one another. Each starting-passive option keeps one of that
+  collectible's native source pools when taken instead of being recorded as a
+  Treasure Room item; that source binding survives the hidden room reload and
+  a save-and-continue. Every generated option is removed from the run's item
+  pools, whether selected or not, so normal item-pool sources cannot offer it
+  again.
   Continuing a saved run does not create the choices again.
 
 <a id="tainted-lost"></a>

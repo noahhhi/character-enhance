@@ -1,6 +1,10 @@
 local EdenChoicesModule = {}
 EdenChoicesModule.__index = EdenChoicesModule
 
+local VANILLA_POOLS_BY_ITEM = include(
+    "scripts/eden_item_pool_membership"
+)
+
 local STARTING_CHOICE_KEY = "edenStartingItemChoice"
 local BLESSING_CHOICE_KEY = "edenBlessingDuplicateFix"
 local EDENS_BLESSING = CollectibleType.COLLECTIBLE_EDENS_BLESSING
@@ -19,13 +23,29 @@ local POCKET2_SLOT = ActiveSlot.SLOT_POCKET2
 local CHOICE_COUNT = 3
 local POCKET_ITEM_SLOTS = 2
 local TRINKET_SLOTS = 2
+local GOLDEN_TRINKET_FLAG = (TrinketType
+    and TrinketType.TRINKET_GOLDEN_FLAG)
+    or (1 << 15)
 local CHOICE_SPACING = 80
 local GROUP_SPACING = 88
+local STARTING_PLAYER_OFFSET = 80
+local STARTING_FADE_FRAMES = 60
+local STARTING_FADE_SPRITE =
+    "gfx/character-enhance/ce_black_fade.anm2"
+local STARTING_FADE_TEXTURE_WIDTH = 120
+local STARTING_FADE_TEXTURE_HEIGHT = 68
+local STARTING_PLACEMENT_UPDATES = 10
+local STARTING_FADE_HOLD_TIMEOUT = 120
+local MAX_SAVED_STARTING_CHOICES = 32
 local SEED_STEP = 104729
 local STARTING_SEED_SALT = 32452843
 local BLESSING_SEED_SALT = 49979687
 local RNG_SHIFT_INDEX = 35
 local REWIND_TIMEOUT_UPDATES = 10
+local CHOICE_POOL_DATA_KEY = "CharacterEnhanceEdenChoicePool"
+local CHOICE_KIND_DATA_KEY = "CharacterEnhanceEdenChoiceKind"
+local GREED_POOL_FIRST = ItemPoolType.POOL_GREED_TREASURE or 16
+local GREED_POOL_LAST = ItemPoolType.POOL_GREED_SECRET or 22
 
 local function Debug(message)
     if type(Isaac.DebugString) == "function" then
@@ -71,6 +91,13 @@ function EdenChoicesModule.New(context)
         RedirectedPickupSeeds = {},
         RemovedStartingEntities = {},
         StartingRewind = nil,
+        StartingFade = nil,
+        StartingFadeSprite = nil,
+        StartingPlacement = nil,
+        ActiveRunSeed = Game():GetSeeds():GetStartSeed(),
+        ChoiceRunSeed = nil,
+        ChoiceMetadataBySeed = {},
+        ChoiceMetadataDirty = false,
     }, EdenChoicesModule)
 
     self:OnSaveDataLoaded(
@@ -159,6 +186,12 @@ function EdenChoicesModule.New(context)
         end
     )
     context.Mod:AddCallback(
+        ModCallbacks.MC_POST_RENDER,
+        function()
+            self:OnPostRender()
+        end
+    )
+    context.Mod:AddCallback(
         ModCallbacks.MC_POST_NEW_ROOM,
         function()
             self:OnNewRoom()
@@ -186,8 +219,202 @@ function EdenChoicesModule:SanitizePendingRewards(savedData)
     return math.max(0, math.min(99, math.floor(pendingRewards)))
 end
 
+local function IsFiniteNumber(value)
+    return type(value) == "number"
+        and value == value
+        and value ~= math.huge
+        and value ~= -math.huge
+end
+
+local function HasPoolMembership(collectible, poolType)
+    if not IsFiniteNumber(collectible)
+        or not IsFiniteNumber(poolType)
+    then
+        return false
+    end
+
+    for _, candidatePool in ipairs(
+        VANILLA_POOLS_BY_ITEM[math.floor(collectible)] or {}
+    ) do
+        if candidatePool == math.floor(poolType) then
+            return true
+        end
+    end
+
+    return false
+end
+
+function EdenChoicesModule:SanitizeChoiceMetadata(savedData)
+    local savedChoices = type(savedData) == "table"
+        and savedData.startingChoicePedestals
+
+    if type(savedChoices) ~= "table"
+        or not IsFiniteNumber(savedChoices.runSeed)
+        or type(savedChoices.entries) ~= "table"
+    then
+        return nil, {}
+    end
+
+    local runSeed = math.floor(savedChoices.runSeed)
+
+    if runSeed < 0 or runSeed > 4294967295 then
+        return nil, {}
+    end
+
+    local bySeed = {}
+
+    for index = 1, math.min(
+        #savedChoices.entries,
+        MAX_SAVED_STARTING_CHOICES
+    ) do
+        local entry = savedChoices.entries[index]
+
+        if type(entry) == "table"
+            and IsFiniteNumber(entry.initSeed)
+            and IsFiniteNumber(entry.collectible)
+            and IsFiniteNumber(entry.poolType)
+            and IsFiniteNumber(entry.optionsIndex)
+        then
+            local initSeed = math.floor(entry.initSeed)
+            local collectible = math.floor(entry.collectible)
+            local poolType = math.floor(entry.poolType)
+            local optionsIndex = math.floor(entry.optionsIndex)
+
+            if initSeed >= 0
+                and initSeed <= 4294967295
+                and collectible > 0
+                and optionsIndex > 0
+                and HasPoolMembership(collectible, poolType)
+            then
+                bySeed[tostring(initSeed)] = {
+                    initSeed = initSeed,
+                    collectible = collectible,
+                    poolType = poolType,
+                    optionsIndex = optionsIndex,
+                }
+            end
+        end
+    end
+
+    if not next(bySeed) then
+        return nil, {}
+    end
+
+    return runSeed, bySeed
+end
+
 function EdenChoicesModule:OnSaveDataLoaded(savedData)
     self.PendingRewards = self:SanitizePendingRewards(savedData)
+    self.ChoiceRunSeed, self.ChoiceMetadataBySeed =
+        self:SanitizeChoiceMetadata(savedData)
+    self.ChoiceMetadataDirty = false
+end
+
+function EdenChoicesModule:ClearChoiceMetadata()
+    if self.ChoiceRunSeed or next(self.ChoiceMetadataBySeed) then
+        self.ChoiceMetadataDirty = true
+    end
+
+    self.ChoiceRunSeed = nil
+    self.ChoiceMetadataBySeed = {}
+end
+
+function EdenChoicesModule:RecordChoiceMetadata(
+    pickup,
+    collectible,
+    poolType,
+    optionsIndex
+)
+    if not pickup or type(pickup.InitSeed) ~= "number" then
+        return
+    end
+
+    local initSeed = math.floor(pickup.InitSeed)
+    self.ChoiceRunSeed = Game():GetSeeds():GetStartSeed()
+    self.ChoiceMetadataBySeed[tostring(initSeed)] = {
+        initSeed = initSeed,
+        collectible = collectible,
+        poolType = poolType,
+        optionsIndex = optionsIndex,
+    }
+    self.ChoiceMetadataDirty = true
+end
+
+function EdenChoicesModule:GetChoiceMetadata(pickup)
+    if not pickup
+        or type(pickup.InitSeed) ~= "number"
+        or self.ChoiceRunSeed ~= Game():GetSeeds():GetStartSeed()
+    then
+        return nil
+    end
+
+    local metadata = self.ChoiceMetadataBySeed[
+        tostring(math.floor(pickup.InitSeed))
+    ]
+
+    if not metadata
+        or metadata.collectible ~= pickup.SubType
+        or metadata.optionsIndex ~= pickup.OptionsPickupIndex
+    then
+        return nil
+    end
+
+    return metadata
+end
+
+
+function EdenChoicesModule:AttachChoiceMetadata(pickup)
+    local metadata = self:GetChoiceMetadata(pickup)
+
+    if not metadata or type(pickup.GetData) ~= "function" then
+        return false
+    end
+
+    local data = pickup:GetData()
+    data[CHOICE_POOL_DATA_KEY] = metadata.poolType
+    data[CHOICE_KIND_DATA_KEY] = "starting"
+    return true
+end
+
+function EdenChoicesModule:AttachAllChoiceMetadata()
+    for _, entity in ipairs(Isaac.FindByType(
+        EntityType.ENTITY_PICKUP,
+        COLLECTIBLE_PICKUP,
+        -1,
+        false,
+        false
+    )) do
+        self:AttachChoiceMetadata(entity:ToPickup())
+    end
+end
+
+function EdenChoicesModule:RemoveChoiceGroupMetadata(optionsIndex)
+    local removed = false
+
+    for seed, metadata in pairs(self.ChoiceMetadataBySeed) do
+        if metadata.optionsIndex == optionsIndex then
+            self.ChoiceMetadataBySeed[seed] = nil
+            removed = true
+        end
+    end
+
+    if removed then
+        if not next(self.ChoiceMetadataBySeed) then
+            self.ChoiceRunSeed = nil
+        end
+
+        self.ChoiceMetadataDirty = true
+    end
+end
+
+function EdenChoicesModule:SaveChoiceMetadataIfDirty()
+    if not self.ChoiceMetadataDirty then
+        return false
+    end
+
+    self.ChoiceMetadataDirty = false
+    self.Context:Save()
+    return true
 end
 
 function EdenChoicesModule:OnNewRoom()
@@ -294,6 +521,27 @@ function EdenChoicesModule:CaptureTrinkets(player)
     return trinkets
 end
 
+function EdenChoicesModule:GetAddedTrinkets(currentTrinkets, baselineTrinkets)
+    local baselineCounts = {}
+    local addedTrinkets = {}
+
+    for _, trinket in ipairs(baselineTrinkets or {}) do
+        baselineCounts[trinket] = (baselineCounts[trinket] or 0) + 1
+    end
+
+    for _, trinket in ipairs(currentTrinkets or {}) do
+        local baselineCount = baselineCounts[trinket] or 0
+
+        if baselineCount > 0 then
+            baselineCounts[trinket] = baselineCount - 1
+        else
+            addedTrinkets[#addedTrinkets + 1] = trinket
+        end
+    end
+
+    return addedTrinkets
+end
+
 function EdenChoicesModule:CaptureRewindSnapshot(player, baseline)
     local collectibles = self:CaptureCollectibles(player)
     local poolRemovals = {}
@@ -314,14 +562,18 @@ function EdenChoicesModule:CaptureRewindSnapshot(player, baseline)
         activeItems = self:CaptureActiveItems(player),
         pocketItems = self:CapturePocketItems(player),
         trinkets = self:CaptureTrinkets(player),
+        trinketPoolRemovals = {},
         state = self:CapturePlayerState(player),
         poolRemovals = poolRemovals,
     }
 end
 
 function EdenChoicesModule:OnPlayerInit(player)
+    local game = Game()
+    local runSeed = game:GetSeeds():GetStartSeed()
+
     if not self.Context:IsEnabled(STARTING_CHOICE_KEY)
-        or Game():GetFrameCount() ~= 0
+        or (game:GetFrameCount() ~= 0 and runSeed == self.ActiveRunSeed)
     then
         return
     end
@@ -330,6 +582,7 @@ function EdenChoicesModule:OnPlayerInit(player)
     self.PlayerBaselines[playerKey] = {
         player = player,
         collectibles = self:CaptureCollectibles(player),
+        trinkets = self:CaptureTrinkets(player),
         state = self:CapturePlayerState(player),
     }
 
@@ -398,17 +651,18 @@ function EdenChoicesModule:OnPickupInit(pickup)
     local redirected = pickup
         and self.RedirectedPickupSeeds[pickup.InitSeed]
 
-    if not redirected then
+    if redirected then
+        self.RedirectedPickupSeeds[pickup.InitSeed] = nil
+        pickup:Remove()
+        Debug(string.format(
+            "removed redirected native passive pickup from 5.%d.%d",
+            redirected.originalVariant,
+            redirected.originalSubtype
+        ))
         return
     end
 
-    self.RedirectedPickupSeeds[pickup.InitSeed] = nil
-    pickup:Remove()
-    Debug(string.format(
-        "removed redirected native passive pickup from 5.%d.%d",
-        redirected.originalVariant,
-        redirected.originalSubtype
-    ))
+    self:AttachChoiceMetadata(pickup)
 end
 
 function EdenChoicesModule:GetEntityOwner(entity)
@@ -465,7 +719,149 @@ function EdenChoicesModule:OnEffectInit(effect)
     self:RemoveStartingEntity(effect)
 end
 
+function EdenChoicesModule:DropReplacedPrimaryActive(player, position)
+    local collectible = player:GetActiveItem(PRIMARY_SLOT)
+
+    if not collectible or collectible <= 0 then
+        return
+    end
+
+    local charge = player:GetActiveCharge(PRIMARY_SLOT)
+        + player:GetBatteryCharge(PRIMARY_SLOT)
+    player:RemoveCollectible(collectible, true, PRIMARY_SLOT, false)
+
+    local dropped = Isaac.Spawn(
+        EntityType.ENTITY_PICKUP,
+        COLLECTIBLE_PICKUP,
+        collectible,
+        Game():GetRoom():FindFreePickupSpawnPosition(position, 0, true),
+        Vector.Zero,
+        player
+    ):ToPickup()
+
+    if dropped then
+        dropped.Charge = charge
+        dropped.Touched = true
+        dropped.Wait = 30
+        dropped.ShopItemId = -1
+    end
+end
+
+function EdenChoicesModule:CollectStartingChoice(pickup, player, poolType)
+    local config = Isaac.GetItemConfig():GetCollectible(pickup.SubType)
+
+    if not config then
+        return nil
+    end
+
+    if type(player.CanPickupItem) == "function" and not player:CanPickupItem() then
+        return nil
+    end
+
+    if type(pickup.Wait) == "number" and pickup.Wait > 0 then
+        return nil
+    end
+
+    local activeSlot = PRIMARY_SLOT
+
+    if config.Type == ACTIVE then
+        self:DropReplacedPrimaryActive(player, pickup.Position)
+    end
+
+    local charge = type(pickup.Charge) == "number"
+        and math.max(0, pickup.Charge)
+        or GetConfigGrant(config, "InitCharge")
+    local varData = type(pickup.VarData) == "number" and pickup.VarData or 0
+
+    player:AddCollectible(
+        pickup.SubType,
+        charge,
+        pickup.Touched ~= true,
+        activeSlot,
+        varData,
+        poolType
+    )
+
+    if type(player.AnimateCollectible) == "function" then
+        player:AnimateCollectible(pickup.SubType)
+    end
+
+    local game = Game()
+    local hud = type(game.GetHUD) == "function" and game:GetHUD()
+
+    if hud and type(hud.ShowItemText) == "function" then
+        hud:ShowItemText(player, config)
+    end
+
+    if type(SFXManager) == "function"
+        and SoundEffect
+        and SoundEffect.SOUND_POWERUP1
+    then
+        SFXManager():Play(SoundEffect.SOUND_POWERUP1)
+    end
+
+    local optionsIndex = pickup.OptionsPickupIndex or 0
+    self:RemoveChoiceGroupMetadata(optionsIndex)
+
+    for _, entity in ipairs(Isaac.FindByType(
+        EntityType.ENTITY_PICKUP,
+        COLLECTIBLE_PICKUP,
+        -1,
+        false,
+        false
+    )) do
+        local option = entity:ToPickup()
+
+        if option
+            and ((type(pickup.InitSeed) == "number"
+                    and option.InitSeed == pickup.InitSeed)
+                or (optionsIndex ~= 0
+                    and option.OptionsPickupIndex == optionsIndex))
+        then
+            option:Remove()
+        end
+    end
+
+    if type(pickup.Exists) ~= "function" or pickup:Exists() then
+        pickup:Remove()
+    end
+
+    Debug(string.format(
+        "collected starting choice %d with native source pool %d",
+        pickup.SubType,
+        poolType
+    ))
+    self:SaveChoiceMetadataIfDirty()
+    return true
+end
+
 function EdenChoicesModule:OnPrePickupCollision(pickup, collider)
+    local player = collider and collider:ToPlayer()
+    local data = pickup
+        and type(pickup.GetData) == "function"
+        and pickup:GetData()
+    local metadata = self:GetChoiceMetadata(pickup)
+    local choicePool = data
+        and data[CHOICE_KIND_DATA_KEY] == "starting"
+        and data[CHOICE_POOL_DATA_KEY]
+
+    if type(choicePool) ~= "number" and metadata then
+        choicePool = metadata.poolType
+        self:AttachChoiceMetadata(pickup)
+    end
+
+    if player
+        and pickup
+        and pickup.Variant == COLLECTIBLE_PICKUP
+        and type(choicePool) == "number"
+    then
+        return self:CollectStartingChoice(
+            pickup,
+            player,
+            choicePool
+        )
+    end
+
     if not pickup
         or pickup.Variant ~= COLLECTIBLE_PICKUP
         or pickup.SubType ~= EDENS_BLESSING
@@ -475,7 +871,7 @@ function EdenChoicesModule:OnPrePickupCollision(pickup, collider)
         return
     end
 
-    local player = collider:ToPlayer()
+    player = collider:ToPlayer()
 
     if not player then
         return
@@ -508,6 +904,12 @@ function EdenChoicesModule:RecordQueuedPickup(playerKey, queuedItem)
 end
 
 function EdenChoicesModule:OnPlayerEffectUpdate(player)
+    if self:GetPlayerKey(player)
+        == self:GetPlayerKey(Isaac.GetPlayer(0))
+    then
+        self:ApplyStartingPlacement()
+    end
+
     self:ProcessStartingRewind(player)
 
     local playerKey = self:GetPlayerKey(player)
@@ -543,6 +945,57 @@ function EdenChoicesModule:HasNoEdenTag(config)
         and config.Tags & NO_EDEN_TAG ~= 0
 end
 
+function EdenChoicesModule:GetCollectiblePools(collectible)
+    local pools = VANILLA_POOLS_BY_ITEM[collectible] or {}
+    local normalPools = {}
+    local greedPools = {}
+
+    for _, poolType in ipairs(pools) do
+        if poolType >= GREED_POOL_FIRST and poolType <= GREED_POOL_LAST then
+            greedPools[#greedPools + 1] = poolType
+        else
+            normalPools[#normalPools + 1] = poolType
+        end
+    end
+
+    local game = Game()
+    local isGreedMode = type(game.IsGreedMode) == "function"
+        and game:IsGreedMode()
+
+    if isGreedMode and #greedPools > 0 then
+        return greedPools
+    end
+
+    if #normalPools > 0 then
+        return normalPools
+    end
+
+    return greedPools
+end
+
+function EdenChoicesModule:GetChoicePool(
+    collectible,
+    groupIndex,
+    choiceIndex,
+    seedSalt
+)
+    local pools = self:GetCollectiblePools(collectible)
+
+    if #pools == 0 then
+        return nil
+    end
+
+    local startSeed = Game():GetSeeds():GetStartSeed()
+    local poolSeed = NormalizeSeed(
+        startSeed
+            + (seedSalt or 0)
+            + groupIndex * SEED_STEP
+            + choiceIndex * 16127
+            + collectible * 31337
+    )
+    return pools[(poolSeed % #pools) + 1]
+end
+
 function EdenChoicesModule:IsChoiceCandidate(player, collectible, excluded)
     local config = Isaac.GetItemConfig():GetCollectible(collectible)
 
@@ -554,6 +1007,7 @@ function EdenChoicesModule:IsChoiceCandidate(player, collectible, excluded)
         or player:GetCollectibleNum(collectible, true) > 0
         or (excluded and excluded[collectible])
         or self:HasNoEdenTag(config)
+        or #self:GetCollectiblePools(collectible) == 0
     then
         return false
     end
@@ -617,7 +1071,9 @@ function EdenChoicesModule:SpawnChoiceGroup(
     player,
     choices,
     groupIndex,
-    groupCount
+    groupCount,
+    seedSalt,
+    kind
 )
     if #choices == 0 then
         return false
@@ -630,6 +1086,12 @@ function EdenChoicesModule:SpawnChoiceGroup(
     local optionsIndex = self:GetOptionsIndex(groupIndex)
 
     for choiceIndex, collectible in ipairs(choices) do
+        local poolType = self:GetChoicePool(
+            collectible,
+            groupIndex,
+            choiceIndex,
+            seedSalt
+        )
         local columnOffset = (choiceIndex - (#choices + 1) / 2)
             * CHOICE_SPACING
         local target = center + Vector(columnOffset, rowOffset)
@@ -648,10 +1110,29 @@ function EdenChoicesModule:SpawnChoiceGroup(
             pickup.Wait = 30
             pickup.Price = 0
             pickup.AutoUpdatePrice = false
+            pickup.ShopItemId = -1
+
+            if type(pickup.GetData) == "function" then
+                local data = pickup:GetData()
+                data[CHOICE_POOL_DATA_KEY] = poolType
+                data[CHOICE_KIND_DATA_KEY] = kind
+            end
+
+            if kind == "starting" then
+                self:RecordChoiceMetadata(
+                    pickup,
+                    collectible,
+                    poolType,
+                    optionsIndex
+                )
+            end
+
             local removed = itemPool:RemoveCollectible(collectible)
             Debug(string.format(
-                "removed spawned choice %d from run item pools: %s",
+                "removed spawned choice %d (source pool %s) "
+                    .. "from run item pools: %s",
                 collectible,
+                tostring(poolType),
                 tostring(removed)
             ))
         end
@@ -855,13 +1336,31 @@ function EdenChoicesModule:RestorePocketItems(player, pocketItems)
     end
 end
 
-function EdenChoicesModule:RestoreTrinkets(player, trinkets)
+function EdenChoicesModule:RestoreTrinkets(
+    player,
+    trinkets,
+    poolRemovals
+)
     for slot = TRINKET_SLOTS - 1, 0, -1 do
         local current = player:GetTrinket(slot)
 
         if current and current > 0 then
             player:TryRemoveTrinket(current)
         end
+    end
+
+    local itemPool = Game():GetItemPool()
+
+    for _, trinket in ipairs(poolRemovals or {}) do
+        local poolTrinket = trinket & ~GOLDEN_TRINKET_FLAG
+        local removed = poolTrinket > 0
+            and itemPool:RemoveTrinket(poolTrinket)
+            or false
+        Debug(string.format(
+            "removed restored starting trinket %d from run pool: %s",
+            poolTrinket,
+            tostring(removed)
+        ))
     end
 
     for _, trinket in ipairs(trinkets) do
@@ -926,7 +1425,11 @@ function EdenChoicesModule:RestoreRewoundPlayers(rewind)
 
         self:RestoreCollectibles(player, snapshot)
         self:RestorePocketItems(player, snapshot.pocketItems)
-        self:RestoreTrinkets(player, snapshot.trinkets)
+        self:RestoreTrinkets(
+            player,
+            snapshot.trinkets,
+            snapshot.trinketPoolRemovals
+        )
         self:RestorePlayerState(player, snapshot.state)
     end
 end
@@ -954,7 +1457,7 @@ function EdenChoicesModule:IssueStartingRewind()
 
     rewind.phase = "rewinding"
     rewind.waitUpdates = 0
-    Debug("requesting one native starting-room rewind before room fade-in")
+    Debug("requesting one native starting-room rewind during black transition")
 
     local succeeded, result = pcall(Isaac.ExecuteCommand, "rewind")
 
@@ -974,9 +1477,7 @@ function EdenChoicesModule:ProcessStartingRewind(player)
         return
     end
 
-    if rewind.phase == "request" then
-        self:IssueStartingRewind()
-    elseif rewind.phase == "rewinding" then
+    if rewind.phase == "rewinding" then
         rewind.waitUpdates = rewind.waitUpdates + 1
 
         if rewind.waitUpdates >= REWIND_TIMEOUT_UPDATES then
@@ -993,12 +1494,131 @@ function EdenChoicesModule:ProcessStartingRewind(player)
         rewind.phase = "completing"
         self.StartingRewind = nil
         self:RestoreRewoundPlayers(rewind)
-        self:CompleteChoiceSetup(rewind.groups, rewind.excluded)
+        self:CompleteChoiceSetup(rewind.groups, rewind.excluded, true)
     elseif rewind.phase == "fallback" then
         rewind.phase = "completing"
         self.StartingRewind = nil
         self:RemoveRejectedPassivesWithoutRewind(rewind)
-        self:CompleteChoiceSetup(rewind.groups, rewind.excluded)
+        self:CompleteChoiceSetup(rewind.groups, rewind.excluded, false)
+    end
+end
+
+function EdenChoicesModule:OnPostRender()
+    local rewind = self.StartingRewind
+
+    if rewind and rewind.phase == "request" then
+        -- Rewind from the first still-black render. The command clears the
+        -- engine's pending room fade, so this render callback restores the same
+        -- black-to-room transition after setup is complete. Repentance+ calls
+        -- this callback twice per visible fade step, so sixty callback passes
+        -- match the ordinary transition captured from an unmodified start.
+        self:IssueStartingRewind()
+    end
+
+    self:RenderStartingFade()
+end
+
+function EdenChoicesModule:GetStartingFadeSprite()
+    if self.StartingFadeSprite then
+        return self.StartingFadeSprite
+    end
+
+    local sprite = Sprite()
+    sprite:Load(STARTING_FADE_SPRITE, true)
+    sprite:Play("Idle", true)
+    self.StartingFadeSprite = sprite
+    return sprite
+end
+
+function EdenChoicesModule:BeginStartingFade(waitForPlacement)
+    if self.StartingFade then
+        return
+    end
+
+    self.StartingFade = {
+        remaining = STARTING_FADE_FRAMES,
+        total = STARTING_FADE_FRAMES,
+        waitingForPlacement = waitForPlacement == true,
+        holdRemaining = STARTING_FADE_HOLD_TIMEOUT,
+    }
+    Debug(waitForPlacement
+        and "holding the starting room black until Eden placement is stable"
+        or "armed standard-timing starting-room fade-in")
+end
+
+function EdenChoicesModule:RenderStartingFade()
+    local fade = self.StartingFade
+
+    if not fade then
+        return
+    end
+
+    local width = Isaac.GetScreenWidth()
+    local height = Isaac.GetScreenHeight()
+    local sprite = self:GetStartingFadeSprite()
+    sprite.Scale = Vector(
+        width / STARTING_FADE_TEXTURE_WIDTH,
+        height / STARTING_FADE_TEXTURE_HEIGHT
+    )
+    local alpha = fade.waitingForPlacement
+        and 1
+        or fade.remaining / fade.total
+    sprite.Color = Color(
+        1,
+        1,
+        1,
+        alpha,
+        0,
+        0,
+        0
+    )
+    sprite:Render(Vector(width / 2, height / 2))
+
+    if fade.waitingForPlacement then
+        fade.holdRemaining = fade.holdRemaining - 1
+
+        if fade.holdRemaining <= 0 then
+            fade.waitingForPlacement = false
+            Debug("starting placement hold timed out; releasing fade")
+        end
+
+        return
+    end
+
+    fade.remaining = fade.remaining - 1
+
+    if fade.remaining <= 0 then
+        self.StartingFade = nil
+    end
+end
+
+function EdenChoicesModule:ApplyStartingPlacement()
+    local placement = self.StartingPlacement
+
+    if not placement or not placement.remainingUpdates then
+        return
+    end
+
+    local room = Game():GetRoom()
+
+    for playerIndex, target in pairs(placement.targets) do
+        local player = Isaac.GetPlayer(playerIndex)
+        player.Position = room:FindFreePickupSpawnPosition(
+            Vector(target.x, target.y),
+            0,
+            true
+        )
+        player.Velocity = Vector.Zero
+    end
+
+    placement.remainingUpdates = placement.remainingUpdates - 1
+
+    if placement.remainingUpdates <= 0 then
+        self.StartingPlacement = nil
+        if self.StartingFade then
+            self.StartingFade.waitingForPlacement = false
+        end
+        Debug("finished restoring Eden placement after internal continuation")
     end
 end
 
@@ -1027,7 +1647,11 @@ function EdenChoicesModule:GrantOutstandingRewardDirectly(
     return true
 end
 
-function EdenChoicesModule:CompleteChoiceSetup(groups, excluded)
+function EdenChoicesModule:CompleteChoiceSetup(
+    groups,
+    excluded,
+    waitForContinuation
+)
     local primaryPlayer = Game():GetNumPlayers() > 0 and Isaac.GetPlayer(0)
     local rewardCount = self.PendingRewards
     self.PendingRewards = 0
@@ -1056,6 +1680,7 @@ function EdenChoicesModule:CompleteChoiceSetup(groups, excluded)
     end
 
     local unspawnedRewards = 0
+    local positionedStartingPlayers = {}
 
     for groupIndex, group in ipairs(groups) do
         local player = Isaac.GetPlayer(group.playerIndex)
@@ -1071,6 +1696,9 @@ function EdenChoicesModule:CompleteChoiceSetup(groups, excluded)
                 groupIndex,
                 table.concat(existingChoices, ",")
             ))
+            if group.kind == "starting" then
+                positionedStartingPlayers[group.playerIndex] = true
+            end
         else
             local choices = self:DrawChoices(
                 player,
@@ -1079,30 +1707,89 @@ function EdenChoicesModule:CompleteChoiceSetup(groups, excluded)
                 excluded
             )
 
-            if not self:SpawnChoiceGroup(
+            local spawned = self:SpawnChoiceGroup(
                 player,
                 choices,
                 groupIndex,
-                #groups
-            ) and group.kind == "blessing" then
+                #groups,
+                group.seedSalt,
+                group.kind
+            )
+
+            if spawned and group.kind == "starting" then
+                positionedStartingPlayers[group.playerIndex] = true
+            elseif not spawned and group.kind == "blessing" then
                 unspawnedRewards = unspawnedRewards + 1
             end
         end
     end
 
+    local room = Game():GetRoom()
+    local center = room:GetCenterPos()
+    local bottomRowOffset = math.max(0, (#groups - 1) / 2)
+        * GROUP_SPACING
+    local target = center + Vector(
+        0,
+        bottomRowOffset + STARTING_PLAYER_OFFSET
+    )
+    local placementTargets = {}
+
+    for playerIndex in pairs(positionedStartingPlayers) do
+        local player = Isaac.GetPlayer(playerIndex)
+        player.Position = room:FindFreePickupSpawnPosition(target, 0, true)
+        player.Velocity = Vector.Zero
+        placementTargets[playerIndex] = {
+            x = player.Position.X,
+            y = player.Position.Y,
+        }
+        Debug(string.format(
+            "positioned Eden player %d below starting choices at %.1f,%.1f",
+            playerIndex,
+            player.Position.X,
+            player.Position.Y
+        ))
+    end
+
+    if next(positionedStartingPlayers) then
+        self.StartingPlacement = {
+            targets = placementTargets,
+            remainingUpdates = waitForContinuation
+                and nil
+                or STARTING_PLACEMENT_UPDATES,
+        }
+        self:BeginStartingFade(waitForContinuation)
+    end
+
     self.PendingRewards = self.PendingRewards + unspawnedRewards
 
-    if rewardCount > 0 then
+    if rewardCount > 0 and not self.ChoiceMetadataDirty then
         self.Context:Save()
+    else
+        self:SaveChoiceMetadataIfDirty()
     end
 end
 
 function EdenChoicesModule:OnGameStarted(isContinued)
+    self.ActiveRunSeed = Game():GetSeeds():GetStartSeed()
     self.PendingPickups = {}
     self.RedirectedPickupSeeds = {}
     self.StartingRewind = nil
 
+    if not isContinued then
+        self.StartingFade = nil
+        self.StartingPlacement = nil
+        self:ClearChoiceMetadata()
+    end
+
     if isContinued then
+        self:AttachAllChoiceMetadata()
+
+        if self.StartingPlacement then
+            self.StartingPlacement.remainingUpdates =
+                STARTING_PLACEMENT_UPDATES
+            Debug("scheduled Eden placement after internal continuation")
+        end
+
         self.PlayerBaselines = {}
         self.SuppressedPickupCounts = {}
         self.RemovedStartingEntities = {}
@@ -1134,6 +1821,10 @@ function EdenChoicesModule:OnGameStarted(isContinued)
                 self:FindNativeStartingActive(player, baseline)
 
             if collectible then
+                snapshot.trinketPoolRemovals = self:GetAddedTrinkets(
+                    snapshot.trinkets,
+                    baseline.trinkets
+                )
                 snapshot.collectibles[collectible] =
                     math.max(0, (snapshot.collectibles[collectible] or 0) - 1)
                 snapshot.poolRemovals[collectible] = nil
@@ -1178,11 +1869,9 @@ function EdenChoicesModule:OnGameStarted(isContinued)
             snapshots = snapshots,
             rejectedPassives = rejectedPassives,
         }
-        -- MC_POST_GAME_STARTED runs after vanilla has assigned Eden's items,
-        -- but before the starting room finishes fading in. Rewind here instead
-        -- of waiting for the first player-effect update so its transition stays
-        -- behind the new-run loading screen.
-        self:IssueStartingRewind()
+        -- Wait until the first black render so the rewind never appears over
+        -- the room. Once restoration finishes, a standard-timing fade replaces
+        -- the engine fade that the command necessarily clears.
         return
     end
 
@@ -1190,9 +1879,33 @@ function EdenChoicesModule:OnGameStarted(isContinued)
 end
 
 function EdenChoicesModule:GetSaveData()
-    return {
+    local entries = {}
+
+    for _, metadata in pairs(self.ChoiceMetadataBySeed) do
+        entries[#entries + 1] = {
+            initSeed = metadata.initSeed,
+            collectible = metadata.collectible,
+            poolType = metadata.poolType,
+            optionsIndex = metadata.optionsIndex,
+        }
+    end
+
+    table.sort(entries, function(left, right)
+        return left.initSeed < right.initSeed
+    end)
+
+    local saveData = {
         pendingRewards = self.PendingRewards,
     }
+
+    if self.ChoiceRunSeed and #entries > 0 then
+        saveData.startingChoicePedestals = {
+            runSeed = self.ChoiceRunSeed,
+            entries = entries,
+        }
+    end
+
+    return saveData
 end
 
 return EdenChoicesModule
