@@ -11,6 +11,7 @@ local PENNY = CoinSubType.COIN_PENNY
 local ACTIVE = ItemType.ITEM_ACTIVE
 local PASSIVE = ItemType.ITEM_PASSIVE
 local FAMILIAR = ItemType.ITEM_FAMILIAR
+local TREASURE_POOL = ItemPoolType.POOL_TREASURE
 local NO_EDEN_TAG = ItemConfig.TAG_NO_EDEN or (1 << 32)
 local CHOICE_COUNT = 3
 local CHOICE_SPACING = 80
@@ -48,6 +49,12 @@ function EdenChoicesModule.New(context)
         PlayerBaselines = {},
         SuppressedPickupCounts = {},
         RedirectedPickupSeeds = {},
+        RemovedStartingEntities = {},
+        PreservedRunSeed = nil,
+        PreservedRecycledItems = {},
+        RunSeed = nil,
+        RunActive = false,
+        RecycledItems = {},
     }, EdenChoicesModule)
 
     self:OnSaveDataLoaded(
@@ -105,6 +112,18 @@ function EdenChoicesModule.New(context)
         end
     )
     context.Mod:AddCallback(
+        ModCallbacks.MC_FAMILIAR_INIT,
+        function(_, familiar)
+            self:OnFamiliarInit(familiar)
+        end
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_EFFECT_INIT,
+        function(_, effect)
+            self:OnEffectInit(effect)
+        end
+    )
+    context.Mod:AddCallback(
         ModCallbacks.MC_PRE_PICKUP_COLLISION,
         function(_, pickup, collider)
             self:OnPrePickupCollision(pickup, collider)
@@ -117,12 +136,40 @@ function EdenChoicesModule.New(context)
             self:OnPlayerEffectUpdate(player)
         end
     )
+    local preGetCollectibleCallback = function(
+        _,
+        poolType,
+        decrease,
+        seed
+    )
+        return self:OnPreGetCollectible(poolType, decrease, seed)
+    end
+
+    if type(context.Mod.AddPriorityCallback) == "function" then
+        context.Mod:AddPriorityCallback(
+            ModCallbacks.MC_PRE_GET_COLLECTIBLE,
+            CallbackPriority.LATE,
+            preGetCollectibleCallback
+        )
+    else
+        context.Mod:AddCallback(
+            ModCallbacks.MC_PRE_GET_COLLECTIBLE,
+            preGetCollectibleCallback
+        )
+    end
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_GAME_STARTED,
         function(_, isContinued)
             self:OnGameStarted(isContinued)
         end
     )
+
+    -- MC_POST_GAME_STARTED is not replayed by the debug-console `luamod`
+    -- command. Restore only the saved pool overlay when reloading mid-run;
+    -- never replay the new-run starting choice itself.
+    if Game():GetFrameCount() > 0 then
+        self:ActivateRun(true)
+    end
 
     return self
 end
@@ -147,6 +194,98 @@ end
 
 function EdenChoicesModule:OnSaveDataLoaded(savedData)
     self.PendingRewards = self:SanitizePendingRewards(savedData)
+
+    local runSeed = type(savedData) == "table" and savedData.runSeed
+
+    if type(runSeed) == "number"
+        and runSeed == runSeed
+        and runSeed ~= math.huge
+        and runSeed ~= -math.huge
+        and runSeed >= 0
+        and runSeed <= 0xFFFFFFFF
+    then
+        self.PreservedRunSeed = math.floor(runSeed)
+    else
+        self.PreservedRunSeed = nil
+    end
+
+    self.PreservedRecycledItems = {}
+    local recycledItems = type(savedData) == "table"
+        and savedData.recycledItems
+
+    if type(recycledItems) ~= "table" then
+        return
+    end
+
+    local collectibles = Isaac.GetItemConfig():GetCollectibles()
+    local maximum = math.max(0, (collectibles.Size or 1) - 1)
+
+    for _, collectible in ipairs(recycledItems) do
+        if #self.PreservedRecycledItems >= 16 then
+            break
+        end
+
+        if type(collectible) == "number"
+            and collectible == math.floor(collectible)
+            and collectible > 0
+            and collectible <= maximum
+            and Isaac.GetItemConfig():GetCollectible(collectible)
+        then
+            self.PreservedRecycledItems[
+                #self.PreservedRecycledItems + 1
+            ] = collectible
+        end
+    end
+end
+
+function EdenChoicesModule:GetRunSeed()
+    return Game():GetSeeds():GetStartSeed()
+end
+
+function EdenChoicesModule:ActivateRun(isContinued)
+    self.RunSeed = self:GetRunSeed()
+    self.RunActive = true
+    self.RecycledItems = {}
+
+    if not isContinued or self.PreservedRunSeed ~= self.RunSeed then
+        return
+    end
+
+    for _, collectible in ipairs(self.PreservedRecycledItems) do
+        self.RecycledItems[#self.RecycledItems + 1] = collectible
+    end
+end
+
+function EdenChoicesModule:QueueRecycledItem(collectible)
+    self.RecycledItems[#self.RecycledItems + 1] = collectible
+    Debug(string.format(
+        "returned native Eden passive %d to the treasure pool overlay",
+        collectible
+    ))
+end
+
+function EdenChoicesModule:OnPreGetCollectible(poolType, decrease, _)
+    if not self.RunActive
+        or not decrease
+        or poolType ~= TREASURE_POOL
+        or #self.RecycledItems == 0
+    then
+        return nil
+    end
+
+    local collectible = table.remove(self.RecycledItems, 1)
+
+    -- Eden's native roll bypasses MC_PRE_GET_COLLECTIBLE and consumes its
+    -- passive from the run pool before this module can reject it. Returning
+    -- that passive from the next committed treasure-pool roll recreates the
+    -- missing pool entry without consuming a second item. Persist the pop so
+    -- a continue or hot reload cannot grant it twice.
+    self.Context:Save()
+    Debug(string.format(
+        "recycled native Eden passive %d from the treasure pool overlay",
+        collectible
+    ))
+    return collectible
 end
 
 function EdenChoicesModule:GetPlayerKey(player)
@@ -200,6 +339,7 @@ function EdenChoicesModule:OnPlayerInit(player)
         state = self:CapturePlayerState(player),
     }
     self.SuppressedPickupCounts[playerKey] = 0
+    self.RemovedStartingEntities[playerKey] = 0
     Debug("captured Eden baseline before native starting items")
 end
 
@@ -266,6 +406,56 @@ function EdenChoicesModule:OnPickupInit(pickup)
         redirected.originalVariant,
         redirected.originalSubtype
     ))
+end
+
+function EdenChoicesModule:GetEntityOwner(entity)
+    local owner = entity and entity.Player
+
+    if owner then
+        return owner
+    end
+
+    local spawner = entity and entity.SpawnerEntity
+    owner = spawner and spawner:ToPlayer()
+
+    if owner then
+        return owner
+    end
+
+    local parent = entity and entity.Parent
+    return parent and parent:ToPlayer()
+end
+
+function EdenChoicesModule:RemoveStartingEntity(entity)
+    local owner = self:GetEntityOwner(entity)
+
+    if not owner then
+        return
+    end
+
+    local playerKey = self:GetPlayerKey(owner)
+
+    if self.RemovedStartingEntities[playerKey] == nil then
+        return
+    end
+
+    self.RemovedStartingEntities[playerKey] =
+        self.RemovedStartingEntities[playerKey] + 1
+    entity:Remove()
+    Debug(string.format(
+        "removed native starting entity %d.%d.%d for Eden",
+        entity.Type,
+        entity.Variant,
+        entity.SubType
+    ))
+end
+
+function EdenChoicesModule:OnFamiliarInit(familiar)
+    self:RemoveStartingEntity(familiar)
+end
+
+function EdenChoicesModule:OnEffectInit(effect)
+    self:RemoveStartingEntity(effect)
 end
 
 function EdenChoicesModule:OnPrePickupCollision(pickup, collider)
@@ -548,10 +738,15 @@ function EdenChoicesModule:RemoveNativeStartingPassive(player, baseline)
 
     if collectible then
         player:RemoveCollectible(collectible, true)
+        player:TryRemoveCollectibleCostume(collectible, false)
+        player:AddCacheFlags(CacheFlag.CACHE_ALL)
+        player:EvaluateItems()
         Debug(string.format(
-            "removed native Eden passive %d; redirected pickups=%d",
+            "removed native Eden passive %d; redirected pickups=%d; "
+                .. "removed entities=%d",
             collectible,
-            self.SuppressedPickupCounts[self:GetPlayerKey(player)] or 0
+            self.SuppressedPickupCounts[self:GetPlayerKey(player)] or 0,
+            self.RemovedStartingEntities[self:GetPlayerKey(player)] or 0
         ))
     else
         Debug("native Eden passive was not found")
@@ -589,15 +784,18 @@ end
 function EdenChoicesModule:OnGameStarted(isContinued)
     self.PendingPickups = {}
     self.RedirectedPickupSeeds = {}
+    self:ActivateRun(isContinued)
 
     if isContinued then
         self.PlayerBaselines = {}
         self.SuppressedPickupCounts = {}
+        self.RemovedStartingEntities = {}
         return
     end
 
     local groups = {}
     local excluded = {}
+    local recycleStateChanged = #self.PreservedRecycledItems > 0
 
     for playerIndex = 0, Game():GetNumPlayers() - 1 do
         local player = Isaac.GetPlayer(playerIndex)
@@ -608,7 +806,17 @@ function EdenChoicesModule:OnGameStarted(isContinued)
             and player:GetPlayerType() == EDEN
             and self.Context:IsEnabled(STARTING_CHOICE_KEY)
         then
-            self:RemoveNativeStartingPassive(player, baseline)
+            local collectible = self:RemoveNativeStartingPassive(
+                player,
+                baseline
+            )
+
+            if collectible then
+                self:QueueRecycledItem(collectible)
+                excluded[collectible] = true
+                recycleStateChanged = true
+            end
+
             groups[#groups + 1] = {
                 player = player,
                 seedSalt = STARTING_SEED_SALT + playerIndex * SEED_STEP,
@@ -619,6 +827,7 @@ function EdenChoicesModule:OnGameStarted(isContinued)
 
     self.PlayerBaselines = {}
     self.SuppressedPickupCounts = {}
+    self.RemovedStartingEntities = {}
 
     local primaryPlayer = Game():GetNumPlayers() > 0 and Isaac.GetPlayer(0)
     local rewardCount = self.PendingRewards
@@ -669,13 +878,33 @@ function EdenChoicesModule:OnGameStarted(isContinued)
 
     self.PendingRewards = self.PendingRewards + unspawnedRewards
 
-    if rewardCount > 0 then
+    if rewardCount > 0 or recycleStateChanged then
         self.Context:Save()
     end
 end
 
 function EdenChoicesModule:GetSaveData()
-    return { pendingRewards = self.PendingRewards }
+    local runSeed = self.RunSeed
+    local recycledItems = self.RecycledItems
+
+    -- Preserve a continuation queue loaded at the file-select menu until the
+    -- selected run becomes active and supplies its authoritative start seed.
+    if runSeed == nil then
+        runSeed = self.PreservedRunSeed
+        recycledItems = self.PreservedRecycledItems
+    end
+
+    local savedRecycledItems = {}
+
+    for _, collectible in ipairs(recycledItems) do
+        savedRecycledItems[#savedRecycledItems + 1] = collectible
+    end
+
+    return {
+        pendingRewards = self.PendingRewards,
+        runSeed = runSeed,
+        recycledItems = savedRecycledItems,
+    }
 end
 
 return EdenChoicesModule
