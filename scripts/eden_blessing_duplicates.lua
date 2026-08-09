@@ -23,6 +23,9 @@ local POCKET2_SLOT = ActiveSlot.SLOT_POCKET2
 local CHOICE_COUNT = 3
 local POCKET_ITEM_SLOTS = 2
 local TRINKET_SLOTS = 2
+local GOLDEN_TRINKET_FLAG = (TrinketType
+    and TrinketType.TRINKET_GOLDEN_FLAG)
+    or (1 << 15)
 local CHOICE_SPACING = 80
 local GROUP_SPACING = 88
 local STARTING_PLAYER_OFFSET = 80
@@ -91,6 +94,7 @@ function EdenChoicesModule.New(context)
         StartingFade = nil,
         StartingFadeSprite = nil,
         StartingPlacement = nil,
+        ActiveRunSeed = Game():GetSeeds():GetStartSeed(),
         ChoiceRunSeed = nil,
         ChoiceMetadataBySeed = {},
         ChoiceMetadataDirty = false,
@@ -517,6 +521,27 @@ function EdenChoicesModule:CaptureTrinkets(player)
     return trinkets
 end
 
+function EdenChoicesModule:GetAddedTrinkets(currentTrinkets, baselineTrinkets)
+    local baselineCounts = {}
+    local addedTrinkets = {}
+
+    for _, trinket in ipairs(baselineTrinkets or {}) do
+        baselineCounts[trinket] = (baselineCounts[trinket] or 0) + 1
+    end
+
+    for _, trinket in ipairs(currentTrinkets or {}) do
+        local baselineCount = baselineCounts[trinket] or 0
+
+        if baselineCount > 0 then
+            baselineCounts[trinket] = baselineCount - 1
+        else
+            addedTrinkets[#addedTrinkets + 1] = trinket
+        end
+    end
+
+    return addedTrinkets
+end
+
 function EdenChoicesModule:CaptureRewindSnapshot(player, baseline)
     local collectibles = self:CaptureCollectibles(player)
     local poolRemovals = {}
@@ -537,14 +562,18 @@ function EdenChoicesModule:CaptureRewindSnapshot(player, baseline)
         activeItems = self:CaptureActiveItems(player),
         pocketItems = self:CapturePocketItems(player),
         trinkets = self:CaptureTrinkets(player),
+        trinketPoolRemovals = {},
         state = self:CapturePlayerState(player),
         poolRemovals = poolRemovals,
     }
 end
 
 function EdenChoicesModule:OnPlayerInit(player)
+    local game = Game()
+    local runSeed = game:GetSeeds():GetStartSeed()
+
     if not self.Context:IsEnabled(STARTING_CHOICE_KEY)
-        or Game():GetFrameCount() ~= 0
+        or (game:GetFrameCount() ~= 0 and runSeed == self.ActiveRunSeed)
     then
         return
     end
@@ -553,6 +582,7 @@ function EdenChoicesModule:OnPlayerInit(player)
     self.PlayerBaselines[playerKey] = {
         player = player,
         collectibles = self:CaptureCollectibles(player),
+        trinkets = self:CaptureTrinkets(player),
         state = self:CapturePlayerState(player),
     }
 
@@ -1306,13 +1336,31 @@ function EdenChoicesModule:RestorePocketItems(player, pocketItems)
     end
 end
 
-function EdenChoicesModule:RestoreTrinkets(player, trinkets)
+function EdenChoicesModule:RestoreTrinkets(
+    player,
+    trinkets,
+    poolRemovals
+)
     for slot = TRINKET_SLOTS - 1, 0, -1 do
         local current = player:GetTrinket(slot)
 
         if current and current > 0 then
             player:TryRemoveTrinket(current)
         end
+    end
+
+    local itemPool = Game():GetItemPool()
+
+    for _, trinket in ipairs(poolRemovals or {}) do
+        local poolTrinket = trinket & ~GOLDEN_TRINKET_FLAG
+        local removed = poolTrinket > 0
+            and itemPool:RemoveTrinket(poolTrinket)
+            or false
+        Debug(string.format(
+            "removed restored starting trinket %d from run pool: %s",
+            poolTrinket,
+            tostring(removed)
+        ))
     end
 
     for _, trinket in ipairs(trinkets) do
@@ -1377,7 +1425,11 @@ function EdenChoicesModule:RestoreRewoundPlayers(rewind)
 
         self:RestoreCollectibles(player, snapshot)
         self:RestorePocketItems(player, snapshot.pocketItems)
-        self:RestoreTrinkets(player, snapshot.trinkets)
+        self:RestoreTrinkets(
+            player,
+            snapshot.trinkets,
+            snapshot.trinketPoolRemovals
+        )
         self:RestorePlayerState(player, snapshot.state)
     end
 end
@@ -1718,6 +1770,7 @@ function EdenChoicesModule:CompleteChoiceSetup(
 end
 
 function EdenChoicesModule:OnGameStarted(isContinued)
+    self.ActiveRunSeed = Game():GetSeeds():GetStartSeed()
     self.PendingPickups = {}
     self.RedirectedPickupSeeds = {}
     self.StartingRewind = nil
@@ -1768,6 +1821,10 @@ function EdenChoicesModule:OnGameStarted(isContinued)
                 self:FindNativeStartingActive(player, baseline)
 
             if collectible then
+                snapshot.trinketPoolRemovals = self:GetAddedTrinkets(
+                    snapshot.trinkets,
+                    baseline.trinkets
+                )
                 snapshot.collectibles[collectible] =
                     math.max(0, (snapshot.collectibles[collectible] or 0) - 1)
                 snapshot.poolRemovals[collectible] = nil

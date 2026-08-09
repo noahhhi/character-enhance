@@ -64,8 +64,9 @@
 - Eden's native random starting passive is returned to its original item pools
   without leaving its pickup-only health, consumables, visuals, or spawned
   pickups behind. The starting active, charge, resources, card or pill, and
-  trinket are preserved, while the retained active is removed from the pools
-  again. The internal reset and final placement finish while the starting room
+  trinket are preserved. The retained active and Eden's generated trinket are
+  removed from their pools again. The internal reset and final placement finish
+  while the starting room
   is black, then match the normal fade-in timing without showing a rewind or
   position correction. In place of the passive, three random collectible
   pedestals appear, Eden starts centered below them, and only one can be taken.
