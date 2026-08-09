@@ -65,8 +65,9 @@
   without leaving its pickup-only health, consumables, visuals, or spawned
   pickups behind. The starting active, charge, resources, card or pill, and
   trinket are preserved, while the retained active is removed from the pools
-  again. In place of the passive, three random collectible pedestals appear and
-  only one can be taken.
+  again. This finishes before the starting room fades in, so no rewind
+  transition is shown. In place of the passive, three random collectible
+  pedestals appear and only one can be taken.
 - Each Eden's Blessing collected creates its own three-pedestal choice at the
   start of the next run instead of adding one collectible directly.
 - Both choices draw from all available active, passive, and familiar

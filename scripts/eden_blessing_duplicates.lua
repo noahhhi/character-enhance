@@ -954,7 +954,7 @@ function EdenChoicesModule:IssueStartingRewind()
 
     rewind.phase = "rewinding"
     rewind.waitUpdates = 0
-    Debug("requesting one native starting-room rewind")
+    Debug("requesting one native starting-room rewind before room fade-in")
 
     local succeeded, result = pcall(Isaac.ExecuteCommand, "rewind")
 
@@ -1178,6 +1178,11 @@ function EdenChoicesModule:OnGameStarted(isContinued)
             snapshots = snapshots,
             rejectedPassives = rejectedPassives,
         }
+        -- MC_POST_GAME_STARTED runs after vanilla has assigned Eden's items,
+        -- but before the starting room finishes fading in. Rewind here instead
+        -- of waiting for the first player-effect update so its transition stays
+        -- behind the new-run loading screen.
+        self:IssueStartingRewind()
         return
     end
 
