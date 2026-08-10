@@ -120,6 +120,7 @@ function RerollHealthModule.New(context)
         DiceRoomTriggered = false,
         UpdateCallbackRegistered = false,
         DiceUpdateCallbackRegistered = false,
+        InputTriggerProbeActive = false,
     }, RerollHealthModule)
 
     self:OnSaveDataLoaded(
@@ -1178,6 +1179,24 @@ function RerollHealthModule:OnUseCard(card, player)
     end
 end
 
+function RerollHealthModule:IsPocketItemActionTriggered(player)
+    if self.InputTriggerProbeActive then
+        return false
+    end
+
+    -- MC_INPUT_ACTION reports that the game is polling an input hook, not that
+    -- the player actually pressed it. Probe the underlying trigger while a
+    -- guard keeps the nested callback from recursing into this check again.
+    self.InputTriggerProbeActive = true
+    local triggered = Input.IsActionTriggered(
+        ButtonAction.ACTION_PILLCARD,
+        player.ControllerIndex
+    )
+    self.InputTriggerProbeActive = false
+
+    return triggered == true
+end
+
 function RerollHealthModule:OnInputAction(entity, inputHook, buttonAction)
     if not self.RunActive
         or inputHook ~= InputHook.IS_ACTION_TRIGGERED
@@ -1188,7 +1207,7 @@ function RerollHealthModule:OnInputAction(entity, inputHook, buttonAction)
 
     local player = entity and entity:ToPlayer()
 
-    if not player then
+    if not player or not self:IsPocketItemActionTriggered(player) then
         return
     end
 
