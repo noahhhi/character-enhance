@@ -27,6 +27,7 @@
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
   <a href="#lost-soul-white-fire-fix">Lost Soul White Fire Fix</a> •
   <a href="#held-item-protection">Pickup Animation Fix</a> •
+  <a href="#mr-me-cycling-pedestal-fix">Mr. ME! Cycling Pedestal Fix</a> •
   <a href="#void-mega-mush-animation-fix">Void Mega Mush Animation Fix</a> •
   <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
   <a href="#ocular-rift-sound-fix">Ocular Rift Sound Fix</a> •
@@ -223,6 +224,14 @@
   disappearing before it reaches the inventory. In multiplayer, each player's
   pending pickup is completed independently.
 
+<a id="mr-me-cycling-pedestal-fix"></a>
+## Mr. ME! Cycling Pedestal Fix
+
+- While Mr. ME! is completing a task, cycling item pedestals keep the item
+  that was showing when the task began. This lets the ghost carry pedestals
+  affected by Isaac's Birthright, Glitched Crown, Binge Eater, and similar
+  effects. The fix stops pinning the pedestal as soon as the task ends.
+
 <a id="void-mega-mush-animation-fix"></a>
 ## Void Mega Mush Animation Fix
 
@@ -279,7 +288,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirty-one gameplay settings remain independently configurable:
+All thirty-two gameplay settings remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Soul of Eve Bird Fixes
@@ -295,23 +304,24 @@ All thirty-one gameplay settings remain independently configurable:
 12. Ocular Rift Sound Fix
 13. Pill Rewind Fix
 14. Show Zodiac's Floor Item
-15. Keep 1.00x Damage Multiplier
-16. Keep Dead Bird Active
-17. Eden Starting Passive Choice
-18. Eden's Blessing Choice
-19. Starting Wooden Cross
-20. Blue Baby Deal Prices
-21. Poop Queue Overflow Fix
-22. Keep Health on Reroll
-23. Keep Absorbed Stats
-24. Reveal Pills with Rerolled PHD
-25. Esau Jr. Pickup Effects
-26. TMTRAINER Reroll Chance
-27. Double Soul Charges
-28. Soul Charge Shield
-29. Shield Effects
-30. Gello Wisp Orbit Fix
-31. Explosion-proof Wisps
+15. Mr. ME! Cycling Pedestal Fix
+16. Keep 1.00x Damage Multiplier
+17. Keep Dead Bird Active
+18. Eden Starting Passive Choice
+19. Eden's Blessing Choice
+20. Starting Wooden Cross
+21. Blue Baby Deal Prices
+22. Poop Queue Overflow Fix
+23. Keep Health on Reroll
+24. Keep Absorbed Stats
+25. Reveal Pills with Rerolled PHD
+26. Esau Jr. Pickup Effects
+27. TMTRAINER Reroll Chance
+28. Double Soul Charges
+29. Soul Charge Shield
+30. Shield Effects
+31. Gello Wisp Orbit Fix
+32. Explosion-proof Wisps
 
 Options are grouped under the tabs `General`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. The integration supports both Mod

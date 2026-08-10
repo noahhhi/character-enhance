@@ -518,6 +518,20 @@ local MENU_SETTINGS = {
             "My Stuff explains the floor's sign and Zodiac.",
         },
     },
+    {
+        key = "mrMeCyclingPedestalFix",
+        group = "general",
+        zhName = "自我先生轮换底座修复",
+        enName = "Mr. ME! Cycling Pedestal Fix",
+        zhInfo = {
+            "自我先生执行任务时，暂时锁定轮换底座。",
+            "任务结束后立即停止锁定，不再干预底座。",
+        },
+        enInfo = {
+            "Mr. ME! locks cycling pedestals during a task.",
+            "The fix stops pinning when the task ends.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)
