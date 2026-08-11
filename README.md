@@ -256,7 +256,8 @@
   and continuing a run; continued runs restore the added count after the game
   finishes rebuilding its native transformation progress. Debug-console
   rewind and Glowing Hourglass restore the matching room history, then retain
-  exactly one added count for every real copy that remains after the rewind.
+  exactly one added count for every real copy that remains after the rewind,
+  without granting another count on consecutive rewinds.
 - Repentance+ only lets a mod provide **My Stuff** text for its own custom
   items, so these four vanilla item pages retain their original descriptions.
 

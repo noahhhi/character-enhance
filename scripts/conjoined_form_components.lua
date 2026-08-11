@@ -246,6 +246,30 @@ function ConjoinedFormComponentsModule:GetSupplementalComponentCount(player)
     return count
 end
 
+function ConjoinedFormComponentsModule:AdoptCurrentInventory()
+    local applied = {}
+    local game = Game()
+
+    for playerIndex = 0, game:GetNumPlayers() - 1 do
+        local player = Isaac.GetPlayer(playerIndex)
+        local counts = {}
+
+        for _, component in ipairs(COMPONENTS) do
+            local count = self:GetTargetCount(player, component.collectible)
+
+            if count > 0 then
+                counts[component.key] = count
+            end
+        end
+
+        if next(counts) then
+            applied[tostring(playerIndex)] = counts
+        end
+    end
+
+    self.Applied = applied
+end
+
 function ConjoinedFormComponentsModule:RepairMissingHotReloadProgress()
     local game = Game()
 
@@ -447,9 +471,12 @@ function ConjoinedFormComponentsModule:OnNewRoom()
                 self.RewindHistory[index] = nil
             end
         else
-            -- This is only reachable after an exceptionally deep rewind past
-            -- the bounded history. Rebuild from current real ownership.
-            self.Applied = {}
+            -- A hot reload can start the history later than the room restored
+            -- by Rewind. The engine already rolled its form counter back, so
+            -- adopt current real ownership without adding or removing counts.
+            -- Clearing Applied here would make the next player update grant
+            -- every supplemental copy again on each consecutive rewind.
+            self:AdoptCurrentInventory()
         end
 
         Isaac.DebugString(
