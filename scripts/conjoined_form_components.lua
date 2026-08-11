@@ -7,9 +7,12 @@ local LIL_MONSTRO = CollectibleType.COLLECTIBLE_LIL_MONSTRO
 local HUSHY = CollectibleType.COLLECTIBLE_HUSHY
 local LIL_SPEWER = CollectibleType.COLLECTIBLE_LIL_SPEWER
 local BROTHER_BOBBY = CollectibleType.COLLECTIBLE_BROTHER_BOBBY
+local GLOWING_HOUR_GLASS =
+    CollectibleType.COLLECTIBLE_GLOWING_HOUR_GLASS
 local MAX_COMPONENT_COPIES = 99
 local CONJOINED_FORM = PlayerForm.PLAYERFORM_BABY
 local REWIND_HISTORY_LIMIT = 256
+local REWIND_REQUEST_TIMEOUT = 120
 
 local COMPONENTS = {
     { key = "littleGish", collectible = LITTLE_GISH },
@@ -26,9 +29,11 @@ function ConjoinedFormComponentsModule.New(context)
         Applied = {},
         RunSeed = nil,
         RunActive = false,
+        HasLoadedRun = false,
         RewindHistory = {},
         LastRoomTimeCounter = nil,
         AwaitingRewindRoom = false,
+        PendingRewind = nil,
     }, ConjoinedFormComponentsModule)
 
     self:OnSaveDataLoaded(context:GetSavedModuleData(SETTING_KEY))
@@ -50,6 +55,13 @@ function ConjoinedFormComponentsModule.New(context)
         function()
             self:OnNewRoom()
         end
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_PRE_USE_ITEM,
+        function()
+            self:RecordRewindRequest("hourglass")
+        end,
+        GLOWING_HOUR_GLASS
     )
 
     return self
@@ -73,6 +85,28 @@ function ConjoinedFormComponentsModule:SanitizeSavedData(savedData)
         and runSeed ~= math.huge and runSeed ~= -math.huge
     then
         result.runSeed = math.floor(runSeed)
+    end
+
+    local pendingRewind = savedData.pendingRewind
+
+    if type(pendingRewind) == "table" then
+        local pendingRunSeed = pendingRewind.runSeed
+        local pendingTimeCounter = pendingRewind.timeCounter
+
+        if type(pendingRunSeed) == "number"
+            and pendingRunSeed == pendingRunSeed
+            and pendingRunSeed ~= math.huge
+            and pendingRunSeed ~= -math.huge
+            and type(pendingTimeCounter) == "number"
+            and pendingTimeCounter == pendingTimeCounter
+            and pendingTimeCounter >= 0
+            and pendingTimeCounter <= 2147483647
+        then
+            result.pendingRewind = {
+                runSeed = math.floor(pendingRunSeed),
+                timeCounter = math.floor(pendingTimeCounter),
+            }
+        end
     end
 
     if type(savedData.applied) ~= "table" then
@@ -176,6 +210,44 @@ function ConjoinedFormComponentsModule:FindRewindSnapshot(timeCounter)
     return nil, nil
 end
 
+function ConjoinedFormComponentsModule:CopyPendingRewind(pendingRewind)
+    if not pendingRewind then
+        return nil
+    end
+
+    return {
+        runSeed = pendingRewind.runSeed,
+        timeCounter = pendingRewind.timeCounter,
+    }
+end
+
+function ConjoinedFormComponentsModule:IsPersistedRewind(isContinued)
+    local pendingRewind = self.PreservedData.pendingRewind
+
+    return isContinued
+        and pendingRewind ~= nil
+        and pendingRewind.runSeed == self.RunSeed
+        and self:GetTimeCounter() < pendingRewind.timeCounter
+end
+
+function ConjoinedFormComponentsModule:RecordRewindRequest(source)
+    if not self.RunActive then
+        return
+    end
+
+    self.PendingRewind = {
+        runSeed = self.RunSeed or self:GetRunSeed(),
+        timeCounter = self:GetTimeCounter(),
+    }
+    self.AwaitingRewindRoom = true
+    self.Context:Save()
+    Isaac.DebugString(
+        "[Character Enhance][Conjoined] " .. source
+            .. " rewind request recorded at "
+            .. tostring(self.PendingRewind.timeCounter)
+    )
+end
+
 function ConjoinedFormComponentsModule:GetPlayerIndex(player)
     local playerHash = GetPtrHash(player)
     local game = Game()
@@ -210,7 +282,18 @@ function ConjoinedFormComponentsModule:LoadApplied(isContinued)
 end
 
 function ConjoinedFormComponentsModule:GetTargetCount(player, collectible)
-    if not self.Context:IsEnabled(SETTING_KEY) or player:IsDead() then
+    if not self.Context:IsEnabled(SETTING_KEY) then
+        return 0
+    end
+
+    return self:GetOwnedTargetCount(player, collectible)
+end
+
+function ConjoinedFormComponentsModule:GetOwnedTargetCount(
+    player,
+    collectible
+)
+    if player:IsDead() then
         return 0
     end
 
@@ -246,7 +329,7 @@ function ConjoinedFormComponentsModule:GetSupplementalComponentCount(player)
     return count
 end
 
-function ConjoinedFormComponentsModule:AdoptCurrentInventory()
+function ConjoinedFormComponentsModule:AdoptCurrentInventory(includeDisabled)
     local applied = {}
     local game = Game()
 
@@ -255,7 +338,19 @@ function ConjoinedFormComponentsModule:AdoptCurrentInventory()
         local counts = {}
 
         for _, component in ipairs(COMPONENTS) do
-            local count = self:GetTargetCount(player, component.collectible)
+            local count
+
+            if includeDisabled then
+                count = self:GetOwnedTargetCount(
+                    player,
+                    component.collectible
+                )
+            else
+                count = self:GetTargetCount(
+                    player,
+                    component.collectible
+                )
+            end
 
             if count > 0 then
                 counts[component.key] = count
@@ -268,6 +363,24 @@ function ConjoinedFormComponentsModule:AdoptCurrentInventory()
     end
 
     self.Applied = applied
+end
+
+function ConjoinedFormComponentsModule:FinishRestoredRunAdoption()
+    -- The engine restored one synthetic counter step per real supplemental
+    -- copy. Adopt those physical copies before reconciling so a disabled
+    -- setting removes exactly the restored steps instead of either keeping or
+    -- over-subtracting them.
+    self:AdoptCurrentInventory(true)
+    self:ReconcileAll()
+    self.RewindHistory = {}
+    self.LastRoomTimeCounter = self:GetTimeCounter()
+    self:CaptureRewindSnapshot(self.LastRoomTimeCounter)
+    self.AwaitingRewindRoom = false
+    self.PendingRewind = nil
+    self.Context:Save()
+    Isaac.DebugString(
+        "[Character Enhance][Conjoined] restored inventory adopted"
+    )
 end
 
 function ConjoinedFormComponentsModule:RepairMissingHotReloadProgress()
@@ -387,9 +500,14 @@ function ConjoinedFormComponentsModule:OnGameStarted(
     isContinued,
     isHotReload
 )
-    local wasRunActive = self.RunActive
+    local hadLoadedRun = self.HasLoadedRun
     self.RunSeed = self:GetRunSeed()
     self.RunActive = true
+    self.HasLoadedRun = true
+    local startTimeCounter = self:GetTimeCounter()
+    local persistedRewind = self:IsPersistedRewind(isContinued)
+    local managedContinue = isContinued
+        and self.PreservedData.runSeed == self.RunSeed
 
     if isHotReload then
         -- A Lua reload leaves the live native form counter intact, so adopt
@@ -400,21 +518,50 @@ function ConjoinedFormComponentsModule:OnGameStarted(
         self.LastRoomTimeCounter = self:GetTimeCounter()
         self:CaptureRewindSnapshot(self.LastRoomTimeCounter)
         self.AwaitingRewindRoom = false
-    elseif wasRunActive and isContinued then
-        -- Rewind and Glowing Hourglass restore native player state without
-        -- rolling Lua tables back. Keep the history until MC_POST_NEW_ROOM can
-        -- adopt the bookkeeping snapshot that matches the restored room.
+        self.PendingRewind = nil
+    elseif (hadLoadedRun and isContinued) or persistedRewind then
+        -- A same-process save/Continue and a rewind preserve the live native
+        -- form counter even though run callbacks restart. Rewind can reload
+        -- the Lua VM, so its pre-rollback marker distinguishes that internal
+        -- Continue from an ordinary save-file load. Keep live history when
+        -- available; otherwise adopt current real inventory.
         self.AwaitingRewindRoom = true
+        self.PendingRewind = self:CopyPendingRewind(
+            self.PreservedData.pendingRewind
+        ) or self.PendingRewind
+
+        if persistedRewind then
+            Isaac.DebugString(
+                "[Character Enhance][Conjoined] resuming recorded rewind "
+                    .. tostring(self.PendingRewind.timeCounter)
+                    .. " -> " .. tostring(self:GetTimeCounter())
+            )
+        end
+    elseif managedContinue then
+        -- Native run saves retain synthetic form progress across both
+        -- same-process and fresh-process Continue. Reuse the matching module
+        -- bookkeeping so ordinary continuation never grants it again. A
+        -- same-process module already owns the current table; a fresh Lua VM
+        -- loads the persisted table for this run seed.
+        if not hadLoadedRun then
+            self:LoadApplied(true)
+        end
+
+        self.RewindHistory = {}
+        self.LastRoomTimeCounter = startTimeCounter
+        self:CaptureRewindSnapshot(self.LastRoomTimeCounter)
+        self.AwaitingRewindRoom = false
+        self.PendingRewind = nil
     else
-        -- A real new/continued game rebuilds native form progress from owned
-        -- collectibles. Synthetic progress does not survive that rebuild, so
-        -- persisted bookkeeping must never suppress reapplication (or remove
-        -- nonexistent progress when the setting was disabled between runs).
+        -- New runs and first-install continues have no matching module
+        -- bookkeeping. Reconcile current real components once after native
+        -- player initialization has settled.
         self.Applied = {}
         self.RewindHistory = {}
         self.LastRoomTimeCounter = self:GetTimeCounter()
         self:CaptureRewindSnapshot(self.LastRoomTimeCounter)
         self.AwaitingRewindRoom = false
+        self.PendingRewind = nil
     end
 
     -- MC_POST_GAME_STARTED runs before Repentance+ finishes rebuilding native
@@ -437,7 +584,30 @@ function ConjoinedFormComponentsModule:OnPlayerEffectUpdate(player)
     end
 
     if self.AwaitingRewindRoom then
-        return
+        local pendingRewind = self.PendingRewind
+        local timeCounter = self:GetTimeCounter()
+
+        if pendingRewind == nil
+            or timeCounter < pendingRewind.timeCounter
+        then
+            -- Repentance+ can dispatch MC_POST_NEW_ROOM before the continued
+            -- MC_POST_GAME_STARTED callback. The first settled player-effect
+            -- update is therefore also a valid restoration boundary.
+            self:FinishRestoredRunAdoption()
+            return
+        end
+
+        if timeCounter
+            <= pendingRewind.timeCounter + REWIND_REQUEST_TIMEOUT
+        then
+            return
+        end
+
+        -- A failed/fizzled request must not freeze reconciliation or turn a
+        -- later ordinary room transition into a rewind.
+        self.AwaitingRewindRoom = false
+        self.PendingRewind = nil
+        self.Context:Save()
     end
 
     local playerIndex = self:GetPlayerIndex(player)
@@ -454,7 +624,10 @@ function ConjoinedFormComponentsModule:OnNewRoom()
     end
 
     local timeCounter = self:GetTimeCounter()
-    local isRewind = self.AwaitingRewindRoom
+    local requestedRewind = self.PendingRewind ~= nil
+        and timeCounter < self.PendingRewind.timeCounter
+    local isRewind = requestedRewind
+        or (self.AwaitingRewindRoom and self.PendingRewind == nil)
         or (self.LastRoomTimeCounter ~= nil
             and timeCounter < self.LastRoomTimeCounter)
 
@@ -476,11 +649,11 @@ function ConjoinedFormComponentsModule:OnNewRoom()
             -- adopt current real ownership without adding or removing counts.
             -- Clearing Applied here would make the next player update grant
             -- every supplemental copy again on each consecutive rewind.
-            self:AdoptCurrentInventory()
+            self:AdoptCurrentInventory(true)
         end
 
         Isaac.DebugString(
-            "[Character Enhance][Conjoined] rewind bookkeeping restored"
+            "[Character Enhance][Conjoined] restored-run bookkeeping restored"
         )
     else
         self:CaptureRewindSnapshot(timeCounter)
@@ -488,6 +661,7 @@ function ConjoinedFormComponentsModule:OnNewRoom()
 
     self.LastRoomTimeCounter = timeCounter
     self.AwaitingRewindRoom = false
+    self.PendingRewind = nil
     self.Context:Save()
 end
 
@@ -506,13 +680,13 @@ function ConjoinedFormComponentsModule:GetSaveData()
     return {
         runSeed = self.RunSeed,
         applied = self.Applied,
+        pendingRewind = self:CopyPendingRewind(self.PendingRewind),
     }
 end
 
 function ConjoinedFormComponentsModule:OnPreGameExit()
     self.RunActive = false
     self.RewindHistory = {}
-    self.LastRoomTimeCounter = nil
     self.AwaitingRewindRoom = false
 end
 
