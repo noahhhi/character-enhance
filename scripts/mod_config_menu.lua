@@ -353,8 +353,8 @@ local MENU_SETTINGS = {
     {
         key = "familiarCapacity",
         group = "general",
-        zhName = "保护魂火跟班不被临时跟班挤占",
-        enName = "Protect Wisps from Temporary Familiars",
+        zhName = "保护重要跟班",
+        enName = "Protect Important Familiars",
         zhInfo = {
             "嗝屁猫！套装、拟寄生物虫海不会挤占魂火等重要跟班。",
             "多余蓝苍蝇、蓝蜘蛛会暂存，有空位时重新生成。",
@@ -474,6 +474,20 @@ local MENU_SETTINGS = {
         enInfo = {
             "Mom's Box adds one Guppy count to Kid's Drawing.",
             "Golden copies total three and trigger Guppy.",
+        },
+    },
+    {
+        key = "conjoinedFamiliarComponents",
+        group = "general",
+        zhName = "扩充连体！套装组件",
+        enName = "More Conjoined Components",
+        zhInfo = {
+            "吉什、萌死戳、死寂、呕吐虫宝宝都计入。",
+            "每个真实副本各增加1件连体！进度。",
+        },
+        enInfo = {
+            "Gish, Monstro, Hushy, and Lil Spewer all count.",
+            "Each real copy adds one Conjoined progress.",
         },
     },
     {

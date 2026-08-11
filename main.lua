@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.23.18"
+local VERSION = "1.24.6"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     soulOfEveBirdFixes = true,
@@ -27,6 +27,7 @@ local DEFAULT_SETTINGS = {
     mrMeCyclingPedestalFix = true,
     voidMegaMushAnimation = true,
     kidsDrawingFormFix = true,
+    conjoinedFamiliarComponents = true,
     ocularRiftSoundFix = true,
     pillRewindIdentification = true,
     zodiacFloorItemDisplay = true,
@@ -235,6 +236,9 @@ local VoidMegaMushAnimationModule = include(
     "scripts/void_mega_mush_animation"
 )
 local KidsDrawingFormModule = include("scripts/kids_drawing_form")
+local ConjoinedFormComponentsModule = include(
+    "scripts/conjoined_form_components"
+)
 local OcularRiftSoundModule = include("scripts/ocular_rift_sound")
 local PillRewindIdentificationModule = include(
     "scripts/pill_rewind_identification"
@@ -351,6 +355,10 @@ Context:RegisterModule(
     KidsDrawingFormModule.New(Context)
 )
 Context:RegisterModule(
+    "conjoinedFamiliarComponents",
+    ConjoinedFormComponentsModule.New(Context)
+)
+Context:RegisterModule(
     "ocularRiftSoundFix",
     OcularRiftSoundModule.New(Context)
 )
@@ -386,6 +394,7 @@ if Game():GetFrameCount() > 0 then
         "bethanySoulCharge",
         "familiarCapacity",
         "kidsDrawingFormFix",
+        "conjoinedFamiliarComponents",
         "pillRewindIdentification",
         "zodiacFloorItemDisplay",
         "couponSteamSale",
@@ -394,7 +403,7 @@ if Game():GetFrameCount() > 0 then
         local module = Context.Modules[moduleKey]
 
         if module and module.OnGameStarted then
-            module:OnGameStarted(true)
+            module:OnGameStarted(true, true)
         end
     end
 end
