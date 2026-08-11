@@ -245,10 +245,24 @@ function ConjoinedFormComponentsModule:ReconcileAll()
     return changed
 end
 
-function ConjoinedFormComponentsModule:OnGameStarted(isContinued)
+function ConjoinedFormComponentsModule:OnGameStarted(
+    isContinued,
+    isHotReload
+)
     self.RunSeed = self:GetRunSeed()
     self.RunActive = true
-    self:LoadApplied(isContinued)
+
+    if isHotReload then
+        -- A Lua reload leaves the live native form counter intact, so adopt
+        -- the module-owned counts that were saved before the reload.
+        self:LoadApplied(isContinued)
+    else
+        -- A real new/continued game rebuilds native form progress from owned
+        -- collectibles. Synthetic progress does not survive that rebuild, so
+        -- persisted bookkeeping must never suppress reapplication (or remove
+        -- nonexistent progress when the setting was disabled between runs).
+        self.Applied = {}
+    end
 
     if self:ReconcileAll() or not isContinued then
         self.Context:Save()

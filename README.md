@@ -252,7 +252,8 @@
 ## Conjoined Familiar Components
 
 - Every real copy of Little Gish, Lil Monstro, Hushy, or Lil Spewer counts as
-  one component toward the Conjoined transformation.
+  one component toward the Conjoined transformation, including after saving
+  and continuing a run.
 - Repentance+ only lets a mod provide **My Stuff** text for its own custom
   items, so these four vanilla item pages retain their original descriptions.
 

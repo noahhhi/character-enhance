@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.24.1"
+local VERSION = "1.24.2"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     soulOfEveBirdFixes = true,
@@ -403,7 +403,7 @@ if Game():GetFrameCount() > 0 then
         local module = Context.Modules[moduleKey]
 
         if module and module.OnGameStarted then
-            module:OnGameStarted(true)
+            module:OnGameStarted(true, true)
         end
     end
 end
