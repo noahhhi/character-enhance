@@ -253,7 +253,10 @@
 
 - Every real copy of Little Gish, Lil Monstro, Hushy, or Lil Spewer counts as
   one component toward the Conjoined transformation, including after saving
-  and continuing a run.
+  and continuing a run; continued runs restore the added count after the game
+  finishes rebuilding its native transformation progress. Debug-console
+  rewind and Glowing Hourglass restore the matching room history, then retain
+  exactly one added count for every real copy that remains after the rewind.
 - Repentance+ only lets a mod provide **My Stuff** text for its own custom
   items, so these four vanilla item pages retain their original descriptions.
 

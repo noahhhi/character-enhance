@@ -8,6 +8,8 @@ local HUSHY = CollectibleType.COLLECTIBLE_HUSHY
 local LIL_SPEWER = CollectibleType.COLLECTIBLE_LIL_SPEWER
 local BROTHER_BOBBY = CollectibleType.COLLECTIBLE_BROTHER_BOBBY
 local MAX_COMPONENT_COPIES = 99
+local CONJOINED_FORM = PlayerForm.PLAYERFORM_BABY
+local REWIND_HISTORY_LIMIT = 256
 
 local COMPONENTS = {
     { key = "littleGish", collectible = LITTLE_GISH },
@@ -24,6 +26,9 @@ function ConjoinedFormComponentsModule.New(context)
         Applied = {},
         RunSeed = nil,
         RunActive = false,
+        RewindHistory = {},
+        LastRoomTimeCounter = nil,
+        AwaitingRewindRoom = false,
     }, ConjoinedFormComponentsModule)
 
     self:OnSaveDataLoaded(context:GetSavedModuleData(SETTING_KEY))
@@ -38,6 +43,12 @@ function ConjoinedFormComponentsModule.New(context)
         ModCallbacks.MC_POST_PEFFECT_UPDATE,
         function(_, player)
             self:OnPlayerEffectUpdate(player)
+        end
+    )
+    context.Mod:AddCallback(
+        ModCallbacks.MC_POST_NEW_ROOM,
+        function()
+            self:OnNewRoom()
         end
     )
 
@@ -111,6 +122,60 @@ function ConjoinedFormComponentsModule:GetRunSeed()
     return Game():GetSeeds():GetStartSeed()
 end
 
+function ConjoinedFormComponentsModule:GetTimeCounter()
+    local game = Game()
+
+    if type(game.TimeCounter) == "number" then
+        return game.TimeCounter
+    end
+
+    return game:GetFrameCount()
+end
+
+function ConjoinedFormComponentsModule:CopyApplied(applied)
+    local result = {}
+
+    for playerKey, counts in pairs(applied or {}) do
+        local copiedCounts = {}
+
+        for componentKey, count in pairs(counts) do
+            copiedCounts[componentKey] = count
+        end
+
+        result[playerKey] = copiedCounts
+    end
+
+    return result
+end
+
+function ConjoinedFormComponentsModule:CaptureRewindSnapshot(timeCounter)
+    local snapshot = {
+        timeCounter = timeCounter or self:GetTimeCounter(),
+        applied = self:CopyApplied(self.Applied),
+    }
+
+    self.RewindHistory[#self.RewindHistory + 1] = snapshot
+
+    if #self.RewindHistory > REWIND_HISTORY_LIMIT then
+        table.remove(self.RewindHistory, 1)
+    end
+
+    return snapshot
+end
+
+
+function ConjoinedFormComponentsModule:FindRewindSnapshot(timeCounter)
+    for index = #self.RewindHistory, 1, -1 do
+        local snapshot = self.RewindHistory[index]
+
+        if snapshot.timeCounter <= timeCounter then
+            return snapshot, index
+        end
+    end
+
+    return nil, nil
+end
+
 function ConjoinedFormComponentsModule:GetPlayerIndex(player)
     local playerHash = GetPtrHash(player)
     local game = Game()
@@ -153,6 +218,55 @@ function ConjoinedFormComponentsModule:GetTargetCount(player, collectible)
         MAX_COMPONENT_COPIES,
         math.max(0, player:GetCollectibleNum(collectible, true))
     )
+end
+
+function ConjoinedFormComponentsModule:GetNativeComponentCount(player)
+    local itemConfig = Isaac.GetItemConfig()
+    local collectibleList = itemConfig:GetCollectibles()
+    local count = 0
+
+    for collectible = 1, collectibleList.Size - 1 do
+        local config = itemConfig:GetCollectible(collectible)
+
+        if config and config:HasTags(ItemConfig.TAG_BABY) then
+            count = count + player:GetCollectibleNum(collectible, true)
+        end
+    end
+
+    return count
+end
+
+function ConjoinedFormComponentsModule:GetSupplementalComponentCount(player)
+    local count = 0
+
+    for _, component in ipairs(COMPONENTS) do
+        count = count + self:GetTargetCount(player, component.collectible)
+    end
+
+    return count
+end
+
+function ConjoinedFormComponentsModule:RepairMissingHotReloadProgress()
+    local game = Game()
+
+    for playerIndex = 0, game:GetNumPlayers() - 1 do
+        local player = Isaac.GetPlayer(playerIndex)
+
+        if not player:HasPlayerForm(CONJOINED_FORM)
+            and self:GetNativeComponentCount(player)
+                + self:GetSupplementalComponentCount(player) >= 3
+        then
+            -- If all module-owned counts were still present, an inventory
+            -- total of three would already have completed Conjoined. Clear
+            -- only this player's bookkeeping so reconciliation restores the
+            -- missing supplemental progress at the settled live frame.
+            self.Applied[tostring(playerIndex)] = nil
+            Isaac.DebugString(
+                "[Character Enhance][Conjoined] repairing overwritten "
+                .. "supplemental progress for player " .. playerIndex
+            )
+        end
+    end
 end
 
 function ConjoinedFormComponentsModule:AddContribution(player)
@@ -249,6 +363,7 @@ function ConjoinedFormComponentsModule:OnGameStarted(
     isContinued,
     isHotReload
 )
+    local wasRunActive = self.RunActive
     self.RunSeed = self:GetRunSeed()
     self.RunActive = true
 
@@ -256,15 +371,38 @@ function ConjoinedFormComponentsModule:OnGameStarted(
         -- A Lua reload leaves the live native form counter intact, so adopt
         -- the module-owned counts that were saved before the reload.
         self:LoadApplied(isContinued)
+        self:RepairMissingHotReloadProgress()
+        self.RewindHistory = {}
+        self.LastRoomTimeCounter = self:GetTimeCounter()
+        self:CaptureRewindSnapshot(self.LastRoomTimeCounter)
+        self.AwaitingRewindRoom = false
+    elseif wasRunActive and isContinued then
+        -- Rewind and Glowing Hourglass restore native player state without
+        -- rolling Lua tables back. Keep the history until MC_POST_NEW_ROOM can
+        -- adopt the bookkeeping snapshot that matches the restored room.
+        self.AwaitingRewindRoom = true
     else
         -- A real new/continued game rebuilds native form progress from owned
         -- collectibles. Synthetic progress does not survive that rebuild, so
         -- persisted bookkeeping must never suppress reapplication (or remove
         -- nonexistent progress when the setting was disabled between runs).
         self.Applied = {}
+        self.RewindHistory = {}
+        self.LastRoomTimeCounter = self:GetTimeCounter()
+        self:CaptureRewindSnapshot(self.LastRoomTimeCounter)
+        self.AwaitingRewindRoom = false
     end
 
-    if self:ReconcileAll() or not isContinued then
+    -- MC_POST_GAME_STARTED runs before Repentance+ finishes rebuilding native
+    -- transformation counters. A real start must wait for the first player
+    -- effect update or the engine will overwrite the supplemental progress.
+    local hotReloadChanged = isHotReload and self:ReconcileAll()
+
+    if hotReloadChanged then
+        self:CaptureRewindSnapshot(self:GetTimeCounter())
+    end
+
+    if hotReloadChanged or not isContinued then
         self.Context:Save()
     end
 end
@@ -274,15 +412,61 @@ function ConjoinedFormComponentsModule:OnPlayerEffectUpdate(player)
         return
     end
 
+    if self.AwaitingRewindRoom then
+        return
+    end
+
     local playerIndex = self:GetPlayerIndex(player)
 
     if self:ReconcilePlayer(player, playerIndex) then
+        self:CaptureRewindSnapshot(self:GetTimeCounter())
         self.Context:Save()
     end
 end
 
+function ConjoinedFormComponentsModule:OnNewRoom()
+    if not self.RunActive then
+        return
+    end
+
+    local timeCounter = self:GetTimeCounter()
+    local isRewind = self.AwaitingRewindRoom
+        or (self.LastRoomTimeCounter ~= nil
+            and timeCounter < self.LastRoomTimeCounter)
+
+    if isRewind then
+        local snapshot, historyIndex = self:FindRewindSnapshot(timeCounter)
+
+        if snapshot then
+            -- The engine restored the native transformation counter from this
+            -- room snapshot. Restore the matching module bookkeeping before
+            -- inventory reconciliation so no count is added or removed twice.
+            self.Applied = self:CopyApplied(snapshot.applied)
+
+            for index = #self.RewindHistory, historyIndex + 1, -1 do
+                self.RewindHistory[index] = nil
+            end
+        else
+            -- This is only reachable after an exceptionally deep rewind past
+            -- the bounded history. Rebuild from current real ownership.
+            self.Applied = {}
+        end
+
+        Isaac.DebugString(
+            "[Character Enhance][Conjoined] rewind bookkeeping restored"
+        )
+    else
+        self:CaptureRewindSnapshot(timeCounter)
+    end
+
+    self.LastRoomTimeCounter = timeCounter
+    self.AwaitingRewindRoom = false
+    self.Context:Save()
+end
+
 function ConjoinedFormComponentsModule:OnSettingChanged()
     if self:ReconcileAll() then
+        self:CaptureRewindSnapshot(self:GetTimeCounter())
         self.Context:Save()
     end
 end
@@ -300,6 +484,9 @@ end
 
 function ConjoinedFormComponentsModule:OnPreGameExit()
     self.RunActive = false
+    self.RewindHistory = {}
+    self.LastRoomTimeCounter = nil
+    self.AwaitingRewindRoom = false
 end
 
 return ConjoinedFormComponentsModule
