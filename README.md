@@ -30,6 +30,7 @@
   <a href="#mr-me-cycling-pedestal-fix">Mr. ME! Cycling Pedestal Fix</a> •
   <a href="#void-mega-mush-animation-fix">Void Mega Mush Animation Fix</a> •
   <a href="#kids-drawing-form-fix">Kid's Drawing Form Fix</a> •
+  <a href="#conjoined-familiar-components">Conjoined Familiar Components</a> •
   <a href="#ocular-rift-sound-fix">Ocular Rift Sound Fix</a> •
   <a href="#pill-rewind-fix">Pill Rewind Fix</a> •
   <a href="#zodiac-floor-item">Zodiac Floor Item</a> •
@@ -247,6 +248,12 @@
   counts with a normal copy and three with a golden copy. A golden Kid's
   Drawing with Mom's Box therefore triggers the Guppy transformation directly.
 
+<a id="conjoined-familiar-components"></a>
+## Conjoined Familiar Components
+
+- Little Gish and Lil Monstro each count as one component toward the Conjoined
+  transformation. Duplicate copies of the same item do not count again.
+
 <a id="ocular-rift-sound-fix"></a>
 ## Ocular Rift Sound Fix
 
@@ -287,7 +294,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirty-two gameplay settings remain independently configurable:
+All thirty-three gameplay settings remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Soul of Eve Bird Fixes
@@ -300,27 +307,28 @@ All thirty-two gameplay settings remain independently configurable:
 9. Pickup Animation Fix
 10. Void Mega Mush Animation Fix
 11. Kid's Drawing Form Fix
-12. Ocular Rift Sound Fix
-13. Pill Rewind Fix
-14. Show Zodiac's Floor Item
-15. Mr. ME! Cycling Pedestal Fix
-16. Keep 1.00x Damage Multiplier
-17. Keep Dead Bird Active
-18. Eden Starting Passive Choice
-19. Eden's Blessing Choice
-20. Starting Wooden Cross
-21. Blue Baby Deal Prices
-22. Poop Queue Overflow Fix
-23. Keep Health on Reroll
-24. Keep Absorbed Stats
-25. Reveal Pills with Rerolled PHD
-26. Esau Jr. Pickup Effects
-27. TMTRAINER Reroll Chance
-28. Double Soul Charges
-29. Soul Charge Shield
-30. Shield Effects
-31. Gello Wisp Orbit Fix
-32. Explosion-proof Wisps
+12. Gish/Monstro Count for Conjoined
+13. Ocular Rift Sound Fix
+14. Pill Rewind Fix
+15. Show Zodiac's Floor Item
+16. Mr. ME! Cycling Pedestal Fix
+17. Keep 1.00x Damage Multiplier
+18. Keep Dead Bird Active
+19. Eden Starting Passive Choice
+20. Eden's Blessing Choice
+21. Starting Wooden Cross
+22. Blue Baby Deal Prices
+23. Poop Queue Overflow Fix
+24. Keep Health on Reroll
+25. Keep Absorbed Stats
+26. Reveal Pills with Rerolled PHD
+27. Esau Jr. Pickup Effects
+28. TMTRAINER Reroll Chance
+29. Double Soul Charges
+30. Soul Charge Shield
+31. Shield Effects
+32. Gello Wisp Orbit Fix
+33. Explosion-proof Wisps
 
 Options are grouped under the tabs `General`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. The integration supports both Mod

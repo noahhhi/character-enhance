@@ -477,6 +477,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "conjoinedFamiliarComponents",
+        group = "general",
+        zhName = "吉什与萌死戳计入连体！",
+        enName = "Gish/Monstro Count for Conjoined",
+        zhInfo = {
+            "吉什宝宝和萌死戳宝宝各为连体！计1件。",
+            "失去其中一件时，只撤销对应的额外进度。",
+        },
+        enInfo = {
+            "Little Gish and Lil Monstro count for Conjoined.",
+            "Losing one removes only its added form progress.",
+        },
+    },
+    {
         key = "ocularRiftSoundFix",
         group = "general",
         zhName = "邪眼裂口音效修复",
