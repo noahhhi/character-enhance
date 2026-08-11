@@ -4,6 +4,9 @@ MrMeCyclingPedestalModule.__index = MrMeCyclingPedestalModule
 local SETTING_KEY = "mrMeCyclingPedestalFix"
 local COLLECTIBLE_PICKUP = PickupVariant.PICKUP_COLLECTIBLE
 local MR_ME_EFFECT = EffectVariant.MR_ME
+local FALLBACK_TARGET_PADDING = 20
+local STATE_TRAVELLING_TO_TARGET = 1
+local STATE_CARRYING_TO_PLAYER = 2
 
 local function GetEntityKey(entity)
     if type(GetPtrHash) == "function" then
@@ -13,46 +16,56 @@ local function GetEntityKey(entity)
     return entity
 end
 
+local function GetCollectiblePickup(entity)
+    if not entity
+        or entity.Type ~= EntityType.ENTITY_PICKUP
+        or entity.Variant ~= COLLECTIBLE_PICKUP
+    then
+        return nil
+    end
+
+    return entity:ToPickup()
+end
+
+local function IsLivePickup(pickup)
+    return pickup
+        and pickup:Exists()
+end
+
 function MrMeCyclingPedestalModule.New(context)
     local self = setmetatable({
         Context = context,
         ActiveEffects = {},
-        ActiveEffectCount = 0,
-        ManagedPickups = setmetatable({}, { __mode = "k" }),
+        ActivePickups = {},
     }, MrMeCyclingPedestalModule)
 
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_EFFECT_INIT,
         function(_, effect)
-            self:OnMrMeEffect(effect)
+            self:OnMrMeEffectInit(effect)
         end,
         MR_ME_EFFECT
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_EFFECT_UPDATE,
         function(_, effect)
-            self:OnMrMeEffect(effect)
+            self:OnMrMeEffectUpdate(effect)
         end,
         MR_ME_EFFECT
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_PICKUP_UPDATE,
         function(_, pickup)
-            self:OnCollectibleUpdate(pickup)
+            self:OnCollectiblePickupUpdate(pickup)
         end,
         COLLECTIBLE_PICKUP
-    )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_POST_UPDATE,
-        function()
-            self:OnPostUpdate()
-        end
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_ENTITY_REMOVE,
         function(_, entity)
             self:OnEntityRemove(entity)
-        end
+        end,
+        EntityType.ENTITY_EFFECT
     )
     context.Mod:AddCallback(
         ModCallbacks.MC_POST_NEW_ROOM,
@@ -70,35 +83,67 @@ function MrMeCyclingPedestalModule.New(context)
     return self
 end
 
-function MrMeCyclingPedestalModule:IsActive()
-    return self.ActiveEffectCount > 0
-        and self.Context:IsEnabled(SETTING_KEY)
+function MrMeCyclingPedestalModule:IsEnabled()
+    return self.Context:IsEnabled(SETTING_KEY)
 end
 
-function MrMeCyclingPedestalModule:ReleasePickups()
-    self.ManagedPickups = setmetatable({}, { __mode = "k" })
+function MrMeCyclingPedestalModule:ReleasePickup(state)
+    if state.PickupKey then
+        local effects = self.ActivePickups[state.PickupKey]
+
+        if effects then
+            effects[state.EffectKey] = nil
+
+            if next(effects) == nil then
+                self.ActivePickups[state.PickupKey] = nil
+            end
+        end
+    end
+
+    state.Pickup = nil
+    state.PickupKey = nil
 end
 
-function MrMeCyclingPedestalModule:PinPickup(pickup)
-    if pickup.SubType <= 0 or self.ManagedPickups[pickup] then
+function MrMeCyclingPedestalModule:RetainPickup(state, pickup)
+    local pickupKey = GetEntityKey(pickup)
+
+    if state.PickupKey == pickupKey then
+        state.Pickup = pickup
         return
     end
 
-    self.ManagedPickups[pickup] = {
-        lockedSubtype = pickup.SubType,
-    }
+    self:ReleasePickup(state)
+    state.Pickup = pickup
+    state.PickupKey = pickupKey
+
+    local effects = self.ActivePickups[pickupKey]
+
+    if not effects then
+        effects = {}
+        self.ActivePickups[pickupKey] = effects
+    end
+
+    effects[state.EffectKey] = state
 end
 
-function MrMeCyclingPedestalModule:RestorePickup(pickup, state)
-    if pickup.SubType > 0 and pickup.SubType ~= state.lockedSubtype then
-        pickup.SubType = state.lockedSubtype
-    end
-end
+function MrMeCyclingPedestalModule:FindPickupAtTarget(effect, state)
+    local targetPosition = effect.TargetPosition
 
-function MrMeCyclingPedestalModule:PinCurrentPedestals()
-    if not self:IsActive() then
-        return
+    if not targetPosition then
+        return nil
     end
+
+    if state.LastTargetX == targetPosition.X
+        and state.LastTargetY == targetPosition.Y
+    then
+        return nil
+    end
+
+    state.LastTargetX = targetPosition.X
+    state.LastTargetY = targetPosition.Y
+
+    local nearest = nil
+    local nearestDistanceSquared = nil
 
     for _, entity in ipairs(Isaac.FindByType(
         EntityType.ENTITY_PICKUP,
@@ -106,90 +151,163 @@ function MrMeCyclingPedestalModule:PinCurrentPedestals()
     )) do
         local pickup = entity:ToPickup()
 
-        if pickup then
-            self:PinPickup(pickup)
+        if IsLivePickup(pickup) then
+            local offsetX = pickup.Position.X - targetPosition.X
+            local offsetY = pickup.Position.Y - targetPosition.Y
+            local distanceSquared = offsetX * offsetX + offsetY * offsetY
+            local radius = pickup.Size + FALLBACK_TARGET_PADDING
+
+            if distanceSquared <= radius * radius
+                and (not nearestDistanceSquared
+                    or distanceSquared < nearestDistanceSquared)
+            then
+                nearest = pickup
+                nearestDistanceSquared = distanceSquared
+            end
         end
     end
+
+    return nearest
 end
 
-function MrMeCyclingPedestalModule:OnMrMeEffect(effect)
-    local key = GetEntityKey(effect)
 
-    if self.ActiveEffects[key] then
-        return
-    end
-
-    local wasInactive = self.ActiveEffectCount == 0
-
-    self.ActiveEffects[key] = true
-    self.ActiveEffectCount = self.ActiveEffectCount + 1
-
-    if wasInactive then
-        self:PinCurrentPedestals()
-    end
-end
-
-function MrMeCyclingPedestalModule:OnCollectibleUpdate(pickup)
-    if not self:IsActive() then
-        self.ManagedPickups[pickup] = nil
-        return
-    end
-
-    self:PinPickup(pickup)
-
-    local state = self.ManagedPickups[pickup]
-
-    if state then
-        self:RestorePickup(pickup, state)
-    end
-end
-
-function MrMeCyclingPedestalModule:OnPostUpdate()
-    if not self:IsActive() then
-        return
-    end
-
-    for pickup, state in pairs(self.ManagedPickups) do
-        if pickup:Exists() then
-            self:RestorePickup(pickup, state)
-        else
-            self.ManagedPickups[pickup] = nil
+function MrMeCyclingPedestalModule:ResolvePickupTarget(effect, state)
+    if IsLivePickup(state.Pickup) then
+        if effect.Child
+            and GetEntityKey(effect.Child) ~= GetEntityKey(state.Pickup)
+        then
+            self:ReleasePickup(state)
+            return nil
         end
+
+        return state.Pickup
     end
+
+    self:ReleasePickup(state)
+
+    local nativeTarget = GetCollectiblePickup(effect.Child)
+
+    if IsLivePickup(nativeTarget) then
+        self:RetainPickup(state, nativeTarget)
+        return nativeTarget
+    end
+
+    if effect.Child then
+        return nil
+    end
+
+    local fallbackTarget = self:FindPickupAtTarget(effect, state)
+
+    if fallbackTarget then
+        self:RetainPickup(state, fallbackTarget)
+    end
+
+    return fallbackTarget
 end
 
-function MrMeCyclingPedestalModule:OnEntityRemove(entity)
-    if entity.Type ~= EntityType.ENTITY_EFFECT
-        or entity.Variant ~= MR_ME_EFFECT
+function MrMeCyclingPedestalModule:MaintainPickupTarget(effect, state)
+    if not self:IsEnabled()
+        or (effect.State ~= STATE_TRAVELLING_TO_TARGET
+            and effect.State ~= STATE_CARRYING_TO_PLAYER)
+    then
+        self:ReleasePickup(state)
+        return
+    end
+
+    if effect.State == STATE_CARRYING_TO_PLAYER
+        and not IsLivePickup(state.Pickup)
     then
         return
     end
 
-    local key = GetEntityKey(entity)
+    local pickup = self:ResolvePickupTarget(effect, state)
 
-    if not self.ActiveEffects[key] then
+    if pickup
+        and (not effect.Child
+            or GetEntityKey(effect.Child) ~= GetEntityKey(pickup))
+    then
+        -- Mr. ME!'s native state machine stores the selected task entity in
+        -- Child while it travels. Cycling pedestals clear this link whenever
+        -- their displayed subtype changes, so restore only the link and leave
+        -- the pickup plus the targeting-reticle entity completely untouched.
+        effect.Child = pickup
+    end
+end
+
+function MrMeCyclingPedestalModule:OnCollectiblePickupUpdate(pickup)
+    if not self:IsEnabled() then
         return
     end
 
-    self.ActiveEffects[key] = nil
-    self.ActiveEffectCount = math.max(0, self.ActiveEffectCount - 1)
+    local effects = self.ActivePickups[GetEntityKey(pickup)]
 
-    if self.ActiveEffectCount == 0 then
-        self:ReleasePickups()
+    if not effects then
+        return
+    end
+
+    for _, state in pairs(effects) do
+        local effect = state.Effect
+
+        if (effect.State == STATE_TRAVELLING_TO_TARGET
+                or effect.State == STATE_CARRYING_TO_PLAYER)
+            and IsLivePickup(state.Pickup)
+            and not effect.Child
+        then
+            -- Collectible cycling clears Child during the pickup's own update.
+            -- Restore it here so Mr. ME!'s later native entity update still
+            -- sees the selected task and can enter its normal Carry state.
+            effect.Child = state.Pickup
+        end
+    end
+end
+
+function MrMeCyclingPedestalModule:OnMrMeEffectInit(effect)
+    local key = GetEntityKey(effect)
+    local state = {
+        Effect = effect,
+        EffectKey = key,
+    }
+    self.ActiveEffects[key] = state
+    self:MaintainPickupTarget(effect, state)
+end
+
+function MrMeCyclingPedestalModule:OnMrMeEffectUpdate(effect)
+    local key = GetEntityKey(effect)
+    local state = self.ActiveEffects[key]
+
+    if not state then
+        state = {
+            Effect = effect,
+            EffectKey = key,
+        }
+        self.ActiveEffects[key] = state
+    end
+
+    self:MaintainPickupTarget(effect, state)
+end
+
+function MrMeCyclingPedestalModule:OnEntityRemove(entity)
+    if entity.Type == EntityType.ENTITY_EFFECT
+        and entity.Variant == MR_ME_EFFECT
+    then
+        local key = GetEntityKey(entity)
+        local state = self.ActiveEffects[key]
+
+        if state then
+            self:ReleasePickup(state)
+            self.ActiveEffects[key] = nil
+        end
     end
 end
 
 function MrMeCyclingPedestalModule:ResetRoomState()
     self.ActiveEffects = {}
-    self.ActiveEffectCount = 0
-    self:ReleasePickups()
+    self.ActivePickups = {}
 end
 
 function MrMeCyclingPedestalModule:OnSettingChanged(enabled)
-    if enabled then
-        self:PinCurrentPedestals()
-    else
-        self:ReleasePickups()
+    if not enabled then
+        self:ResetRoomState()
     end
 end
 

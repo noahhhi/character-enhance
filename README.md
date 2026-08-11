@@ -227,10 +227,9 @@
 <a id="mr-me-cycling-pedestal-fix"></a>
 ## Mr. ME! Cycling Pedestal Fix
 
-- While Mr. ME! is completing a task, cycling item pedestals keep the item
-  that was showing when the task began. This lets the ghost carry pedestals
-  affected by Isaac's Birthright, Glitched Crown, Binge Eater, and similar
-  effects. The fix stops pinning the pedestal as soon as the task ends.
+- Mr. ME! keeps the same pedestal targeted while Isaac's Birthright, Glitched
+  Crown, Binge Eater, or a similar effect cycles the displayed item. The ghost
+  can carry it normally without stopping or damaging the original item cycle.
 
 <a id="void-mega-mush-animation-fix"></a>
 ## Void Mega Mush Animation Fix

@@ -524,12 +524,12 @@ local MENU_SETTINGS = {
         zhName = "自我先生轮换底座修复",
         enName = "Mr. ME! Cycling Pedestal Fix",
         zhInfo = {
-            "自我先生执行任务时，暂时锁定轮换底座。",
-            "任务结束后立即停止锁定，不再干预底座。",
+            "自我先生会持续锁定同一个轮换底座。",
+            "不会停止轮换或改写底座道具。",
         },
         enInfo = {
-            "Mr. ME! locks cycling pedestals during a task.",
-            "The fix stops pinning when the task ends.",
+            "Mr. ME! keeps the same cycling pedestal targeted.",
+            "The item cycle itself remains untouched.",
         },
     },
 }
