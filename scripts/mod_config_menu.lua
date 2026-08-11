@@ -353,8 +353,8 @@ local MENU_SETTINGS = {
     {
         key = "familiarCapacity",
         group = "general",
-        zhName = "保护魂火跟班不被临时跟班挤占",
-        enName = "Protect Wisps from Temporary Familiars",
+        zhName = "保护重要跟班",
+        enName = "Protect Important Familiars",
         zhInfo = {
             "嗝屁猫！套装、拟寄生物虫海不会挤占魂火等重要跟班。",
             "多余蓝苍蝇、蓝蜘蛛会暂存，有空位时重新生成。",

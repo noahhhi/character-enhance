@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.24.4"
+local VERSION = "1.24.5"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     soulOfEveBirdFixes = true,

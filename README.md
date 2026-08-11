@@ -305,7 +305,7 @@ All thirty-three gameplay settings remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Soul of Eve Bird Fixes
-3. Protect Wisps from Temporary Familiars
+3. Protect Important Familiars
 4. C Section Incubus Animation Fix
 5. Small Player Pickup Range Fix
 6. Clog Creep Damage Fix
