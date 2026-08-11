@@ -518,6 +518,20 @@ local MENU_SETTINGS = {
             "My Stuff explains the floor's sign and Zodiac.",
         },
     },
+    {
+        key = "mrMeCyclingPedestalFix",
+        group = "general",
+        zhName = "自我先生轮换底座修复",
+        enName = "Mr. ME! Cycling Pedestal Fix",
+        zhInfo = {
+            "自我先生会持续锁定同一个轮换底座。",
+            "不会停止轮换或改写底座道具。",
+        },
+        enInfo = {
+            "Mr. ME! keeps the same cycling pedestal targeted.",
+            "The item cycle itself remains untouched.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)

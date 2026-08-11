@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.23.15"
+local VERSION = "1.23.18"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     soulOfEveBirdFixes = true,
@@ -24,6 +24,7 @@ local DEFAULT_SETTINGS = {
     lostSoulWhiteFireFix = true,
     lostSoulWhiteFireMantle = true,
     heldItemProtection = true,
+    mrMeCyclingPedestalFix = true,
     voidMegaMushAnimation = true,
     kidsDrawingFormFix = true,
     ocularRiftSoundFix = true,
@@ -227,6 +228,9 @@ local LostSoulWhiteFireModule = include(
     "scripts/lost_soul_white_fire_phase"
 )
 local HeldItemProtectionModule = include("scripts/held_item_protection")
+local MrMeCyclingPedestalModule = include(
+    "scripts/mr_me_cycling_pedestal"
+)
 local VoidMegaMushAnimationModule = include(
     "scripts/void_mega_mush_animation"
 )
@@ -333,6 +337,10 @@ Context:RegisterSettingHandler(
 Context:RegisterModule(
     "heldItemProtection",
     HeldItemProtectionModule.New(Context)
+)
+Context:RegisterModule(
+    "mrMeCyclingPedestalFix",
+    MrMeCyclingPedestalModule.New(Context)
 )
 Context:RegisterModule(
     "voidMegaMushAnimation",
