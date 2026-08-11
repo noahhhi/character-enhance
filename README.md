@@ -251,8 +251,10 @@
 <a id="conjoined-familiar-components"></a>
 ## Conjoined Familiar Components
 
-- Little Gish and Lil Monstro each count as one component toward the Conjoined
-  transformation. Duplicate copies of the same item do not count again.
+- Every real copy of Little Gish, Lil Monstro, Hushy, or Lil Spewer counts as
+  one component toward the Conjoined transformation.
+- Repentance+ only lets a mod provide **My Stuff** text for its own custom
+  items, so these four vanilla item pages retain their original descriptions.
 
 <a id="ocular-rift-sound-fix"></a>
 ## Ocular Rift Sound Fix
@@ -307,7 +309,7 @@ All thirty-three gameplay settings remain independently configurable:
 9. Pickup Animation Fix
 10. Void Mega Mush Animation Fix
 11. Kid's Drawing Form Fix
-12. Gish/Monstro Count for Conjoined
+12. More Conjoined Components
 13. Ocular Rift Sound Fix
 14. Pill Rewind Fix
 15. Show Zodiac's Floor Item

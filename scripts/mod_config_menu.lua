@@ -479,15 +479,15 @@ local MENU_SETTINGS = {
     {
         key = "conjoinedFamiliarComponents",
         group = "general",
-        zhName = "吉什与萌死戳计入连体！",
-        enName = "Gish/Monstro Count for Conjoined",
+        zhName = "扩充连体！套装组件",
+        enName = "More Conjoined Components",
         zhInfo = {
-            "吉什宝宝和萌死戳宝宝各为连体！计1件。",
-            "失去其中一件时，只撤销对应的额外进度。",
+            "吉什、萌死戳、死寂、呕吐虫宝宝都计入。",
+            "每个真实副本各增加1件连体！进度。",
         },
         enInfo = {
-            "Little Gish and Lil Monstro count for Conjoined.",
-            "Losing one removes only its added form progress.",
+            "Gish, Monstro, Hushy, and Lil Spewer all count.",
+            "Each real copy adds one Conjoined progress.",
         },
     },
     {

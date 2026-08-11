@@ -4,11 +4,16 @@ ConjoinedFormComponentsModule.__index = ConjoinedFormComponentsModule
 local SETTING_KEY = "conjoinedFamiliarComponents"
 local LITTLE_GISH = CollectibleType.COLLECTIBLE_LITTLE_GISH
 local LIL_MONSTRO = CollectibleType.COLLECTIBLE_LIL_MONSTRO
+local HUSHY = CollectibleType.COLLECTIBLE_HUSHY
+local LIL_SPEWER = CollectibleType.COLLECTIBLE_LIL_SPEWER
 local BROTHER_BOBBY = CollectibleType.COLLECTIBLE_BROTHER_BOBBY
+local MAX_COMPONENT_COPIES = 99
 
 local COMPONENTS = {
-    { collectible = LITTLE_GISH, bit = 1 },
-    { collectible = LIL_MONSTRO, bit = 2 },
+    { key = "littleGish", collectible = LITTLE_GISH },
+    { key = "lilMonstro", collectible = LIL_MONSTRO },
+    { key = "hushy", collectible = HUSHY },
+    { key = "lilSpewer", collectible = LIL_SPEWER },
 }
 
 function ConjoinedFormComponentsModule.New(context)
@@ -66,14 +71,36 @@ function ConjoinedFormComponentsModule:SanitizeSavedData(savedData)
     for playerKey, value in pairs(savedData.applied) do
         local playerIndex = tonumber(playerKey)
 
-        if type(value) == "number"
-            and value == math.floor(value)
-            and value >= 1 and value <= 3
-            and playerIndex
+        if playerIndex
             and playerIndex == math.floor(playerIndex)
             and playerIndex >= 0 and playerIndex <= 15
         then
-            result.applied[tostring(playerIndex)] = value
+            local counts = {}
+
+            -- Version 1.24.0 stored a two-bit presence mask. Migrate it so a
+            -- hot reload does not apply Little Gish or Lil Monstro twice.
+            if type(value) == "number"
+                and value == math.floor(value)
+                and value >= 1 and value <= 3
+            then
+                counts.littleGish = value % 2 == 1 and 1 or nil
+                counts.lilMonstro = value >= 2 and 1 or nil
+            elseif type(value) == "table" then
+                for _, component in ipairs(COMPONENTS) do
+                    local count = value[component.key]
+
+                    if type(count) == "number"
+                        and count == math.floor(count)
+                        and count >= 1 and count <= MAX_COMPONENT_COPIES
+                    then
+                        counts[component.key] = count
+                    end
+                end
+            end
+
+            if next(counts) then
+                result.applied[tostring(playerIndex)] = counts
+            end
         end
     end
 
@@ -107,24 +134,25 @@ function ConjoinedFormComponentsModule:LoadApplied(isContinued)
     end
 
     for playerKey, value in pairs(self.PreservedData.applied) do
-        self.Applied[playerKey] = value
+        local counts = {}
+
+        for componentKey, count in pairs(value) do
+            counts[componentKey] = count
+        end
+
+        self.Applied[playerKey] = counts
     end
 end
 
-function ConjoinedFormComponentsModule:GetTargetMask(player)
+function ConjoinedFormComponentsModule:GetTargetCount(player, collectible)
     if not self.Context:IsEnabled(SETTING_KEY) or player:IsDead() then
         return 0
     end
 
-    local mask = 0
-
-    for _, component in ipairs(COMPONENTS) do
-        if player:GetCollectibleNum(component.collectible, true) > 0 then
-            mask = mask + component.bit
-        end
-    end
-
-    return mask
+    return math.min(
+        MAX_COMPONENT_COPIES,
+        math.max(0, player:GetCollectibleNum(collectible, true))
+    )
 end
 
 function ConjoinedFormComponentsModule:AddContribution(player)
@@ -158,27 +186,43 @@ function ConjoinedFormComponentsModule:ReconcilePlayer(player, playerIndex)
     end
 
     local playerKey = tostring(playerIndex)
-    local current = self.Applied[playerKey] or 0
-    local target = self:GetTargetMask(player)
-
-    if current == target then
-        return false
-    end
+    local currentCounts = self.Applied[playerKey] or {}
+    local nextCounts = {}
+    local changed = false
 
     for _, component in ipairs(COMPONENTS) do
-        local currentHas = current % (component.bit * 2) >= component.bit
-        local targetHas = target % (component.bit * 2) >= component.bit
+        local current = currentCounts[component.key] or 0
+        local target = self:GetTargetCount(player, component.collectible)
 
-        if currentHas ~= targetHas then
-            if targetHas then
-                self:AddContribution(player)
+        if target > 0 then
+            nextCounts[component.key] = target
+        end
+
+        if current ~= target then
+            changed = true
+
+            if target > current then
+                for _ = current + 1, target do
+                    self:AddContribution(player)
+                end
             else
-                self:RemoveContribution(player)
+                for _ = target + 1, current do
+                    self:RemoveContribution(player)
+                end
             end
         end
     end
 
-    self.Applied[playerKey] = target ~= 0 and target or nil
+    if not changed then
+        return false
+    end
+
+    if next(nextCounts) then
+        self.Applied[playerKey] = nextCounts
+    else
+        self.Applied[playerKey] = nil
+    end
+
     return true
 end
 
