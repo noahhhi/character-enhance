@@ -88,11 +88,30 @@ function MrMeCyclingPedestalModule:IsEnabled()
 end
 
 function MrMeCyclingPedestalModule:ReleasePickup(state)
+    local pickup = state.Pickup
+    local restoreVisibility = state.RestoreVisibility
+    local anotherCarrier = false
+
     if state.PickupKey then
         local effects = self.ActivePickups[state.PickupKey]
 
         if effects then
             effects[state.EffectKey] = nil
+
+            for _, otherState in pairs(effects) do
+                if otherState.Effect
+                    and otherState.Effect.State == STATE_CARRYING_TO_PLAYER
+                    and IsLivePickup(otherState.Pickup)
+                then
+                    anotherCarrier = true
+
+                    if restoreVisibility then
+                        otherState.RestoreVisibility = true
+                    end
+
+                    break
+                end
+            end
 
             if next(effects) == nil then
                 self.ActivePickups[state.PickupKey] = nil
@@ -102,6 +121,15 @@ function MrMeCyclingPedestalModule:ReleasePickup(state)
 
     state.Pickup = nil
     state.PickupKey = nil
+    state.RestoreVisibility = nil
+
+    if restoreVisibility
+        and not anotherCarrier
+        and IsLivePickup(pickup)
+        and pickup.Visible == false
+    then
+        pickup.Visible = true
+    end
 end
 
 function MrMeCyclingPedestalModule:RetainPickup(state, pickup)
@@ -124,6 +152,17 @@ function MrMeCyclingPedestalModule:RetainPickup(state, pickup)
     end
 
     effects[state.EffectKey] = state
+end
+
+function MrMeCyclingPedestalModule:HidePickupWhileCarried(state, pickup)
+    if pickup.Visible then
+        -- Native Mr. ME! hides the pedestal as soon as carrying begins. Item
+        -- cycling re-enables its visibility during the pickup update, leaving
+        -- a duplicate at the old position. Reapply only that native visual
+        -- state; the effect will reveal and place the pickup on delivery.
+        pickup.Visible = false
+        state.RestoreVisibility = true
+    end
 end
 
 function MrMeCyclingPedestalModule:FindPickupAtTarget(effect, state)
@@ -232,6 +271,10 @@ function MrMeCyclingPedestalModule:MaintainPickupTarget(effect, state)
         -- the pickup plus the targeting-reticle entity completely untouched.
         effect.Child = pickup
     end
+
+    if pickup and effect.State == STATE_CARRYING_TO_PLAYER then
+        self:HidePickupWhileCarried(state, pickup)
+    end
 end
 
 function MrMeCyclingPedestalModule:OnCollectiblePickupUpdate(pickup)
@@ -251,12 +294,17 @@ function MrMeCyclingPedestalModule:OnCollectiblePickupUpdate(pickup)
         if (effect.State == STATE_TRAVELLING_TO_TARGET
                 or effect.State == STATE_CARRYING_TO_PLAYER)
             and IsLivePickup(state.Pickup)
-            and not effect.Child
         then
-            -- Collectible cycling clears Child during the pickup's own update.
-            -- Restore it here so Mr. ME!'s later native entity update still
-            -- sees the selected task and can enter its normal Carry state.
-            effect.Child = state.Pickup
+            if not effect.Child then
+                -- Collectible cycling clears Child during the pickup's own
+                -- update. Restore it here so Mr. ME!'s later native entity
+                -- update still sees the selected task and can carry it.
+                effect.Child = state.Pickup
+            end
+
+            if effect.State == STATE_CARRYING_TO_PLAYER then
+                self:HidePickupWhileCarried(state, state.Pickup)
+            end
         end
     end
 end
@@ -301,6 +349,10 @@ function MrMeCyclingPedestalModule:OnEntityRemove(entity)
 end
 
 function MrMeCyclingPedestalModule:ResetRoomState()
+    for _, state in pairs(self.ActiveEffects) do
+        self:ReleasePickup(state)
+    end
+
     self.ActiveEffects = {}
     self.ActivePickups = {}
 end
