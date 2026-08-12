@@ -546,6 +546,20 @@ local MENU_SETTINGS = {
             "The item cycle itself remains untouched.",
         },
     },
+    {
+        key = "habitSharpPlugSynergy",
+        group = "general",
+        zhName = "修女服与锋利插头联动",
+        enName = "Habit + Sharp Plug Synergy",
+        zhInfo = {
+            "修女服使锋利插头的生命消耗减半，向上取整。",
+            "同时持有蓄电池时保持原版行为。",
+        },
+        enInfo = {
+            "Habit halves Sharp Plug's health cost.",
+            "The Battery keeps vanilla behavior.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)
