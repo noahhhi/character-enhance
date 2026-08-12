@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.24.6"
+local VERSION = "1.25.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     soulOfEveBirdFixes = true,
@@ -32,6 +32,7 @@ local DEFAULT_SETTINGS = {
     pillRewindIdentification = true,
     zodiacFloorItemDisplay = true,
     couponSteamSale = true,
+    habitSharpPlugSynergy = true,
     edenStartingItemChoice = true,
     edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
@@ -247,6 +248,7 @@ local ZodiacFloorItemDisplayModule = include(
     "scripts/zodiac_floor_item_display"
 )
 local CouponSteamSaleModule = include("scripts/coupon_steam_sale")
+local HabitSharpPlugModule = include("scripts/habit_sharp_plug")
 local EdenBlessingDuplicatesModule = include(
     "scripts/eden_blessing_duplicates"
 )
@@ -373,6 +375,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "couponSteamSale",
     CouponSteamSaleModule.New(Context)
+)
+Context:RegisterModule(
+    "habitSharpPlugSynergy",
+    HabitSharpPlugModule.New(Context)
 )
 local edenChoicesModule = EdenBlessingDuplicatesModule.New(Context)
 Context:RegisterModule(

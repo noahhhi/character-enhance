@@ -21,6 +21,7 @@
   <a href="#tainted-eden">Tainted Eden</a> •
   <a href="#bethany">Bethany</a> •
   <a href="#coupon-full-shop-discount">Coupon Full-Shop Discount</a> •
+  <a href="#habit-sharp-plug-synergy">Habit + Sharp Plug Synergy</a> •
   <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
@@ -167,6 +168,15 @@
 - Multiple Coupons and real Steam Sales all stack through Repentance+'s normal
   discount rule, including copies held by different players.
 
+<a id="habit-sharp-plug-synergy"></a>
+## Habit + Sharp Plug Synergy
+
+- When Habit and Sharp Plug are held without The Battery, every half-heart paid
+  provides one charge from each item. Sharp Plug therefore costs half as many
+  half-hearts, rounded up: a six-charge item at zero charge costs three.
+- When The Battery is also held, the original three-item interaction remains
+  unchanged.
+
 <a id="familiar-capacity"></a>
 ## Protect Wisps from Temporary Familiars
 
@@ -301,7 +311,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirty-three gameplay settings remain independently configurable:
+All thirty-four gameplay settings remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Soul of Eve Bird Fixes
@@ -319,23 +329,24 @@ All thirty-three gameplay settings remain independently configurable:
 14. Pill Rewind Fix
 15. Show Zodiac's Floor Item
 16. Mr. ME! Cycling Pedestal Fix
-17. Keep 1.00x Damage Multiplier
-18. Keep Dead Bird Active
-19. Eden Starting Passive Choice
-20. Eden's Blessing Choice
-21. Starting Wooden Cross
-22. Blue Baby Deal Prices
-23. Poop Queue Overflow Fix
-24. Keep Health on Reroll
-25. Keep Absorbed Stats
-26. Reveal Pills with Rerolled PHD
-27. Esau Jr. Pickup Effects
-28. TMTRAINER Reroll Chance
-29. Double Soul Charges
-30. Soul Charge Shield
-31. Shield Effects
-32. Gello Wisp Orbit Fix
-33. Explosion-proof Wisps
+17. Habit + Sharp Plug Synergy
+18. Keep 1.00x Damage Multiplier
+19. Keep Dead Bird Active
+20. Eden Starting Passive Choice
+21. Eden's Blessing Choice
+22. Starting Wooden Cross
+23. Blue Baby Deal Prices
+24. Poop Queue Overflow Fix
+25. Keep Health on Reroll
+26. Keep Absorbed Stats
+27. Reveal Pills with Rerolled PHD
+28. Esau Jr. Pickup Effects
+29. TMTRAINER Reroll Chance
+30. Double Soul Charges
+31. Soul Charge Shield
+32. Shield Effects
+33. Gello Wisp Orbit Fix
+34. Explosion-proof Wisps
 
 Options are grouped under the tabs `General`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. The integration supports both Mod
