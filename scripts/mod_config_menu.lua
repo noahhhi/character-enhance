@@ -108,8 +108,8 @@ local MENU_SETTINGS = {
             "每个代金券与Steam大促都可继续叠加。",
         },
         enInfo = {
-            "Coupon recharges in 3 rooms and discounts all goods.",
-            "Each Coupon stacks with Steam Sale and other copies.",
+            "Coupon charges in 3 cleared rooms.",
+            "Stacks with Coupons and Steam Sale.",
         },
     },
     {
@@ -122,8 +122,8 @@ local MENU_SETTINGS = {
             "补全儿童栓绳加成与BFFS!体型增大。",
         },
         enInfo = {
-            "Sacrificial Altar can consume Soul of Eve's birds.",
-            "Adds Child Leash buffs and BFFS! size scaling.",
+            "Altar can sacrifice Soul of Eve birds.",
+            "Adds Child Leash buffs and BFFS! size.",
         },
     },
     {
@@ -136,8 +136,8 @@ local MENU_SETTINGS = {
             "巴比伦大淫妇仍提供伤害与移速加成。",
         },
         enInfo = {
-            "Eve always uses a 1.00x damage multiplier.",
-            "Whore of Babylon keeps its damage and speed.",
+            "Eve keeps a 1.00x damage multiplier.",
+            "Babylon keeps its damage and speed.",
         },
     },
     {
@@ -150,8 +150,8 @@ local MENU_SETTINGS = {
             "同一只死鸟跨房保留，受伤不会生成第二只。",
         },
         enInfo = {
-            "Active at half a Red Heart; normal Eve at one.",
-            "The same bird crosses rooms; damage adds no copy.",
+            "Active at 1/2 Red Heart; Eve at one.",
+            "One bird persists; damage adds no copy.",
         },
     },
     {
@@ -164,8 +164,8 @@ local MENU_SETTINGS = {
             "三选一保留原生来源池，主动道具也会出现。",
         },
         enInfo = {
-            "Place Eden in black, then use the standard fade.",
-            "Each choice keeps a native pool; actives can appear.",
+            "Positions Eden before the normal fade.",
+            "Keeps native pools; actives can appear.",
         },
     },
     {
@@ -178,8 +178,8 @@ local MENU_SETTINGS = {
             "包括主动；排除已拥有和“非伊甸”道具。",
         },
         enInfo = {
-            "Each Eden's Blessing creates a choice of 3 next run.",
-            "Actives included; owned/noeden items are excluded.",
+            "Each Blessing gives 3 choices next run.",
+            "Actives included; skips owned/noeden.",
         },
     },
     {
@@ -192,8 +192,8 @@ local MENU_SETTINGS = {
             "角色页会同步显示；已有饰品不会被移除。",
         },
         enInfo = {
-            "Tainted Lost starts each run with Wooden Cross.",
-            "Character page follows it; owned copies stay.",
+            "Starts each run with Wooden Cross.",
+            "Character page follows; copies stay.",
         },
     },
     {
@@ -206,8 +206,8 @@ local MENU_SETTINGS = {
             "1或2个心之容器，改为消耗1或2颗魂心。",
         },
         enInfo = {
-            "Tainted Blue Baby uses Blue Baby's deal prices.",
-            "One/two containers cost one/two Soul Hearts.",
+            "Uses Blue Baby's deal prices.",
+            "1/2 containers cost 1/2 Soul Hearts.",
         },
     },
     {
@@ -220,8 +220,8 @@ local MENU_SETTINGS = {
             "仍可推动；队列有空位后即可拾取。",
         },
         enInfo = {
-            "Full queue: poop pickups stay on the ground.",
-            "Pushable; collectible again when space opens.",
+            "Full queue leaves poop pickups behind.",
+            "Pushable; collect after space opens.",
         },
     },
     {
@@ -234,8 +234,8 @@ local MENU_SETTINGS = {
             "覆盖里伊甸、D4/D100和骰子房。",
         },
         enInfo = {
-            "Inventory rerolls keep each player's health.",
-            "Covers Tainted Eden, reroll items, and Dice Rooms.",
+            "Rerolls preserve player health.",
+            "Covers Tainted Eden and Dice Rooms.",
         },
     },
     {
@@ -248,8 +248,8 @@ local MENU_SETTINGS = {
             "按玩家分别记录；不冻结道具本身的属性。",
         },
         enInfo = {
-            "Rerolls keep stats gained from Void and Black Rune.",
-            "Per player; item stats still reroll normally.",
+            "Rerolls keep Void and Black Rune stats.",
+            "Per player; item stats still reroll.",
         },
     },
     {
@@ -262,8 +262,8 @@ local MENU_SETTINGS = {
             "药丸名称会像正常拾取道具时一样永久显示。",
         },
         enInfo = {
-            "A rerolled PHD or False PHD reveals all pills.",
-            "Pill names stay known after the item is lost.",
+            "Rerolled PHD/False PHD reveals pills.",
+            "Names stay known after the item is lost.",
         },
     },
     {
@@ -276,8 +276,8 @@ local MENU_SETTINGS = {
             "之后切换身体不会重复触发。",
         },
         enInfo = {
-            "Runs pickup effects when Esau Jr. is first created.",
-            "Later body swaps do not trigger them again.",
+            "Runs effects when Esau Jr. appears.",
+            "Later body swaps do not repeat them.",
         },
     },
     {
@@ -290,8 +290,8 @@ local MENU_SETTINGS = {
             "达到99点后，魂心和黑心会留在地上。",
         },
         enInfo = {
-            "Bethany gains 4 charges per Soul Heart; 2 per half.",
-            "At 99, Soul and Black Hearts stay on the ground.",
+            "Soul Hearts give 4 charge; halves 2.",
+            "At 99, Soul/Black Hearts stay put.",
         },
     },
     {
@@ -304,8 +304,8 @@ local MENU_SETTINGS = {
             "献血、乞丐等自愿伤害仍正常生效。",
         },
         enInfo = {
-            "Spends charges to block hits that lower deal chance.",
-            "Voluntary damage still works and costs no charge.",
+            "Uses charge to block deal-chance hits.",
+            "Voluntary hits work and cost no charge.",
         },
     },
     {
@@ -318,8 +318,8 @@ local MENU_SETTINGS = {
             "只影响视听；关闭后护盾功能仍然生效。",
         },
         enInfo = {
-            "Shield visuals and sound grow with soul charge.",
-            "Cosmetic only; Soul Charge Shield still works.",
+            "Effects grow with soul charge.",
+            "Cosmetic only; the shield still works.",
         },
     },
     {
@@ -332,7 +332,7 @@ local MENU_SETTINGS = {
             "只修正环绕中心，不改变魂火属性。",
         },
         enInfo = {
-            "Virtues wisps orbit you while Gello is active.",
+            "Virtues wisps orbit you during Gello.",
             "Only their orbit center changes.",
         },
     },
@@ -346,8 +346,8 @@ local MENU_SETTINGS = {
             "对应的所罗门之书魂火也会保护同伴。",
         },
         enInfo = {
-            "Pyromaniac or Host Hat makes wisps explosion-proof.",
-            "Matching Lemegeton wisps also protect their group.",
+            "Pyromaniac/Host Hat blocks wisp blasts.",
+            "Matching item wisps protect the group.",
         },
     },
     {
@@ -360,8 +360,8 @@ local MENU_SETTINGS = {
             "多余蓝苍蝇、蓝蜘蛛会暂存，有空位时重新生成。",
         },
         enInfo = {
-            "Guppy/Parasitoid swarms cannot displace wisps.",
-            "Extra Blue Flies/Spiders return when slots open.",
+            "Swarms cannot replace key familiars.",
+            "Extra flies/spiders return as slots open.",
         },
     },
     {
@@ -374,8 +374,8 @@ local MENU_SETTINGS = {
             "射击动画及其他跟班保持原版。",
         },
         enInfo = {
-            "Restores Incubus's idle flight with C Section.",
-            "Shooting and other familiars stay unchanged.",
+            "Fixes Incubus idle flight with C Section.",
+            "Others and shooting stay vanilla.",
         },
     },
     {
@@ -388,8 +388,8 @@ local MENU_SETTINGS = {
             "角色视觉体型保持不变，战斗中仍为小体型。",
         },
         enInfo = {
-            "Non-combat: normal pickup/contact reach.",
-            "Visual stays small; combat collision stays small.",
+            "Normal pickup/contact range when safe.",
+            "Looks small; combat remains small.",
         },
     },
     {
@@ -402,8 +402,8 @@ local MENU_SETTINGS = {
             "其他敌人和敌方水迹不受影响。",
         },
         enInfo = {
-            "Player-made damaging creep can hurt The Clog.",
-            "Other enemies and enemy creep are unchanged.",
+            "Player creep can damage The Clog.",
+            "Only The Clog is affected.",
         },
     },
     {
@@ -416,8 +416,8 @@ local MENU_SETTINGS = {
             "玩家触火获得游魂诅咒的行为保持原版。",
         },
         enInfo = {
-            "Lost Soul passes through white fire unharmed.",
-            "Players still enter the Lost form as normal.",
+            "Lost Soul crosses white fire safely.",
+            "Players still enter the Lost form.",
         },
     },
     {
@@ -430,8 +430,8 @@ local MENU_SETTINGS = {
             "下一次其他伤害会消耗；白火不会。",
         },
         enInfo = {
-            "White fire grants a Mantle with a brief choir.",
-            "Next other hit uses it; white fire does not.",
+            "White fire grants Mantle with a choir.",
+            "Next other hit uses it; white fire won't.",
         },
     },
     {
@@ -444,8 +444,8 @@ local MENU_SETTINGS = {
             "避免道具在重置时消失。",
         },
         enInfo = {
-            "R Key/Forget Me Now finish pending pickups first.",
-            "Prevents the held item disappearing on reset.",
+            "Resets finish held pickups first.",
+            "Prevents held items vanishing on reset.",
         },
     },
     {
@@ -458,8 +458,8 @@ local MENU_SETTINGS = {
             "不延长持续时间，也不重复增加属性。",
         },
         enInfo = {
-            "Void transforms; stays giant across rooms/floors.",
-            "Duration and stat bonuses are not increased.",
+            "Void stays giant between rooms/floors.",
+            "No extra duration or stat bonuses.",
         },
     },
     {
@@ -472,8 +472,8 @@ local MENU_SETTINGS = {
             "金色版本合计3件，可直接变身嗝屁猫。",
         },
         enInfo = {
-            "Mom's Box adds one Guppy count to Kid's Drawing.",
-            "Golden copies total three and trigger Guppy.",
+            "Mom's Box adds one Guppy count.",
+            "Gold copies total 3 and trigger Guppy.",
         },
     },
     {
@@ -486,8 +486,8 @@ local MENU_SETTINGS = {
             "每个真实副本各增加1件连体！进度。",
         },
         enInfo = {
-            "Gish, Monstro, Hushy, and Lil Spewer all count.",
-            "Each real copy adds one Conjoined progress.",
+            "Gish, Monstro, Hushy & Spewer count.",
+            "Each copy adds one Conjoined count.",
         },
     },
     {
@@ -500,8 +500,8 @@ local MENU_SETTINGS = {
             "覆盖手指！等持续触发泪弹特效的道具。",
         },
         enInfo = {
-            "Stops Ocular Rift sounds when no tear was fired.",
-            "Covers Finger! and similar passive effect sources.",
+            "Stops false Ocular Rift firing sounds.",
+            "Covers Finger! and similar effects.",
         },
     },
     {
@@ -514,8 +514,8 @@ local MENU_SETTINGS = {
             "内置说明与右下角药丸名称不会变回问号。",
         },
         enInfo = {
-            "Used pills stay identified after a room rewind.",
-            "Built-in descriptions and the HUD keep the name.",
+            "Used pills stay known after rewind.",
+            "Built-in text and HUD keep names.",
         },
     },
     {
@@ -528,8 +528,8 @@ local MENU_SETTINGS = {
             "My Stuff 说明本层星座效果与黄道十二宫。",
         },
         enInfo = {
-            "Shows an inert gray item beside native Zodiac.",
-            "My Stuff explains the floor's sign and Zodiac.",
+            "Shows a gray marker beside Zodiac.",
+            "My Stuff lists this floor's sign effect.",
         },
     },
     {
@@ -542,8 +542,8 @@ local MENU_SETTINGS = {
             "不会停止轮换或改写底座道具。",
         },
         enInfo = {
-            "Mr. ME! keeps the same cycling pedestal targeted.",
-            "The item cycle itself remains untouched.",
+            "Mr. ME! keeps its cycling target.",
+            "Item cycling stays unchanged.",
         },
     },
 }
@@ -731,7 +731,7 @@ function ModConfigMenuModule:AddTmtrainerChance(menu)
         Info = function()
             if self:GetLanguage() == "en" then
                 return {
-                    "TMTRAINER chance during an inventory reroll.",
+                    "Chance during inventory rerolls.",
                     "0% excludes it; 100% keeps vanilla odds.",
                 }
             end
@@ -798,21 +798,21 @@ function ModConfigMenuModule:AddShieldStyle(menu, kind)
             if self:GetLanguage() == "en" then
                 if kind == "visual" then
                     return {
-                        "Choose the shield's appearance.",
-                        "Changing it previews the new style.",
+                        "Choose the shield appearance.",
+                        "Changing it previews the style.",
                     }
                 end
 
                 if kind == "hit" then
                     return {
-                        "Choose the shield's blocked-hit flash.",
+                        "Choose the blocked-hit flash.",
                         "Changing it previews the effect.",
                     }
                 end
 
                 return {
                     "Choose the shield sound.",
-                    "Changing it previews the 30-charge sound.",
+                    "Changing it plays the 30-charge sound.",
                 }
             end
 
@@ -900,21 +900,20 @@ function ModConfigMenuModule:AddShieldPreview(menu, kind, previewCharge)
             if self:GetLanguage() == "en" then
                 if kind == "visual" then
                     return {
-                        "Preview the idle shield without taking damage.",
+                        "Preview the idle shield safely.",
                         "Requires Bethany and Shield Effects.",
                     }
                 end
 
                 if kind == "hit" then
                     return {
-                        "Preview the hit effect without taking damage.",
-                        "No sound, charge cost, hurt animation, or voice.",
+                        "Preview the hit effect safely.",
+                        "No sound, cost, animation or voice.",
                     }
                 end
 
                 return {
-                    "Preview the sound at " .. previewCharge
-                        .. " simulated charges.",
+                    "Preview sound at " .. previewCharge .. " charge.",
                     "No damage, charge cost, or hurt voice.",
                 }
             end
