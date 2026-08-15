@@ -7,15 +7,17 @@ local LANGUAGE_ZH = 1
 local LANGUAGE_EN = 2
 local SUBCATEGORY = {
     general = 1,
-    eve = 2,
-    eden = 3,
-    taintedLost = 4,
-    taintedBlueBaby = 5,
-    taintedEden = 6,
-    bethany = 7,
+    item = 2,
+    eve = 3,
+    eden = 4,
+    taintedLost = 5,
+    taintedBlueBaby = 6,
+    taintedEden = 7,
+    bethany = 8,
 }
 local SUBCATEGORY_ORDER = {
     "general",
+    "item",
     "eve",
     "eden",
     "taintedLost",
@@ -63,6 +65,7 @@ local TEXT = {
         version = "版本",
         subcategories = {
             general = "通用",
+            item = "道具",
             eve = "夏娃",
             eden = "伊甸",
             taintedLost = "里游魂",
@@ -83,6 +86,7 @@ local TEXT = {
         version = "Version",
         subcategories = {
             general = "General",
+            item = "Item",
             eve = "Eve",
             eden = "Eden",
             taintedLost = "T-Lost",
@@ -100,7 +104,7 @@ local TEXT = {
 local MENU_SETTINGS = {
     {
         key = "couponSteamSale",
-        group = "general",
+        group = "item",
         zhName = "代金券全面半价",
         enName = "Coupon Full-Shop Discount",
         zhInfo = {
@@ -366,7 +370,7 @@ local MENU_SETTINGS = {
     },
     {
         key = "incubusCSectionAnimation",
-        group = "general",
+        group = "item",
         zhName = "剖腹产淫魔动画修复",
         enName = "C Section Incubus Animation Fix",
         zhInfo = {
@@ -436,7 +440,7 @@ local MENU_SETTINGS = {
     },
     {
         key = "heldItemProtection",
-        group = "general",
+        group = "item",
         zhName = "拾取动画修复",
         enName = "Pickup Animation Fix",
         zhInfo = {
@@ -450,7 +454,7 @@ local MENU_SETTINGS = {
     },
     {
         key = "voidMegaMushAnimation",
-        group = "general",
+        group = "item",
         zhName = "虚空超级蘑菇动画修复",
         enName = "Void Mega Mush Animation Fix",
         zhInfo = {
@@ -464,7 +468,7 @@ local MENU_SETTINGS = {
     },
     {
         key = "kidsDrawingFormFix",
-        group = "general",
+        group = "item",
         zhName = "儿童涂鸦套装修复",
         enName = "Kid's Drawing Form Fix",
         zhInfo = {
@@ -478,7 +482,7 @@ local MENU_SETTINGS = {
     },
     {
         key = "conjoinedFamiliarComponents",
-        group = "general",
+        group = "item",
         zhName = "扩充连体！套装组件",
         enName = "More Conjoined Components",
         zhInfo = {
@@ -492,7 +496,7 @@ local MENU_SETTINGS = {
     },
     {
         key = "ocularRiftSoundFix",
-        group = "general",
+        group = "item",
         zhName = "邪眼裂口音效修复",
         enName = "Ocular Rift Sound Fix",
         zhInfo = {
@@ -520,7 +524,7 @@ local MENU_SETTINGS = {
     },
     {
         key = "zodiacFloorItemDisplay",
-        group = "general",
+        group = "item",
         zhName = "显示黄道十二宫层效果",
         enName = "Show Zodiac's Floor Item",
         zhInfo = {
@@ -534,7 +538,7 @@ local MENU_SETTINGS = {
     },
     {
         key = "mrMeCyclingPedestalFix",
-        group = "general",
+        group = "item",
         zhName = "自我先生轮换底座修复",
         enName = "Mr. ME! Cycling Pedestal Fix",
         zhInfo = {
@@ -544,6 +548,48 @@ local MENU_SETTINGS = {
         enInfo = {
             "Mr. ME! keeps its cycling target.",
             "Item cycling stays unchanged.",
+        },
+    },
+    {
+        key = "habitSharpPlugSynergy",
+        group = "item",
+        zhName = "修女服与锋利插头联动",
+        enName = "Habit + Sharp Plug Synergy",
+        zhInfo = {
+            "修女服使锋利插头的生命消耗减半，向上取整。",
+            "同时持有蓄电池时保持原版行为。",
+        },
+        enInfo = {
+            "Habit halves Sharp Plug's health cost.",
+            "The Battery keeps vanilla behavior.",
+        },
+    },
+    {
+        key = "cubeBabyRoomPosition",
+        group = "item",
+        zhName = "冰块宝宝进房落点",
+        enName = "Cube Baby Room Placement",
+        zhInfo = {
+            "进房时把冰块宝宝放在中心偏左或偏右位置。",
+            "根据中心两侧的石头地形选择更开阔的一边。",
+        },
+        enInfo = {
+            "Moves Cube Baby off-center on entry.",
+            "Rocks pick the clearer left/right side.",
+        },
+    },
+    {
+        key = "laserSpamFpsGuard",
+        group = "general",
+        zhName = "激光洪流帧率保护",
+        enName = "Laser Spam FPS Guard",
+        zhInfo = {
+            "超过32条时移除新激光，会降低极端伤害。",
+            "默认关闭；敌方激光与普通攻击不变。",
+        },
+        enInfo = {
+            "Over 32: excess laser damage is lost.",
+            "Default OFF; enemy lasers stay vanilla.",
         },
     },
 }
