@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.25.0"
+local VERSION = "1.27.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     soulOfEveBirdFixes = true,
@@ -32,7 +32,9 @@ local DEFAULT_SETTINGS = {
     pillRewindIdentification = true,
     zodiacFloorItemDisplay = true,
     couponSteamSale = true,
+    cubeBabyRoomPosition = true,
     habitSharpPlugSynergy = true,
+    laserSpamFpsGuard = false,
     edenStartingItemChoice = true,
     edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
@@ -248,7 +250,11 @@ local ZodiacFloorItemDisplayModule = include(
     "scripts/zodiac_floor_item_display"
 )
 local CouponSteamSaleModule = include("scripts/coupon_steam_sale")
+local CubeBabyRoomPositionModule = include(
+    "scripts/cube_baby_room_position"
+)
 local HabitSharpPlugModule = include("scripts/habit_sharp_plug")
+local LaserSpamFpsGuardModule = include("scripts/laser_spam_fps_guard")
 local EdenBlessingDuplicatesModule = include(
     "scripts/eden_blessing_duplicates"
 )
@@ -377,8 +383,16 @@ Context:RegisterModule(
     CouponSteamSaleModule.New(Context)
 )
 Context:RegisterModule(
+    "cubeBabyRoomPosition",
+    CubeBabyRoomPositionModule.New(Context)
+)
+Context:RegisterModule(
     "habitSharpPlugSynergy",
     HabitSharpPlugModule.New(Context)
+)
+Context:RegisterModule(
+    "laserSpamFpsGuard",
+    LaserSpamFpsGuardModule.New(Context)
 )
 local edenChoicesModule = EdenBlessingDuplicatesModule.New(Context)
 Context:RegisterModule(
@@ -405,6 +419,7 @@ if Game():GetFrameCount() > 0 then
         "zodiacFloorItemDisplay",
         "couponSteamSale",
         "voidMegaMushAnimation",
+        "laserSpamFpsGuard",
     }) do
         local module = Context.Modules[moduleKey]
 

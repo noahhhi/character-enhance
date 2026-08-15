@@ -21,7 +21,9 @@
   <a href="#tainted-eden">Tainted Eden</a> •
   <a href="#bethany">Bethany</a> •
   <a href="#coupon-full-shop-discount">Coupon Full-Shop Discount</a> •
+  <a href="#cube-baby-room-placement">Cube Baby Room Placement</a> •
   <a href="#habit-sharp-plug-synergy">Habit + Sharp Plug Synergy</a> •
+  <a href="#laser-spam-fps-guard">Laser Spam FPS Guard</a> •
   <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
@@ -168,6 +170,14 @@
 - Multiple Coupons and real Steam Sales all stack through Repentance+'s normal
   discount rule, including copies held by different players.
 
+<a id="cube-baby-room-placement"></a>
+## Cube Baby Room Placement
+
+- On room entry, existing Cube Babies appear 80 units to the left or right of
+  the room center instead of directly in the middle.
+- The current layout of intact rocks selects the clearer side. Multiple Cube
+  Babies reuse the same room decision, and destroyed rocks are ignored.
+
 <a id="habit-sharp-plug-synergy"></a>
 ## Habit + Sharp Plug Synergy
 
@@ -176,6 +186,25 @@
   half-hearts, rounded up: a six-charge item at zero charge costs three.
 - When The Battery is also held, the original three-item interaction remains
   unchanged.
+
+<a id="laser-spam-fps-guard"></a>
+## Laser Spam FPS Guard
+
+- Under extreme item synergies, the guard keeps up to 32 simultaneous lasers
+  owned by players or their familiars and removes only newer overflow. Enemy
+  lasers and ordinary attacks stay unchanged.
+- For 90 frames after overflow is detected, floating debug damage text is
+  limited to 16 entries. This avoids a second entity-pool bottleneck when the
+  debug damage display is enabled.
+- The setting is disabled by default and can be enabled independently under
+  `General`. Normal gameplay below the threshold is untouched. Above it,
+  removing overflow lasers also removes their hits, so visual density and
+  extreme laser damage are intentionally reduced to improve frame pacing. A
+  fixed 60 FPS cannot be guaranteed for every hardware and item combination.
+- Repentance+'s standard Lua API runs gameplay callbacks on the main update
+  thread and exposes no worker-thread API. The guard therefore reduces bounded
+  main-thread work instead of claiming to make the game simulation
+  multithreaded.
 
 <a id="familiar-capacity"></a>
 ## Protect Wisps from Temporary Familiars
@@ -311,7 +340,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirty-four gameplay settings remain independently configurable:
+All thirty-six gameplay settings remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Soul of Eve Bird Fixes
@@ -330,28 +359,32 @@ All thirty-four gameplay settings remain independently configurable:
 15. Show Zodiac's Floor Item
 16. Mr. ME! Cycling Pedestal Fix
 17. Habit + Sharp Plug Synergy
-18. Keep 1.00x Damage Multiplier
-19. Keep Dead Bird Active
-20. Eden Starting Passive Choice
-21. Eden's Blessing Choice
-22. Starting Wooden Cross
-23. Blue Baby Deal Prices
-24. Poop Queue Overflow Fix
-25. Keep Health on Reroll
-26. Keep Absorbed Stats
-27. Reveal Pills with Rerolled PHD
-28. Esau Jr. Pickup Effects
-29. TMTRAINER Reroll Chance
-30. Double Soul Charges
-31. Soul Charge Shield
-32. Shield Effects
-33. Gello Wisp Orbit Fix
-34. Explosion-proof Wisps
+18. Cube Baby Room Placement
+19. Laser Spam FPS Guard
+20. Keep 1.00x Damage Multiplier
+21. Keep Dead Bird Active
+22. Eden Starting Passive Choice
+23. Eden's Blessing Choice
+24. Starting Wooden Cross
+25. Blue Baby Deal Prices
+26. Poop Queue Overflow Fix
+27. Keep Health on Reroll
+28. Keep Absorbed Stats
+29. Reveal Pills with Rerolled PHD
+30. Esau Jr. Pickup Effects
+31. TMTRAINER Reroll Chance
+32. Double Soul Charges
+33. Soul Charge Shield
+34. Shield Effects
+35. Gello Wisp Orbit Fix
+36. Explosion-proof Wisps
 
-Options are grouped under the tabs `General`, `Eve`, `Eden`, `T-Lost`,
-`T-Blue Baby`, `T-Eden`, and `Bethany`. The integration supports both Mod
-Config Menu Impure's global `MCM` API and legacy/localized editions exposing
-`ModConfigMenu`. Without MCM, saved or default settings still work normally.
+Options are grouped under the tabs `General`, `Item`, `Eve`, `Eden`, `T-Lost`,
+`T-Blue Baby`, `T-Eden`, and `Bethany`. Collectible- and trinket-focused fixes
+are grouped under `Item`; familiar, terrain, pill, and performance fixes stay
+under `General`. The integration supports both Mod Config Menu Impure's global
+`MCM` API and legacy/localized editions exposing `ModConfigMenu`. Without MCM,
+saved or default settings still work normally.
 
 <a id="installation"></a>
 ## Installation
