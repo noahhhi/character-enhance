@@ -25,6 +25,7 @@
   <a href="#habit-sharp-plug-synergy">Habit + Sharp Plug Synergy</a> •
   <a href="#laser-spam-fps-guard">Laser Spam FPS Guard</a> •
   <a href="#aiming-reticles">Keep Reticle</a> •
+  <a href="#attack-resource-preload">Preload FX</a> •
   <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
@@ -187,6 +188,19 @@
   half-hearts, rounded up: a six-charge item at zero charge costs three.
 - When The Battery is also held, the original three-item interaction remains
   unchanged.
+
+<a id="attack-resource-preload"></a>
+## Preload FX
+
+- When a new or continued run starts, preloads common attack graphics if any
+  player carries Marked, Technology Zero, Trisagion, The Parasite, Cricket's Body,
+  Compound Fracture, Lachryphagy or Haemolacria. It can reduce pauses when those
+  graphics are first used; starting the run may take slightly longer.
+- Enabled by default, with an independent **Preload FX** switch under **General**.
+  Enabling it mid-run or reloading the mod waits until the next new or continued
+  run. Picking up a related item later does not trigger loading during combat.
+- Loads graphics only: it does not spawn attacks, change damage or consume game
+  randomness. It works without a high-FPS mod and does not guarantee a frame rate.
 
 <a id="aiming-reticles"></a>
 ## Keep Reticle

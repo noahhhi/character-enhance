@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.28.0"
+local VERSION = "1.29.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     soulOfEveBirdFixes = true,
@@ -36,6 +36,7 @@ local DEFAULT_SETTINGS = {
     habitSharpPlugSynergy = true,
     laserSpamFpsGuard = false,
     aimingReticleProtection = true,
+    attackResourcePreload = true,
     edenStartingItemChoice = true,
     edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
@@ -259,6 +260,7 @@ local LaserSpamFpsGuardModule = include("scripts/laser_spam_fps_guard")
 local AimingReticleProtectionModule = include(
     "scripts/aiming_reticle_protection"
 )
+local AttackResourcePreloadModule = include("scripts/attack_resource_preload")
 local EdenBlessingDuplicatesModule = include(
     "scripts/eden_blessing_duplicates"
 )
@@ -402,6 +404,10 @@ Context:RegisterModule(
     "aimingReticleProtection",
     AimingReticleProtectionModule.New(Context)
 )
+Context:RegisterModule(
+    "attackResourcePreload",
+    AttackResourcePreloadModule.New(Context)
+)
 local edenChoicesModule = EdenBlessingDuplicatesModule.New(Context)
 Context:RegisterModule(
     "edenBlessingDuplicateFix",
@@ -429,6 +435,7 @@ if Game():GetFrameCount() > 0 then
         "voidMegaMushAnimation",
         "laserSpamFpsGuard",
         "aimingReticleProtection",
+        "attackResourcePreload",
     }) do
         local module = Context.Modules[moduleKey]
 

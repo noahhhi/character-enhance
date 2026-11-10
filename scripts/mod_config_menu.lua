@@ -606,6 +606,20 @@ local MENU_SETTINGS = {
             "Normal removal is unchanged.",
         },
     },
+    {
+        key = "attackResourcePreload",
+        group = "general",
+        zhName = "预加载特效",
+        enName = "Preload FX",
+        zhInfo = {
+            "下次新开或继续对局时预加载特效。",
+            "需持有相关道具；加载可能稍久。",
+        },
+        enInfo = {
+            "Preloads FX next new/continued run.",
+            "Related items; loading may take longer.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)
