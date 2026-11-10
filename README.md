@@ -24,6 +24,7 @@
   <a href="#cube-baby-room-placement">Cube Baby Room Placement</a> •
   <a href="#habit-sharp-plug-synergy">Habit + Sharp Plug Synergy</a> •
   <a href="#laser-spam-fps-guard">Laser Spam FPS Guard</a> •
+  <a href="#aiming-reticles">Keep Reticle</a> •
   <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
@@ -186,6 +187,20 @@
   half-hearts, rounded up: a six-charge item at zero charge costs three.
 - When The Battery is also held, the original three-item interaction remains
   unchanged.
+
+<a id="aiming-reticles"></a>
+## Keep Reticle
+
+- Protects player-owned aiming reticles, including Marked's crosshair, from
+  replacement when too many effects fill the native effect pool. This prevents
+  that replacement from unexpectedly stopping an attack.
+- Enabled by default, with its own switch under **General**. It works without
+  the high-FPS mod and independently of Laser Spam FPS Guard.
+- Covers native TARGET effects with a confirmed direct player spawner.
+- Normal cancellation, expiry and room cleanup still remove the reticle. The
+  option preserves protection flags it did not add. It does not stop another
+  mod from deliberately removing a reticle, and the engine can still force a
+  replacement if every pool slot is protected.
 
 <a id="laser-spam-fps-guard"></a>
 ## Laser Spam FPS Guard

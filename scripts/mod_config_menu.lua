@@ -592,6 +592,20 @@ local MENU_SETTINGS = {
             "Default OFF; enemy lasers stay vanilla.",
         },
     },
+    {
+        key = "aimingReticleProtection",
+        group = "general",
+        zhName = "保护准星",
+        enName = "Keep reticle",
+        zhInfo = {
+            "弹幕过多时，避免玩家准星被挤掉。",
+            "正常取消与消失不受影响。",
+        },
+        enInfo = {
+            "Keeps player reticles during effect spam.",
+            "Normal removal is unchanged.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)

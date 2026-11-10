@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.27.0"
+local VERSION = "1.28.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     soulOfEveBirdFixes = true,
@@ -35,6 +35,7 @@ local DEFAULT_SETTINGS = {
     cubeBabyRoomPosition = true,
     habitSharpPlugSynergy = true,
     laserSpamFpsGuard = false,
+    aimingReticleProtection = true,
     edenStartingItemChoice = true,
     edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
@@ -255,6 +256,9 @@ local CubeBabyRoomPositionModule = include(
 )
 local HabitSharpPlugModule = include("scripts/habit_sharp_plug")
 local LaserSpamFpsGuardModule = include("scripts/laser_spam_fps_guard")
+local AimingReticleProtectionModule = include(
+    "scripts/aiming_reticle_protection"
+)
 local EdenBlessingDuplicatesModule = include(
     "scripts/eden_blessing_duplicates"
 )
@@ -394,6 +398,10 @@ Context:RegisterModule(
     "laserSpamFpsGuard",
     LaserSpamFpsGuardModule.New(Context)
 )
+Context:RegisterModule(
+    "aimingReticleProtection",
+    AimingReticleProtectionModule.New(Context)
+)
 local edenChoicesModule = EdenBlessingDuplicatesModule.New(Context)
 Context:RegisterModule(
     "edenBlessingDuplicateFix",
@@ -420,6 +428,7 @@ if Game():GetFrameCount() > 0 then
         "couponSteamSale",
         "voidMegaMushAnimation",
         "laserSpamFpsGuard",
+        "aimingReticleProtection",
     }) do
         local module = Context.Modules[moduleKey]
 
