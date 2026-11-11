@@ -14,6 +14,7 @@ local SUBCATEGORY = {
     taintedBlueBaby = 6,
     taintedEden = 7,
     bethany = 8,
+    highFps = 9,
 }
 local SUBCATEGORY_ORDER = {
     "general",
@@ -24,6 +25,7 @@ local SUBCATEGORY_ORDER = {
     "taintedBlueBaby",
     "taintedEden",
     "bethany",
+    "highFps",
 }
 local TMTRAINER_CHANCE_KEY = "rerollTmtrainerChance"
 local SHIELD_VISUAL_STYLE_KEY = "bethanyShieldVisualStyle"
@@ -72,6 +74,7 @@ local TEXT = {
             taintedBlueBaby = "里蓝人",
             taintedEden = "里伊甸",
             bethany = "伯大尼",
+            highFps = "高帧率",
         },
         languageInfo = {
             "选择菜单语言。",
@@ -93,6 +96,7 @@ local TEXT = {
             taintedBlueBaby = "T-Blue Baby",
             taintedEden = "T-Eden",
             bethany = "Bethany",
+            highFps = "High FPS",
         },
         languageInfo = {
             "Choose the menu language.",
@@ -779,6 +783,75 @@ function ModConfigMenuModule:AddBoolean(menu, setting)
     self:RememberSubcategory(menu, setting.group)
 end
 
+local HIGH_FPS_SETTINGS = {
+    {
+        key = "highFpsAttackBudget", enName = "Limit shots", zhName = "限制弹幕",
+        enInfo = { "Limits split and laser work.", "May reduce damage; applies next tick." },
+        zhInfo = { "限制分裂和激光计算量。", "可能降低伤害；下一逻辑帧生效。" },
+    },
+    {
+        key = "highFpsPoofBudget", enName = "Limit effects", zhName = "限制特效",
+        enInfo = { "Limits extra tear impact effects.", "Keeps aiming reticles." },
+        zhInfo = { "限制额外泪弹消散特效。", "保留瞄准准星。" },
+    },
+    {
+        key = "highFpsAdaptiveBudget", enName = "Adapt limits", zhName = "自适应限制",
+        enInfo = { "Uses enabled limits under heavy load.", "Off: enabled limits stay active." },
+        zhInfo = { "仅在高负载时启用已开的限制。", "关闭后，已开的限制持续生效。" },
+    },
+}
+
+function ModConfigMenuModule:AddHighFpsSettings(menu)
+    self.CreatedGroups.highFps = true
+    for _, setting in ipairs(HIGH_FPS_SETTINGS) do
+        local function State()
+            local module = self.Context.Modules and self.Context.Modules.highFpsControl
+            return module and module:GetState(setting.key)
+        end
+        local function Mode()
+            local value = self.Context.Settings[setting.key]
+            return (value == 0 or value == 1) and value or -1
+        end
+        menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "highFps"), {
+            Type = menu.OptionType.NUMBER,
+            Minimum = -1,
+            Maximum = 1,
+            ModifyBy = 1,
+            Default = -1,
+            CurrentSetting = Mode,
+            Display = function()
+                local en = self:GetLanguage() == "en"
+                local name = en and setting.enName or setting.zhName
+                local label
+                if State() == nil then
+                    label = en and "N/A" or "不可用"
+                elseif Mode() == -1 then
+                    label = en and "Inherit" or "继承"
+                else
+                    local text = self:GetText()
+                    label = Mode() == 1 and text.enabled or text.disabled
+                end
+                return name .. ": " .. label
+            end,
+            OnChange = function(value)
+                if State() ~= nil and (value == -1 or value == 0 or value == 1) then
+                    self.Context:SetSetting(setting.key, value)
+                end
+            end,
+            Info = function()
+                if State() == nil then
+                    if self:GetLanguage() == "en" then
+                        return { "Needs a compatible high-FPS mod.", "Other character features still work." }
+                    end
+                    return { "需启用支持菜单联动的高帧率模组。", "其他角色增强功能仍可正常使用。" }
+                end
+                return self:GetLanguage() == "en" and setting.enInfo or setting.zhInfo
+            end,
+        })
+    end
+    self:RememberSubcategory(menu, "highFps")
+end
+
 function ModConfigMenuModule:AddTmtrainerChance(menu)
     self.CreatedGroups.taintedEden = true
     menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "taintedEden"), {
@@ -1067,6 +1140,7 @@ function ModConfigMenuModule:TrySetup()
     self:AddShieldPreview(menu, "sound", 99)
 
     self:AddTmtrainerChance(menu)
+    self:AddHighFpsSettings(menu)
 
     self:UpdateSubcategoryNames(menu)
 

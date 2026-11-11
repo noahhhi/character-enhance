@@ -57,6 +57,19 @@ function Config.Load(mod, defaults, jsonCodec)
         end
     end
 
+    for _, key in ipairs({
+        "highFpsAttackBudget", "highFpsPoofBudget", "highFpsAdaptiveBudget",
+    }) do
+        local value = settings[key]
+        if value == -1 or value == 0 or value == 1 then
+            -- Preserve the enum while converting JSON float numerals to the
+            -- integer subtype required by the optional native control ABI.
+            settings[key] = value == -1 and -1 or value == 0 and 0 or 1
+        else
+            settings[key] = defaults[key]
+        end
+    end
+
     return settings, rawSaveData
 end
 

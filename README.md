@@ -369,7 +369,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirty-six gameplay settings remain independently configurable:
+Gameplay features remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Soul of Eve Bird Fixes
@@ -407,13 +407,30 @@ All thirty-six gameplay settings remain independently configurable:
 34. Shield Effects
 35. Gello Wisp Orbit Fix
 36. Explosion-proof Wisps
+37. Keep reticle
+38. Preload FX
 
 Options are grouped under the tabs `General`, `Item`, `Eve`, `Eden`, `T-Lost`,
-`T-Blue Baby`, `T-Eden`, and `Bethany`. Collectible- and trinket-focused fixes
+`T-Blue Baby`, `T-Eden`, `Bethany`, and `High FPS`. Collectible- and trinket-focused fixes
 are grouped under `Item`; familiar, terrain, pill, and performance fixes stay
 under `General`. The integration supports both Mod Config Menu Impure's global
 `MCM` API and legacy/localized editions exposing `ModConfigMenu`. Without MCM,
 saved or default settings still work normally.
+
+The optional **High FPS** tab controls **Limit shots**, **Limit effects** and
+**Adapt limits** when a compatible [native high-FPS fork](https://github.com/noahhhi/isaac-highfps)
+is installed and enabled. Each option starts at **Inherit**, preserving the
+native configuration, and can be set to **ON** or **OFF** for the selected save.
+Changes apply at the native module's next safe update boundary without editing
+its INI or restarting. Limits can reduce damage; turning adaptation off makes
+enabled limits continuous. These controls do not load or enable a missing DLL.
+
+Character Enhance only displays and saves these options. Pressure detection,
+split/search work and effect admission stay entirely native; the menu adds no
+entity scans or projectile removal. The existing Lua **Laser Spam FPS Guard**
+is separate, defaults off, and is not enabled by this integration. Without a
+compatible native module these controls show unavailable and the rest of the
+mod still works normally.
 
 <a id="installation"></a>
 ## Installation
