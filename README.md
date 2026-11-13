@@ -425,7 +425,22 @@ Changes apply at the native module's next safe update boundary without editing
 its INI or restarting. Limits can reduce damage; turning adaptation off makes
 enabled limits continuous. These controls do not load or enable a missing DLL.
 
-Character Enhance only displays and saves these options. Pressure detection,
+Newer compatible native modules also expose the experimental **Render mode**
+option: **Inherit**, **OFF**, **80 Hz** or **90 Hz**. Inherit preserves the base
+native INI choice; OFF disables the experimental renderer, not the other
+Character Enhance features or the three limit controls. This selection is saved
+by the native module and shared across save slots. **Fully exit and restart the
+game to apply it**; changing it does not switch the running renderer. The status
+line distinguishes the current renderer from a change pending restart.
+
+Experimental rendering may simplify visuals, including repeated texture
+patterns, and may fall back to native rendering in unsupported scenes. The 80/90
+values are output targets, not a guarantee of constant frame rate or VRR support.
+Repentance+ **1.9.7.15** remains the only tested game version; other versions are
+unverified. A missing or older renderer interface leaves this option unavailable
+without disabling the existing limit controls supported by that module.
+
+Character Enhance only provides the menu controls and status. Pressure detection,
 split/search work and effect admission stay entirely native; the menu adds no
 entity scans or projectile removal. The existing Lua **Laser Spam FPS Guard**
 is separate, defaults off, and is not enabled by this integration. Without a

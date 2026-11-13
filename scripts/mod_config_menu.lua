@@ -849,7 +849,72 @@ function ModConfigMenuModule:AddHighFpsSettings(menu)
             end,
         })
     end
+    self:AddExperimentalRendererSetting(menu)
     self:RememberSubcategory(menu, "highFps")
+end
+
+function ModConfigMenuModule:AddExperimentalRendererSetting(menu)
+    local modes = { -1, 0, 80, 90 }
+    local function Control()
+        return self.Context.Modules and self.Context.Modules.highFpsControl
+    end
+    local function State()
+        local control = Control()
+        return control and control.GetRendererState and control:GetRendererState()
+    end
+    local function Index()
+        local state = State()
+        if state then
+            for index, mode in ipairs(modes) do
+                if state.override == mode then return index - 1 end
+            end
+        end
+        return 0
+    end
+    menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "highFps"), {
+        Type = menu.OptionType.NUMBER,
+        Minimum = 0, Maximum = 3, ModifyBy = 1, Default = 0,
+        CurrentSetting = Index,
+        Display = function()
+            local en = self:GetLanguage() == "en"
+            local labels = en and { "Inherit", "OFF", "80 Hz", "90 Hz" }
+                or { "继承", "关闭", "80 Hz", "90 Hz" }
+            local label = State() and labels[Index() + 1] or (en and "N/A" or "不可用")
+            return (en and "Render mode: " or "实验渲染: ") .. label
+        end,
+        OnChange = function(index)
+            if not State() or (index ~= 0 and index ~= 1 and index ~= 2 and index ~= 3) then
+                return
+            end
+            local control = Control()
+            if control.SetRendererOverride then
+                control:SetRendererOverride(modes[index + 1])
+            end
+        end,
+        Info = function()
+            local en = self:GetLanguage() == "en"
+            if not State() then
+                return en and { "Needs a compatible high-FPS mod.", "Other character features still work." }
+                    or { "需启用支持菜单联动的高帧率模组。", "其他角色增强功能仍可正常使用。" }
+            end
+            return en and { "Experimental; restart to apply.", "May simplify visuals." }
+                or { "实验功能，重启游戏后生效。", "可能简化部分画面效果。" }
+        end,
+    })
+    if menu.AddText then
+        menu.AddText(CATEGORY, self:GetSubcategory(menu, "highFps"), function()
+            local en = self:GetLanguage() == "en"
+            local control, state = Control(), State()
+            if control and control.RendererSaveFailed then
+                return en and "Render setting: save failed" or "渲染设置: 保存失败"
+            end
+            if not state then return en and "Renderer now: N/A" or "当前渲染: 不可用" end
+            local names = en and { "Native", "Preparing", "Worker", "Fallback" }
+                or { "原生", "准备中", "异步渲染", "原生回退" }
+            return (en and "Now: " or "当前: ") .. names[state.state + 1]
+                .. (state.restartRequired == 1 and (en and " (restart pending)" or "（待重启）") or "")
+        end)
+    end
 end
 
 function ModConfigMenuModule:AddTmtrainerChance(menu)
