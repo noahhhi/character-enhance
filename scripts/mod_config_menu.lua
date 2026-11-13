@@ -14,6 +14,7 @@ local SUBCATEGORY = {
     taintedBlueBaby = 6,
     taintedEden = 7,
     bethany = 8,
+    highFps = 9,
 }
 local SUBCATEGORY_ORDER = {
     "general",
@@ -24,6 +25,7 @@ local SUBCATEGORY_ORDER = {
     "taintedBlueBaby",
     "taintedEden",
     "bethany",
+    "highFps",
 }
 local TMTRAINER_CHANCE_KEY = "rerollTmtrainerChance"
 local SHIELD_VISUAL_STYLE_KEY = "bethanyShieldVisualStyle"
@@ -72,6 +74,7 @@ local TEXT = {
             taintedBlueBaby = "里蓝人",
             taintedEden = "里伊甸",
             bethany = "伯大尼",
+            highFps = "高帧率",
         },
         languageInfo = {
             "选择菜单语言。",
@@ -93,6 +96,7 @@ local TEXT = {
             taintedBlueBaby = "T-Blue Baby",
             taintedEden = "T-Eden",
             bethany = "Bethany",
+            highFps = "High FPS",
         },
         languageInfo = {
             "Choose the menu language.",
@@ -592,6 +596,34 @@ local MENU_SETTINGS = {
             "Default OFF; enemy lasers stay vanilla.",
         },
     },
+    {
+        key = "aimingReticleProtection",
+        group = "general",
+        zhName = "保护准星",
+        enName = "Keep reticle",
+        zhInfo = {
+            "弹幕过多时，避免玩家准星被挤掉。",
+            "正常取消与消失不受影响。",
+        },
+        enInfo = {
+            "Keeps player reticles during effect spam.",
+            "Normal removal is unchanged.",
+        },
+    },
+    {
+        key = "attackResourcePreload",
+        group = "general",
+        zhName = "预加载特效",
+        enName = "Preload FX",
+        zhInfo = {
+            "下次新开或继续对局时预加载特效。",
+            "需持有相关道具；加载可能稍久。",
+        },
+        enInfo = {
+            "Preloads FX next new/continued run.",
+            "Related items; loading may take longer.",
+        },
+    },
 }
 
 function ModConfigMenuModule.New(context)
@@ -749,6 +781,140 @@ function ModConfigMenuModule:AddBoolean(menu, setting)
         end,
     })
     self:RememberSubcategory(menu, setting.group)
+end
+
+local HIGH_FPS_SETTINGS = {
+    {
+        key = "highFpsAttackBudget", enName = "Limit shots", zhName = "限制弹幕",
+        enInfo = { "Limits split and laser work.", "May reduce damage; applies next tick." },
+        zhInfo = { "限制分裂和激光计算量。", "可能降低伤害；下一逻辑帧生效。" },
+    },
+    {
+        key = "highFpsPoofBudget", enName = "Limit effects", zhName = "限制特效",
+        enInfo = { "Limits extra tear impact effects.", "Keeps aiming reticles." },
+        zhInfo = { "限制额外泪弹消散特效。", "保留瞄准准星。" },
+    },
+    {
+        key = "highFpsAdaptiveBudget", enName = "Adapt limits", zhName = "自适应限制",
+        enInfo = { "Uses enabled limits under heavy load.", "Off: enabled limits stay active." },
+        zhInfo = { "仅在高负载时启用已开的限制。", "关闭后，已开的限制持续生效。" },
+    },
+}
+
+function ModConfigMenuModule:AddHighFpsSettings(menu)
+    self.CreatedGroups.highFps = true
+    for _, setting in ipairs(HIGH_FPS_SETTINGS) do
+        local function State()
+            local module = self.Context.Modules and self.Context.Modules.highFpsControl
+            return module and module:GetState(setting.key)
+        end
+        local function Mode()
+            local value = self.Context.Settings[setting.key]
+            return (value == 0 or value == 1) and value or -1
+        end
+        menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "highFps"), {
+            Type = menu.OptionType.NUMBER,
+            Minimum = -1,
+            Maximum = 1,
+            ModifyBy = 1,
+            Default = -1,
+            CurrentSetting = Mode,
+            Display = function()
+                local en = self:GetLanguage() == "en"
+                local name = en and setting.enName or setting.zhName
+                local label
+                if State() == nil then
+                    label = en and "N/A" or "不可用"
+                elseif Mode() == -1 then
+                    label = en and "Inherit" or "继承"
+                else
+                    local text = self:GetText()
+                    label = Mode() == 1 and text.enabled or text.disabled
+                end
+                return name .. ": " .. label
+            end,
+            OnChange = function(value)
+                if State() ~= nil and (value == -1 or value == 0 or value == 1) then
+                    self.Context:SetSetting(setting.key, value)
+                end
+            end,
+            Info = function()
+                if State() == nil then
+                    if self:GetLanguage() == "en" then
+                        return { "Needs a compatible high-FPS mod.", "Other character features still work." }
+                    end
+                    return { "需启用支持菜单联动的高帧率模组。", "其他角色增强功能仍可正常使用。" }
+                end
+                return self:GetLanguage() == "en" and setting.enInfo or setting.zhInfo
+            end,
+        })
+    end
+    self:AddExperimentalRendererSetting(menu)
+    self:RememberSubcategory(menu, "highFps")
+end
+
+function ModConfigMenuModule:AddExperimentalRendererSetting(menu)
+    local modes = { -1, 0, 80, 90 }
+    local function Control()
+        return self.Context.Modules and self.Context.Modules.highFpsControl
+    end
+    local function State()
+        local control = Control()
+        return control and control.GetRendererState and control:GetRendererState()
+    end
+    local function Index()
+        local state = State()
+        if state then
+            for index, mode in ipairs(modes) do
+                if state.override == mode then return index - 1 end
+            end
+        end
+        return 0
+    end
+    menu.AddSetting(CATEGORY, self:GetSubcategory(menu, "highFps"), {
+        Type = menu.OptionType.NUMBER,
+        Minimum = 0, Maximum = 3, ModifyBy = 1, Default = 0,
+        CurrentSetting = Index,
+        Display = function()
+            local en = self:GetLanguage() == "en"
+            local labels = en and { "Inherit", "OFF", "80 Hz", "90 Hz" }
+                or { "继承", "关闭", "80 Hz", "90 Hz" }
+            local label = State() and labels[Index() + 1] or (en and "N/A" or "不可用")
+            return (en and "Render mode: " or "实验渲染: ") .. label
+        end,
+        OnChange = function(index)
+            if not State() or (index ~= 0 and index ~= 1 and index ~= 2 and index ~= 3) then
+                return
+            end
+            local control = Control()
+            if control.SetRendererOverride then
+                control:SetRendererOverride(modes[index + 1])
+            end
+        end,
+        Info = function()
+            local en = self:GetLanguage() == "en"
+            if not State() then
+                return en and { "Needs a compatible high-FPS mod.", "Other character features still work." }
+                    or { "需启用支持菜单联动的高帧率模组。", "其他角色增强功能仍可正常使用。" }
+            end
+            return en and { "Experimental; restart to apply.", "May simplify visuals." }
+                or { "实验功能，重启游戏后生效。", "可能简化部分画面效果。" }
+        end,
+    })
+    if menu.AddText then
+        menu.AddText(CATEGORY, self:GetSubcategory(menu, "highFps"), function()
+            local en = self:GetLanguage() == "en"
+            local control, state = Control(), State()
+            if control and control.RendererSaveFailed then
+                return en and "Render setting: save failed" or "渲染设置: 保存失败"
+            end
+            if not state then return en and "Renderer now: N/A" or "当前渲染: 不可用" end
+            local names = en and { "Native", "Preparing", "Worker", "Fallback" }
+                or { "原生", "准备中", "异步渲染", "原生回退" }
+            return (en and "Now: " or "当前: ") .. names[state.state + 1]
+                .. (state.restartRequired == 1 and (en and " (restart pending)" or "（待重启）") or "")
+        end)
+    end
 end
 
 function ModConfigMenuModule:AddTmtrainerChance(menu)
@@ -1039,6 +1205,7 @@ function ModConfigMenuModule:TrySetup()
     self:AddShieldPreview(menu, "sound", 99)
 
     self:AddTmtrainerChance(menu)
+    self:AddHighFpsSettings(menu)
 
     self:UpdateSubcategoryNames(menu)
 

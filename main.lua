@@ -1,6 +1,6 @@
 local CharacterEnhance = RegisterMod("character-enhance", 1)
 
-local VERSION = "1.27.0"
+local VERSION = "1.30.0"
 local DEFAULT_SETTINGS = {
     menuLanguage = "en",
     soulOfEveBirdFixes = true,
@@ -35,6 +35,11 @@ local DEFAULT_SETTINGS = {
     cubeBabyRoomPosition = true,
     habitSharpPlugSynergy = true,
     laserSpamFpsGuard = false,
+    aimingReticleProtection = true,
+    attackResourcePreload = true,
+    highFpsAttackBudget = -1,
+    highFpsPoofBudget = -1,
+    highFpsAdaptiveBudget = -1,
     edenStartingItemChoice = true,
     edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
@@ -141,7 +146,14 @@ function Context:SetSetting(settingKey, value)
         return
     end
 
-    if settingKey == "rerollTmtrainerChance" then
+    if settingKey == "highFpsAttackBudget"
+        or settingKey == "highFpsPoofBudget"
+        or settingKey == "highFpsAdaptiveBudget"
+    then
+        if value ~= -1 and value ~= 0 and value ~= 1 then
+            return
+        end
+    elseif settingKey == "rerollTmtrainerChance" then
         if value ~= value or value == math.huge or value == -math.huge
             or value < 0 or value > 100
         then
@@ -255,6 +267,11 @@ local CubeBabyRoomPositionModule = include(
 )
 local HabitSharpPlugModule = include("scripts/habit_sharp_plug")
 local LaserSpamFpsGuardModule = include("scripts/laser_spam_fps_guard")
+local AimingReticleProtectionModule = include(
+    "scripts/aiming_reticle_protection"
+)
+local AttackResourcePreloadModule = include("scripts/attack_resource_preload")
+local HighFpsControlModule = include("scripts/high_fps_control")
 local EdenBlessingDuplicatesModule = include(
     "scripts/eden_blessing_duplicates"
 )
@@ -394,12 +411,22 @@ Context:RegisterModule(
     "laserSpamFpsGuard",
     LaserSpamFpsGuardModule.New(Context)
 )
+Context:RegisterModule(
+    "aimingReticleProtection",
+    AimingReticleProtectionModule.New(Context)
+)
+Context:RegisterModule(
+    "attackResourcePreload",
+    AttackResourcePreloadModule.New(Context)
+)
 local edenChoicesModule = EdenBlessingDuplicatesModule.New(Context)
 Context:RegisterModule(
     "edenBlessingDuplicateFix",
     edenChoicesModule
 )
 Context:RegisterSettingHandler("edenStartingItemChoice", edenChoicesModule)
+
+Context:RegisterModule("highFpsControl", HighFpsControlModule.New(Context))
 
 ModConfigMenuModule.New(Context)
 
@@ -420,6 +447,8 @@ if Game():GetFrameCount() > 0 then
         "couponSteamSale",
         "voidMegaMushAnimation",
         "laserSpamFpsGuard",
+        "aimingReticleProtection",
+        "attackResourcePreload",
     }) do
         local module = Context.Modules[moduleKey]
 

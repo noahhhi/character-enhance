@@ -24,6 +24,8 @@
   <a href="#cube-baby-room-placement">Cube Baby Room Placement</a> •
   <a href="#habit-sharp-plug-synergy">Habit + Sharp Plug Synergy</a> •
   <a href="#laser-spam-fps-guard">Laser Spam FPS Guard</a> •
+  <a href="#aiming-reticles">Keep Reticle</a> •
+  <a href="#attack-resource-preload">Preload FX</a> •
   <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
@@ -187,6 +189,33 @@
 - When The Battery is also held, the original three-item interaction remains
   unchanged.
 
+<a id="attack-resource-preload"></a>
+## Preload FX
+
+- When a new or continued run starts, preloads common attack graphics if any
+  player carries Marked, Technology Zero, Trisagion, The Parasite, Cricket's Body,
+  Compound Fracture, Lachryphagy or Haemolacria. It can reduce pauses when those
+  graphics are first used; starting the run may take slightly longer.
+- Enabled by default, with an independent **Preload FX** switch under **General**.
+  Enabling it mid-run or reloading the mod waits until the next new or continued
+  run. Picking up a related item later does not trigger loading during combat.
+- Loads graphics only: it does not spawn attacks, change damage or consume game
+  randomness. It works without a high-FPS mod and does not guarantee a frame rate.
+
+<a id="aiming-reticles"></a>
+## Keep Reticle
+
+- Protects player-owned aiming reticles, including Marked's crosshair, from
+  replacement when too many effects fill the native effect pool. This prevents
+  that replacement from unexpectedly stopping an attack.
+- Enabled by default, with its own switch under **General**. It works without
+  the high-FPS mod and independently of Laser Spam FPS Guard.
+- Covers native TARGET effects with a confirmed direct player spawner.
+- Normal cancellation, expiry and room cleanup still remove the reticle. The
+  option preserves protection flags it did not add. It does not stop another
+  mod from deliberately removing a reticle, and the engine can still force a
+  replacement if every pool slot is protected.
+
 <a id="laser-spam-fps-guard"></a>
 ## Laser Spam FPS Guard
 
@@ -340,7 +369,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirty-six gameplay settings remain independently configurable:
+Gameplay features remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Soul of Eve Bird Fixes
@@ -378,13 +407,45 @@ All thirty-six gameplay settings remain independently configurable:
 34. Shield Effects
 35. Gello Wisp Orbit Fix
 36. Explosion-proof Wisps
+37. Keep reticle
+38. Preload FX
 
 Options are grouped under the tabs `General`, `Item`, `Eve`, `Eden`, `T-Lost`,
-`T-Blue Baby`, `T-Eden`, and `Bethany`. Collectible- and trinket-focused fixes
+`T-Blue Baby`, `T-Eden`, `Bethany`, and `High FPS`. Collectible- and trinket-focused fixes
 are grouped under `Item`; familiar, terrain, pill, and performance fixes stay
 under `General`. The integration supports both Mod Config Menu Impure's global
 `MCM` API and legacy/localized editions exposing `ModConfigMenu`. Without MCM,
 saved or default settings still work normally.
+
+The optional **High FPS** tab controls **Limit shots**, **Limit effects** and
+**Adapt limits** when a compatible [native high-FPS fork](https://github.com/noahhhi/isaac-highfps)
+is installed and enabled. Each option starts at **Inherit**, preserving the
+native configuration, and can be set to **ON** or **OFF** for the selected save.
+Changes apply at the native module's next safe update boundary without editing
+its INI or restarting. Limits can reduce damage; turning adaptation off makes
+enabled limits continuous. These controls do not load or enable a missing DLL.
+
+Newer compatible native modules also expose the experimental **Render mode**
+option: **Inherit**, **OFF**, **80 Hz** or **90 Hz**. Inherit preserves the base
+native INI choice; OFF disables the experimental renderer, not the other
+Character Enhance features or the three limit controls. This selection is saved
+by the native module and shared across save slots. **Fully exit and restart the
+game to apply it**; changing it does not switch the running renderer. The status
+line distinguishes the current renderer from a change pending restart.
+
+Experimental rendering may simplify visuals, including repeated texture
+patterns, and may fall back to native rendering in unsupported scenes. The 80/90
+values are output targets, not a guarantee of constant frame rate or VRR support.
+Repentance+ **1.9.7.15** remains the only tested game version; other versions are
+unverified. A missing or older renderer interface leaves this option unavailable
+without disabling the existing limit controls supported by that module.
+
+Character Enhance only provides the menu controls and status. Pressure detection,
+split/search work and effect admission stay entirely native; the menu adds no
+entity scans or projectile removal. The existing Lua **Laser Spam FPS Guard**
+is separate, defaults off, and is not enabled by this integration. Without a
+compatible native module these controls show unavailable and the rest of the
+mod still works normally.
 
 <a id="installation"></a>
 ## Installation
