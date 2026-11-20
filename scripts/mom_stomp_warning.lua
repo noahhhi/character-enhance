@@ -9,6 +9,13 @@ local SHADOW_LAYER = 2
 local TRANSPARENT_SHADOW_FRAME = 70
 local RING_RADIUS = 90
 local BASE_RADIUS = 60
+local FADE_FRAMES = 10
+local INK_LAYER = 0
+local EDGE_LAYER = 1
+
+-- Relative luminance of the parchment (#F4D7A5) and umber (#231319) strokes.
+local PARCHMENT_LUMINANCE = 0.705506
+local UMBER_LUMINANCE = 0.008933
 
 -- Median linear-sRGB luminance of the vanilla floor art by BackdropType.
 -- A few special rooms pack their floor into the room atlas itself.
@@ -72,8 +79,16 @@ end
 function MomStompWarning:LoadMarker()
     if self.Marker == nil then
         local sprite = Sprite()
-        sprite:Load("gfx/character-enhance/ce_mom_stomp_warning.anm2", true)
+        sprite:Load("gfx/character-enhance/ce_mom_stomp_ink.anm2", true)
         self.Marker = sprite:IsLoaded() and sprite or false
+        if self.Marker then
+            self.InkTints = {}
+            for frame = 1, FADE_FRAMES do
+                local progress = frame / FADE_FRAMES
+                local alpha = progress * progress * (3 - 2 * progress)
+                self.InkTints[frame] = Color(1, 1, 1, alpha)
+            end
+        end
     end
     return self.Marker
 end
@@ -169,9 +184,12 @@ function MomStompWarning:GetFrameMetrics()
 
     local backdrop = self.Game:GetRoom():GetBackdropType()
     local luminance = FLOOR_LUMINANCE[backdrop] or 0.179
-    local whiteContrast = 1.05 / (luminance + 0.05)
-    local blackContrast = (luminance + 0.05) / 0.05
-    local markerFrame = blackContrast > whiteContrast and 1 or 0
+    local floor = luminance + 0.05
+    local parchment = PARCHMENT_LUMINANCE + 0.05
+    local umber = UMBER_LUMINANCE + 0.05
+    local parchmentContrast = math.max(parchment, floor) / math.min(parchment, floor)
+    local umberContrast = math.max(umber, floor) / math.min(umber, floor)
+    local markerFrame = umberContrast > parchmentContrast and 1 or 0
     if markerFrame ~= self.MarkerFrame then
         self.Marker:SetFrame("Warning", markerFrame)
         self.MarkerFrame = markerFrame
@@ -184,14 +202,27 @@ function MomStompWarning:Render()
     end
     self:GetFrameMetrics()
     for _, effect in pairs(self.Warnings) do
-        if effect:Exists() and effect.Visible and effect:GetSprite():GetFrame() < IMPACT_FRAME then
-            self.Marker.Scale = effect.SpawnerType == EntityType.ENTITY_PLAYER
-                and self.NormalScale or self.UnownedScale
-            -- The gameplay distance is centered at Position, without the
-            -- legacy shadow's offset or the descending leg's sprite offset.
-            self.Marker:Render(Isaac.WorldToScreen(effect.Position))
+        if effect:Exists() and effect.Visible then
+            local frame = effect:GetSprite():GetFrame()
+            if frame >= 0 and frame < IMPACT_FRAME then
+                self:RenderWarning(effect, frame)
+            end
         end
     end
+end
+
+function MomStompWarning:RenderWarning(effect, frame)
+    local marker = self.Marker
+    marker.Scale = effect.SpawnerType == EntityType.ENTITY_PLAYER
+        and self.NormalScale or self.UnownedScale
+    -- Use the impact center and keep the edge in place as the ink fades in.
+    local center = Isaac.WorldToScreen(effect.Position)
+    if frame > 0 then
+        marker.Color = self.InkTints[math.min(frame, FADE_FRAMES)]
+        marker:RenderLayer(INK_LAYER, center)
+    end
+    marker.Color = self.InkTints[FADE_FRAMES]
+    marker:RenderLayer(EDGE_LAYER, center)
 end
 
 return MomStompWarning

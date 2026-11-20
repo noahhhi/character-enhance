@@ -194,8 +194,8 @@
 - Shows the stomp area for Broken Shovel, The High Priestess, and other uses
   of the same foot effect. The outer edge accounts for player hitbox size. In
   co-op, it shows the distance needed to clear the stomp for the largest player.
-- Picks a light or dark outline from the room's floor backdrop, with an
-  opposite-color inner border for contrast across patterns.
+- The ground stain fades in behind the hit boundary. The room's floor
+  backdrop determines whether the edge is parchment or dark umber.
 - Enabled by default. Toggle **Mom Stomp Warning** under **General**.
 
 <a id="laser-spam-fps-guard"></a>
