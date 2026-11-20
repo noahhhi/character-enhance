@@ -21,6 +21,7 @@ local DEFAULT_SETTINGS = {
     incubusCSectionAnimation = true,
     smallPlayerPickupRange = true,
     clogGroundDamage = true,
+    hostileCreepContrast = true,
     lostSoulWhiteFireFix = true,
     lostSoulWhiteFireMantle = true,
     heldItemProtection = true,
@@ -228,6 +229,7 @@ local IncubusCSectionAnimationModule = include(
 )
 local PickupRangeModule = include("scripts/pickup_range")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
+local HostileCreepColorsModule = include("scripts/hostile_creep_colors")
 local LostSoulWhiteFireModule = include(
     "scripts/lost_soul_white_fire_phase"
 )
@@ -260,6 +262,7 @@ local EdenBlessingDuplicatesModule = include(
 )
 local ModConfigMenuModule = include("scripts/mod_config_menu")
 
+Context:RegisterModule("hostileCreepContrast", HostileCreepColorsModule.New(Context))
 local rerollHealthModule = RerollHealthModule.New(Context)
 Context:RegisterModule("rerollHealthProtection", rerollHealthModule)
 Context:RegisterSettingHandler("rerollAbsorbedStats", rerollHealthModule)
@@ -420,6 +423,7 @@ if Game():GetFrameCount() > 0 then
         "couponSteamSale",
         "voidMegaMushAnimation",
         "laserSpamFpsGuard",
+        "hostileCreepContrast",
     }) do
         local module = Context.Modules[moduleKey]
 
