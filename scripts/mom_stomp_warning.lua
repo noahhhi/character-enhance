@@ -11,7 +11,6 @@ local RING_RADIUS = 90
 local BASE_RADIUS = 60
 local SOLID_WARNING_FRAMES = 9
 local FADE_FRAMES = IMPACT_FRAME - SOLID_WARNING_FRAMES
-local INITIAL_ALPHA = 0.12
 
 -- Relative luminance of the parchment (#F4D7A5) and umber (#231319) strokes.
 local PARCHMENT_LUMINANCE = 0.705506
@@ -79,17 +78,8 @@ end
 function MomStompWarning:LoadMarker()
     if self.Marker == nil then
         local sprite = Sprite()
-        sprite:Load("gfx/character-enhance/ce_mom_stomp_ink.anm2", true)
+        sprite:Load("gfx/character-enhance/ce_mom_stomp_fade.anm2", true)
         self.Marker = sprite:IsLoaded() and sprite or false
-        if self.Marker then
-            self.MarkerTints = {}
-            for frame = 0, FADE_FRAMES do
-                local progress = frame / FADE_FRAMES
-                local eased = progress * progress * (3 - 2 * progress)
-                local alpha = INITIAL_ALPHA + (1 - INITIAL_ALPHA) * eased
-                self.MarkerTints[frame] = Color(1, 1, 1, alpha)
-            end
-        end
     end
     return self.Marker
 end
@@ -190,11 +180,7 @@ function MomStompWarning:GetFrameMetrics()
     local umber = UMBER_LUMINANCE + 0.05
     local parchmentContrast = math.max(parchment, floor) / math.min(parchment, floor)
     local umberContrast = math.max(umber, floor) / math.min(umber, floor)
-    local markerFrame = umberContrast > parchmentContrast and 1 or 0
-    if markerFrame ~= self.MarkerFrame then
-        self.Marker:SetFrame("Warning", markerFrame)
-        self.MarkerFrame = markerFrame
-    end
+    self.MarkerPalette = umberContrast > parchmentContrast and "Umber" or "Parchment"
 end
 
 function MomStompWarning:Render()
@@ -216,8 +202,13 @@ function MomStompWarning:RenderWarning(effect, frame)
     local marker = self.Marker
     marker.Scale = effect.SpawnerType == EntityType.ENTITY_PLAYER
         and self.NormalScale or self.UnownedScale
-    marker.Color = self.MarkerTints[math.min(frame, FADE_FRAMES)]
-    -- Fade the ink and the edge in place at the native impact center.
+    local fadeFrame = math.min(frame, FADE_FRAMES)
+    local palette = self.MarkerPalette
+    if fadeFrame ~= self.DrawnFrame or palette ~= self.DrawnPalette then
+        -- Texture alpha carries the fade through the overlay compositor.
+        marker:SetFrame(palette, fadeFrame)
+        self.DrawnFrame, self.DrawnPalette = fadeFrame, palette
+    end
     marker:Render(Isaac.WorldToScreen(effect.Position))
 end
 
