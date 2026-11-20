@@ -9,9 +9,9 @@ local SHADOW_LAYER = 2
 local TRANSPARENT_SHADOW_FRAME = 70
 local RING_RADIUS = 90
 local BASE_RADIUS = 60
-local FADE_FRAMES = 10
-local INK_LAYER = 0
-local EDGE_LAYER = 1
+local SOLID_WARNING_FRAMES = 9
+local FADE_FRAMES = IMPACT_FRAME - SOLID_WARNING_FRAMES
+local INITIAL_ALPHA = 0.12
 
 -- Relative luminance of the parchment (#F4D7A5) and umber (#231319) strokes.
 local PARCHMENT_LUMINANCE = 0.705506
@@ -82,11 +82,12 @@ function MomStompWarning:LoadMarker()
         sprite:Load("gfx/character-enhance/ce_mom_stomp_ink.anm2", true)
         self.Marker = sprite:IsLoaded() and sprite or false
         if self.Marker then
-            self.InkTints = {}
-            for frame = 1, FADE_FRAMES do
+            self.MarkerTints = {}
+            for frame = 0, FADE_FRAMES do
                 local progress = frame / FADE_FRAMES
-                local alpha = progress * progress * (3 - 2 * progress)
-                self.InkTints[frame] = Color(1, 1, 1, alpha)
+                local eased = progress * progress * (3 - 2 * progress)
+                local alpha = INITIAL_ALPHA + (1 - INITIAL_ALPHA) * eased
+                self.MarkerTints[frame] = Color(1, 1, 1, alpha)
             end
         end
     end
@@ -215,14 +216,9 @@ function MomStompWarning:RenderWarning(effect, frame)
     local marker = self.Marker
     marker.Scale = effect.SpawnerType == EntityType.ENTITY_PLAYER
         and self.NormalScale or self.UnownedScale
-    -- Use the impact center and keep the edge in place as the ink fades in.
-    local center = Isaac.WorldToScreen(effect.Position)
-    if frame > 0 then
-        marker.Color = self.InkTints[math.min(frame, FADE_FRAMES)]
-        marker:RenderLayer(INK_LAYER, center)
-    end
-    marker.Color = self.InkTints[FADE_FRAMES]
-    marker:RenderLayer(EDGE_LAYER, center)
+    marker.Color = self.MarkerTints[math.min(frame, FADE_FRAMES)]
+    -- Fade the ink and the edge in place at the native impact center.
+    marker:Render(Isaac.WorldToScreen(effect.Position))
 end
 
 return MomStompWarning
