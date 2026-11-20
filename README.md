@@ -191,8 +191,8 @@
 <a id="mom-stomp-warning"></a>
 ## Mom Stomp Warning
 
-- Shows the stomp area for Broken Shovel, The High Priestess, and other uses
-  of the same foot effect. The outer edge accounts for player hitbox size. In
+- Shows the stomp area for Mom in Depths II and Mausoleum II, Broken Shovel,
+  The High Priestess, and other uses of the same foot effect. The outer edge accounts for player hitbox size. In
   co-op, it shows the distance needed to clear the stomp for the largest player.
 - The ground stain and its boundary fade in together. The room's floor
   backdrop determines whether the edge is parchment or dark umber.
