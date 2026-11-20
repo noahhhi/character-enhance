@@ -23,6 +23,7 @@
   <a href="#coupon-full-shop-discount">Coupon Full-Shop Discount</a> •
   <a href="#cube-baby-room-placement">Cube Baby Room Placement</a> •
   <a href="#habit-sharp-plug-synergy">Habit + Sharp Plug Synergy</a> •
+  <a href="#mom-stomp-warning">Mom Stomp Warning</a> •
   <a href="#laser-spam-fps-guard">Laser Spam FPS Guard</a> •
   <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
@@ -186,6 +187,16 @@
   half-hearts, rounded up: a six-charge item at zero charge costs three.
 - When The Battery is also held, the original three-item interaction remains
   unchanged.
+
+<a id="mom-stomp-warning"></a>
+## Mom Stomp Warning
+
+- Shows the stomp area for Broken Shovel, The High Priestess, and other uses
+  of the same foot effect. The outer edge accounts for player hitbox size. In
+  co-op, it shows the distance needed to clear the stomp for the largest player.
+- Picks a light or dark outline from the room's floor backdrop, with an
+  opposite-color inner border for contrast across patterns.
+- Enabled by default. Toggle **Mom Stomp Warning** under **General**.
 
 <a id="laser-spam-fps-guard"></a>
 ## Laser Spam FPS Guard
@@ -378,6 +389,7 @@ All thirty-six gameplay settings remain independently configurable:
 34. Shield Effects
 35. Gello Wisp Orbit Fix
 36. Explosion-proof Wisps
+37. Mom Stomp Warning
 
 Options are grouped under the tabs `General`, `Item`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. Collectible- and trinket-focused fixes
