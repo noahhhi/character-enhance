@@ -28,6 +28,7 @@
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
+  <a href="#hostile-creep-contrast">Hostile Creep Contrast</a> •
   <a href="#lost-soul-white-fire-fix">Lost Soul White Fire Fix</a> •
   <a href="#held-item-protection">Pickup Animation Fix</a> •
   <a href="#mr-me-cycling-pedestal-fix">Mr. ME! Cycling Pedestal Fix</a> •
@@ -246,6 +247,13 @@
   Lemonade. Damage, radius, and tick rate follow the creep's current values;
   other enemies remain unchanged.
 
+<a id="hostile-creep-contrast"></a>
+## Hostile Creep Contrast
+
+- Recolors hazardous enemy pools using the current floor's color. Blood,
+  acid, and slippery stains keep their color families and native shapes.
+- Enabled by default. Toggle **Hostile Creep Contrast** under **General**.
+
 <a id="lost-soul-white-fire-fix"></a>
 ## Lost Soul White Fire Fix
 
@@ -378,6 +386,7 @@ All thirty-six gameplay settings remain independently configurable:
 34. Shield Effects
 35. Gello Wisp Orbit Fix
 36. Explosion-proof Wisps
+37. Hostile Creep Contrast
 
 Options are grouped under the tabs `General`, `Item`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. Collectible- and trinket-focused fixes

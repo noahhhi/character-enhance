@@ -592,6 +592,14 @@ local MENU_SETTINGS = {
             "Default OFF; enemy lasers stay vanilla.",
         },
     },
+    {
+        key = "hostileCreepContrast",
+        group = "general",
+        zhName = "敌方水迹辨识",
+        enName = "Hostile Creep Contrast",
+        zhInfo = { "按地板颜色调整敌方水迹。", "保留水迹主色相。" },
+        enInfo = { "Adapts creep to floor colors.", "Keeps the original color family." },
+    },
 }
 
 function ModConfigMenuModule.New(context)

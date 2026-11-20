@@ -28,6 +28,7 @@
   <a href="#incubus-c-section-animation-fix">剖腹产淫魔动画修复</a> •
   <a href="#small-player-pickup-range">小体型拾取范围修复</a> •
   <a href="#clog-ground-damage">拦路屎水迹伤害修复</a> •
+  <a href="#hostile-creep-contrast">敌方水迹辨识</a> •
   <a href="#lost-soul-white-fire-fix">迷失幽魂白火免伤修复</a> •
   <a href="#held-item-protection">拾取动画修复</a> •
   <a href="#mr-me-cycling-pedestal-fix">自我先生轮换底座修复</a> •
@@ -147,6 +148,12 @@
 
 - 拦路屎（实体 914.0.0）可以受到玩家水迹伤害，包括免费柠檬水；伤害、范围和触发频率沿用当前水迹的数值，其他敌人不受影响。
 
+<a id="hostile-creep-contrast"></a>
+## 敌方水迹辨识
+
+- 根据房间地板颜色调整敌方血迹、酸液和滑迹的配色，保留原有形状和色系。
+- 默认开启，可在“通用”里切换“敌方水迹辨识”。
+
 <a id="lost-soul-white-fire-fix"></a>
 ## 迷失幽魂白火免伤修复
 
@@ -240,6 +247,7 @@
 34. 护盾视听效果
 35. 格罗魂火环绕修复
 36. 魂火防爆
+37. 敌方水迹辨识
 
 选项分别归入简短的 `通用`、`道具`、`夏娃`、`伊甸`、`里游魂`、`里蓝人`、`里伊甸` 和 `伯大尼` 顶栏。以收藏品或饰品为主体的修复归入“道具”；跟班、地形、药丸与性能类修复保留在“通用”。集成同时支持 Mod Config Menu Impure 的全局 `MCM` 接口，以及提供 `ModConfigMenu` 的旧版或本地化版本。未安装 MCM 时，已保存设置或默认设置仍会正常工作。
 
