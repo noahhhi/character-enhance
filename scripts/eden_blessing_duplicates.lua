@@ -8,11 +8,9 @@ local VANILLA_POOLS_BY_ITEM = include(
 local STARTING_CHOICE_KEY = "edenStartingItemChoice"
 local BLESSING_CHOICE_KEY = "edenBlessingDuplicateFix"
 local EDENS_BLESSING = CollectibleType.COLLECTIBLE_EDENS_BLESSING
-local BATTERY_PACK = CollectibleType.COLLECTIBLE_BATTERY_PACK
 local EDEN = PlayerType.PLAYER_EDEN
 local COLLECTIBLE_PICKUP = PickupVariant.PICKUP_COLLECTIBLE
 local COIN_PICKUP = PickupVariant.PICKUP_COIN
-local BATTERY_PICKUP = PickupVariant.PICKUP_LIL_BATTERY
 local PENNY = CoinSubType.COIN_PENNY
 local ACTIVE = ItemType.ITEM_ACTIVE
 local PASSIVE = ItemType.ITEM_PASSIVE
@@ -72,6 +70,17 @@ local function GetConfigGrant(config, field)
     return math.max(0, math.floor(value))
 end
 
+local function RemoveConfiguredGrant(player, getter, adder, retained, amount, ...)
+    local removable = math.min(
+        amount,
+        math.max(0, player[getter](player) - retained)
+    )
+
+    if removable > 0 then
+        player[adder](player, -removable, ...)
+    end
+end
+
 function EdenChoicesModule.New(context)
     local self = setmetatable({
         Context = context,
@@ -116,10 +125,15 @@ function EdenChoicesModule.New(context)
             seed
         )
     end
+    local evaluateCacheCallback = function(_, player)
+        self:OnEvaluateCache(player)
+    end
+    local closeStartingWindow = function()
+        self.StartingRoomEntered = false
+    end
 
-    -- Intercept unresolved player-spawned pickups before their subtype pools
-    -- are queried. Deleting Marbles trinkets in MC_POST_PICKUP_INIT is too
-    -- late: their concrete subtypes have already advanced the trinket stream.
+    -- Intercept starting pickups before their subtype pools are queried.
+    -- Close the spawner-less grant window before other cache callbacks run.
     if type(context.Mod.AddPriorityCallback) == "function" then
         context.Mod:AddPriorityCallback(
             ModCallbacks.MC_PRE_ENTITY_SPAWN,
@@ -127,11 +141,29 @@ function EdenChoicesModule.New(context)
             preSpawnCallback,
             EntityType.ENTITY_PICKUP
         )
+        context.Mod:AddPriorityCallback(
+            ModCallbacks.MC_EVALUATE_CACHE,
+            CallbackPriority.IMPORTANT,
+            evaluateCacheCallback
+        )
+        context.Mod:AddPriorityCallback(
+            ModCallbacks.MC_POST_GAME_STARTED,
+            CallbackPriority.IMPORTANT,
+            closeStartingWindow
+        )
     else
         context.Mod:AddCallback(
             ModCallbacks.MC_PRE_ENTITY_SPAWN,
             preSpawnCallback,
             EntityType.ENTITY_PICKUP
+        )
+        context.Mod:AddCallback(
+            ModCallbacks.MC_EVALUATE_CACHE,
+            evaluateCacheCallback
+        )
+        context.Mod:AddCallback(
+            ModCallbacks.MC_POST_GAME_STARTED,
+            closeStartingWindow
         )
     end
     context.Mod:AddCallback(
@@ -169,12 +201,6 @@ function EdenChoicesModule.New(context)
         ModCallbacks.MC_POST_GAME_STARTED,
         function(_, isContinued)
             self:OnGameStarted(isContinued)
-        end
-    )
-    context.Mod:AddCallback(
-        ModCallbacks.MC_EVALUATE_CACHE,
-        function(_, player)
-            self:OnEvaluateCache(player)
         end
     )
     context.Mod:AddCallback(
@@ -442,6 +468,23 @@ function EdenChoicesModule:CaptureStartingHealth(player)
     }
 end
 
+function EdenChoicesModule:CaptureRetainedStartingGrants(player)
+    local consumables = {}
+
+    for _, grant in ipairs(CONSUMABLE_GRANTS) do
+        local getter, adder = grant[1], grant[2]
+        consumables[adder] = player[getter](player)
+    end
+
+    return {
+        primaryActive = player:GetActiveItem(PRIMARY_SLOT),
+        trinket = player:GetTrinket(0),
+        secondTrinket = player:GetTrinket(1),
+        consumables = consumables,
+        health = self:CaptureStartingHealth(player),
+    }
+end
+
 function EdenChoicesModule:OnPlayerInit(player)
     local game = Game()
     local runSeed = game:GetSeeds():GetStartSeed()
@@ -453,26 +496,16 @@ function EdenChoicesModule:OnPlayerInit(player)
         return
     end
 
-    local consumables = {}
-
-    for _, grant in ipairs(CONSUMABLE_GRANTS) do
-        local getter, adder = grant[1], grant[2]
-        consumables[adder] = player[getter](player)
-    end
-
     self.PlayerBaselines[self:GetPlayerKey(player)] = {
-        player = player,
-        primaryActive = player:GetActiveItem(PRIMARY_SLOT),
+        collectibleCount = player:GetCollectibleCount(),
         collectibles = self:CaptureCollectibles(player),
-        consumables = consumables,
-        health = self:CaptureStartingHealth(player),
+        retained = self:CaptureRetainedStartingGrants(player),
     }
 end
 
-function EdenChoicesModule:IsGrantingBatteryPack(player, baseline)
-    return not baseline.batteryGrantFinished
-        and player:GetCollectibleNum(BATTERY_PACK, true)
-            > (baseline.collectibles[BATTERY_PACK] or 0)
+local function TrinketsChanged(player, retained)
+    return retained.trinket ~= player:GetTrinket(0)
+        or retained.secondTrinket ~= player:GetTrinket(1)
 end
 
 function EdenChoicesModule:OnEvaluateCache(player)
@@ -482,27 +515,19 @@ function EdenChoicesModule:OnEvaluateCache(player)
 
     local baseline = self.PlayerBaselines[self:GetPlayerKey(player)]
 
-    if baseline and self:IsGrantingBatteryPack(player, baseline) then
-        -- Battery Pack spawns all of its batteries before the native cache
-        -- evaluation for the grant. Close the spawner-less exception here.
-        baseline.batteryGrantFinished = true
-    end
-end
-
-function EdenChoicesModule:HasUniqueBatteryPackGrant()
-    local found = false
-
-    for _, baseline in pairs(self.PlayerBaselines) do
-        if self:IsGrantingBatteryPack(baseline.player, baseline) then
-            if found then
-                return false
-            end
-
-            found = true
-        end
+    if not baseline or baseline.pickupGrantFinished then
+        return
     end
 
-    return found
+    if self:FindNativeStartingPassive(player, baseline) then
+        -- The first cache evaluation with the passive marks the end of its
+        -- immediate pickup grant. Later cache-spawned familiars use ownership.
+        baseline.pickupGrantFinished = true
+    elseif baseline.retained.primaryActive ~= player:GetActiveItem(PRIMARY_SLOT)
+        or TrinketsChanged(player, baseline.retained)
+    then
+        baseline.retained = self:CaptureRetainedStartingGrants(player)
+    end
 end
 
 function EdenChoicesModule:OnPreEntitySpawn(
@@ -521,15 +546,19 @@ function EdenChoicesModule:OnPreEntitySpawn(
         return nil
     end
 
-    if spawner then
-        local player = spawner:ToPlayer()
-        local baseline = player and self.PlayerBaselines[self:GetPlayerKey(player)]
+    -- Native grants can spawn pickups without a spawner. Attribute those
+    -- only when Eden is alone in the already-generated starting room.
+    local player = spawner and spawner:ToPlayer()
 
-        if not baseline or not self:FindNativeStartingPassive(player, baseline) then
-            return nil
-        end
-    elseif variant ~= BATTERY_PICKUP
-        or not self:HasUniqueBatteryPackGrant()
+    if not spawner and Game():GetNumPlayers() == 1 then
+        player = Isaac.GetPlayer(0)
+    end
+
+    local baseline = player and self.PlayerBaselines[self:GetPlayerKey(player)]
+
+    if not baseline
+        or (not spawner and baseline.pickupGrantFinished)
+        or not self:FindNativeStartingPassive(player, baseline)
     then
         return nil
     end
@@ -1044,6 +1073,10 @@ function EdenChoicesModule:FindNativeStartingPassive(player, baseline)
         return baseline.passive
     end
 
+    if player:GetCollectibleCount() <= baseline.collectibleCount then
+        return nil
+    end
+
     local itemConfig = Isaac.GetItemConfig()
     local collectibleList = itemConfig:GetCollectibles()
     local maximum = math.max(0, (collectibleList.Size or 1) - 1)
@@ -1064,7 +1097,13 @@ function EdenChoicesModule:FindNativeStartingPassive(player, baseline)
     return nil
 end
 
-function EdenChoicesModule:RestoreStartingHealth(player, health, activeConfig)
+function EdenChoicesModule:RestoreStartingHealth(
+    player,
+    retained,
+    activeConfig,
+    passiveConfig
+)
+    local health = retained.health
     local maxHearts = health.maxHearts
         + GetConfigGrant(activeConfig, "AddMaxHearts")
     local hearts = math.min(
@@ -1074,6 +1113,26 @@ function EdenChoicesModule:RestoreStartingHealth(player, health, activeConfig)
     local soulHearts = health.soulHearts
         + GetConfigGrant(activeConfig, "AddSoulHearts")
     local blackHearts = GetConfigGrant(activeConfig, "AddBlackHearts")
+
+    if TrinketsChanged(player, retained) then
+        -- There was no cache checkpoint after the retained trinket arrived
+        -- and before the passive. Keep its health effects by reversing only
+        -- the passive's declared grants instead of overwriting that state.
+        RemoveConfiguredGrant(
+            player, "GetHearts", "AddHearts", hearts,
+            GetConfigGrant(passiveConfig, "AddHearts")
+        )
+        RemoveConfiguredGrant(
+            player, "GetMaxHearts", "AddMaxHearts", maxHearts,
+            GetConfigGrant(passiveConfig, "AddMaxHearts"), false
+        )
+        RemoveConfiguredGrant(
+            player, "GetSoulHearts", "AddSoulHearts", soulHearts + blackHearts,
+            GetConfigGrant(passiveConfig, "AddSoulHearts")
+                + GetConfigGrant(passiveConfig, "AddBlackHearts")
+        )
+        return
+    end
 
     AddDifference(player, "GetGoldenHearts", "AddGoldenHearts", health.goldenHearts)
     AddDifference(player, "GetEternalHearts", "AddEternalHearts", health.eternalHearts)
@@ -1103,33 +1162,28 @@ end
 function EdenChoicesModule:RemoveStartingPassive(player, collectible, baseline)
     local itemConfig = Isaac.GetItemConfig()
     local passiveConfig = itemConfig:GetCollectible(collectible)
+    local retained = baseline.retained
     local active = player:GetActiveItem(PRIMARY_SLOT)
-    local activeConfig = active > 0 and active ~= baseline.primaryActive
+    local activeConfig = active > 0 and active ~= retained.primaryActive
         and itemConfig:GetCollectible(active) or nil
 
-    -- Keep native starting trinkets, pocket items and active slots in place.
-    -- Undo only the passive's configured consumable grants, so a later grant
-    -- such as Gilded Key's +1 key survives alongside Eden's native resources.
+    -- Keep retained starting items and consumable grants in place. Reverse
+    -- the rejected passive's configured grants against the observed totals.
     for _, grant in ipairs(CONSUMABLE_GRANTS) do
         local getter, adder = grant[1], grant[2]
         local beforePassive = math.min(
             99,
-            baseline.consumables[adder] + GetConfigGrant(activeConfig, adder)
+            retained.consumables[adder] + GetConfigGrant(activeConfig, adder)
         )
-        local amount = math.min(
-            GetConfigGrant(passiveConfig, adder),
-            99 - beforePassive,
-            math.max(0, player[getter](player) - beforePassive)
+        RemoveConfiguredGrant(
+            player, getter, adder, beforePassive,
+            math.min(GetConfigGrant(passiveConfig, adder), 99 - beforePassive)
         )
-
-        if amount > 0 then
-            player[adder](player, -amount)
-        end
     end
 
     player:RemoveCollectible(collectible, true)
     player:TryRemoveCollectibleCostume(collectible, false)
-    self:RestoreStartingHealth(player, baseline.health, activeConfig)
+    self:RestoreStartingHealth(player, retained, activeConfig, passiveConfig)
     player:AddCacheFlags(CacheFlag.CACHE_ALL)
     player:EvaluateItems()
     Debug(string.format("removed native starting passive %d in place", collectible))
