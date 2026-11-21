@@ -595,10 +595,10 @@ local MENU_SETTINGS = {
     {
         key = "momStompWarning",
         group = "general",
-        zhName = "妈腿踩踏范围",
-        enName = "Mom Stomp Warning",
-        zhInfo = { "标出妈腿踩踏判定范围。", "描边亮度随房间地板改变。" },
-        enInfo = { "Shows Mom's stomp hit range.", "Adjusts contrast to the room floor." },
+        zhName = "妈腿与妈手范围",
+        enName = "Mom Attack Warning",
+        zhInfo = { "标出妈腿踩踏与妈手攻击范围。", "边线颜色随房间地板变化。" },
+        enInfo = { "Shows Mom's foot and hand hit areas.", "Adjusts contrast to the room floor." },
     },
 }
 
