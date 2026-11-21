@@ -2,6 +2,7 @@ local MomStompWarning = {}
 MomStompWarning.__index = MomStompWarning
 
 local SETTING = "momStompWarning"
+local MARKER_NAME = "Character Enhance Stomp Marker"
 local STOMP = EffectVariant.MOM_FOOT_STOMP
 local MOM = EntityType.ENTITY_MOM
 local BOSS_FOOT = 10
@@ -48,6 +49,7 @@ function MomStompWarning.New(context)
     local self = setmetatable({
         Context = context,
         Game = Game(),
+        MarkerVariant = Isaac.GetEntityVariantByName(MARKER_NAME),
         Warnings = {},
         BossWarnings = {},
     }, MomStompWarning)
@@ -59,18 +61,19 @@ function MomStompWarning.New(context)
         self:OnBoss(npc)
     end, MOM)
     context.Mod:AddCallback(ModCallbacks.MC_POST_ENTITY_REMOVE, function(_, npc)
-        self.BossWarnings[GetPtrHash(npc)] = nil
+        self:RemoveWarning(self.BossWarnings, npc)
     end, MOM)
     context.Mod:AddCallback(ModCallbacks.MC_POST_EFFECT_UPDATE, function(_, effect)
         self:OnEffect(effect)
     end, STOMP)
     context.Mod:AddCallback(ModCallbacks.MC_POST_ENTITY_REMOVE, function(_, entity)
         if entity.Variant == STOMP then
-            self.Warnings[GetPtrHash(entity)] = nil
+            self:RemoveWarning(self.Warnings, entity)
         end
     end, EntityType.ENTITY_EFFECT)
-    context.Mod:AddCallback(ModCallbacks.MC_POST_RENDER, function()
-        self:Render()
+    -- Let other update callbacks finish spawning and moving stomp sources.
+    context.Mod:AddPriorityCallback(ModCallbacks.MC_POST_UPDATE, CallbackPriority.LATE, function()
+        self:UpdateMarkers()
     end)
     context.Mod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, function()
         self:OnGameStarted()
@@ -86,58 +89,61 @@ function MomStompWarning.New(context)
     return self
 end
 
-function MomStompWarning:LoadMarker()
-    if self.Marker == nil then
-        local sprite = Sprite()
-        sprite:Load("gfx/character-enhance/ce_mom_stomp_fade.anm2", true)
-        self.Marker = sprite:IsLoaded() and sprite or false
-    end
-    return self.Marker
-end
-
 function MomStompWarning:OnEffect(effect)
-    if not self.Context:IsEnabled(SETTING) then
+    if self.MarkerVariant <= 0 or not self.Context:IsEnabled(SETTING) then
+        return
+    end
+
+    local hash = GetPtrHash(effect)
+    if self.Warnings[hash] then
         return
     end
 
     local sprite = effect:GetSprite()
-    local frame = sprite:GetFrame()
-    local hash = GetPtrHash(effect)
-    local tracked = self.Warnings[hash]
-    local stomping = sprite:IsPlaying("Stomp")
-    if frame < 0 or frame >= IMPACT_FRAME or not stomping then
-        if tracked then
-            if stomping then
-                sprite:SetLayerFrame(SHADOW_LAYER, frame)
-            end
-            self.Warnings[hash] = nil
-        end
-        return
+    if sprite:IsPlaying("Stomp") and sprite:GetFrame() < IMPACT_FRAME
+        and sprite:GetFilename():lower():match(NATIVE_ANIMATION) and sprite:GetLayerCount() >= 3 then
+        self.Warnings[hash] = { Source = effect }
     end
+end
 
-    if not tracked then
-        if not sprite:GetFilename():lower():match(NATIVE_ANIMATION)
-            or sprite:GetLayerCount() < 3 or not self:LoadMarker() then
-            return
+local function RestoreShadow(warning)
+    if warning.ShadowHidden and warning.Source:Exists() then
+        local sprite = warning.Source:GetSprite()
+        if sprite:IsPlaying("Stomp") then
+            sprite:SetLayerFrame(SHADOW_LAYER, sprite:GetFrame())
         end
-        self.Warnings[hash] = effect
     end
-    -- Move only the shadow layer's cursor to its transparent keyframe. The
-    -- native animation clock still drives position, impact and the foot art.
-    sprite:SetLayerFrame(SHADOW_LAYER, TRANSPARENT_SHADOW_FRAME)
+    warning.ShadowHidden = nil
+end
+
+local function RemoveMarker(warning)
+    local marker = warning.Marker
+    if marker and marker:Exists() then
+        marker.Visible = false
+        marker:Remove()
+    end
+    warning.Marker, warning.Frame, warning.Palette, warning.Scale = nil, nil, nil, nil
+end
+
+function MomStompWarning:RemoveWarning(warnings, source)
+    local hash = GetPtrHash(source)
+    local warning = warnings[hash]
+    if warning then
+        RemoveMarker(warning)
+        warnings[hash] = nil
+    end
 end
 
 function MomStompWarning:RestoreShadows()
-    for hash, effect in pairs(self.Warnings) do
-        if effect:Exists() then
-            local sprite = effect:GetSprite()
-            if sprite:IsPlaying("Stomp") then
-                sprite:SetLayerFrame(SHADOW_LAYER, sprite:GetFrame())
-            end
-        end
+    for hash, warning in pairs(self.Warnings) do
+        RestoreShadow(warning)
+        RemoveMarker(warning)
         self.Warnings[hash] = nil
     end
-    self.BossWarnings = {}
+    for hash, warning in pairs(self.BossWarnings) do
+        RemoveMarker(warning)
+        self.BossWarnings[hash] = nil
+    end
 end
 
 local function BossImpact(npc)
@@ -156,20 +162,21 @@ local function BossImpact(npc)
 end
 
 function MomStompWarning:OnBoss(npc)
-    if npc.Variant ~= BOSS_FOOT or not self.Context:IsEnabled(SETTING) then
+    if self.MarkerVariant <= 0 or npc.Variant ~= BOSS_FOOT or not self.Context:IsEnabled(SETTING) then
         return
     end
     local hash = GetPtrHash(npc)
-    if BossImpact(npc) and self:LoadMarker() then
-        self.BossWarnings[hash] = npc
-    else
-        self.BossWarnings[hash] = nil
+    if not self.BossWarnings[hash] then
+        self.BossWarnings[hash] = { Source = npc }
     end
 end
 
 function MomStompWarning:OnSettingChanged(enabled)
     if not enabled then
         self:RestoreShadows()
+        return
+    end
+    if self.MarkerVariant <= 0 then
         return
     end
     for _, effect in ipairs(Isaac.FindByType(EntityType.ENTITY_EFFECT, STOMP, -1)) do
@@ -179,6 +186,7 @@ function MomStompWarning:OnSettingChanged(enabled)
         local npc = entity:ToNPC()
         if npc then self:OnBoss(npc) end
     end
+    self:UpdateMarkers()
 end
 
 function MomStompWarning:OnGameStarted()
@@ -227,44 +235,93 @@ function MomStompWarning:GetFrameMetrics()
     self.MarkerPalette = umberContrast > parchmentContrast and "Umber" or "Parchment"
 end
 
-function MomStompWarning:Render()
+function MomStompWarning:UpdateMarkers()
     if not next(self.Warnings) and not next(self.BossWarnings) then
         return
     end
-    self:GetFrameMetrics()
-    for _, effect in pairs(self.Warnings) do
-        if effect:Exists() and effect.Visible then
-            local frame = effect:GetSprite():GetFrame()
-            if frame >= 0 and frame < IMPACT_FRAME then
+    for hash, warning in pairs(self.Warnings) do
+        local effect = warning.Source
+        if effect:Exists() then
+            local sprite = effect:GetSprite()
+            local frame = sprite:GetFrame()
+            if frame >= 0 and frame < IMPACT_FRAME and sprite:IsPlaying("Stomp") then
+                self:GetFrameMetrics()
                 local scale = effect.SpawnerType == EntityType.ENTITY_PLAYER
                     and self.NormalScale or self.UnownedScale
-                self:RenderWarning(effect.Position, scale, frame)
+                if self:UpdateMarker(warning, scale, frame) then
+                    -- Hide only the native shadow once its replacement exists.
+                    sprite:SetLayerFrame(SHADOW_LAYER, TRANSPARENT_SHADOW_FRAME)
+                    warning.ShadowHidden = true
+                else
+                    RestoreShadow(warning)
+                end
+            else
+                RestoreShadow(warning)
+                RemoveMarker(warning)
+                self.Warnings[hash] = nil
             end
+        else
+            RemoveMarker(warning)
+            self.Warnings[hash] = nil
         end
     end
-    for _, npc in pairs(self.BossWarnings) do
-        if npc:Exists() and npc.Visible then
+    for hash, warning in pairs(self.BossWarnings) do
+        local npc = warning.Source
+        if npc:Exists() then
             local impact, frame = BossImpact(npc)
             if impact then
+                self:GetFrameMetrics()
                 -- Follow-up stomps only give seven frames of warning.
                 local fadeFrame = impact < SOLID_WARNING_FRAMES and frame * 6 or frame
-                self:RenderWarning(npc.Position, self.BossScale, fadeFrame)
+                self:UpdateMarker(warning, self.BossScale, fadeFrame)
+            elseif warning.Marker then
+                RemoveMarker(warning)
             end
+        else
+            RemoveMarker(warning)
+            self.BossWarnings[hash] = nil
         end
     end
 end
 
-function MomStompWarning:RenderWarning(position, scale, frame)
-    local marker = self.Marker
-    marker.Scale = scale
+function MomStompWarning:UpdateMarker(warning, scale, frame)
+    local source = warning.Source
+    local marker = warning.Marker
+    if not marker or not marker:Exists() then
+        RemoveMarker(warning)
+        -- Use a deterministic visual seed without consuming the gameplay RNG.
+        local seed = (source.InitSeed ~ 0x43454D4F) & 0xFFFFFFFF
+        local entity = self.Game:Spawn(EntityType.ENTITY_EFFECT, self.MarkerVariant,
+            source.Position, Vector.Zero, nil, 0, seed ~= 0 and seed or 1)
+        marker = entity and entity:ToEffect()
+        if not marker or marker.Variant ~= self.MarkerVariant then
+            return false
+        end
+        if not marker:GetSprite():IsLoaded() then
+            marker:Remove()
+            return false
+        end
+        marker.EntityCollisionClass = EntityCollisionClass.ENTCOLL_NONE
+        marker.GridCollisionClass = EntityGridCollisionClass.GRIDCOLL_NONE
+        marker:AddEntityFlags(EntityFlag.FLAG_NO_TARGET | EntityFlag.FLAG_NO_STATUS_EFFECTS)
+        marker:GetSprite().PlaybackSpeed = 0
+        warning.Marker = marker
+    end
+    -- The engine now renders the warning alongside world geometry on every
+    -- presentation. Lua only supplies canonical pose and animation state.
+    marker.Position = source.Position
+    marker.Visible = source.Visible
+    if scale ~= warning.Scale then
+        marker.SpriteScale = scale
+        warning.Scale = scale
+    end
     local fadeFrame = math.min(frame, FADE_FRAMES)
     local palette = self.MarkerPalette
-    if fadeFrame ~= self.DrawnFrame or palette ~= self.DrawnPalette then
-        -- Texture alpha carries the fade through the overlay compositor.
-        marker:SetFrame(palette, fadeFrame)
-        self.DrawnFrame, self.DrawnPalette = fadeFrame, palette
+    if fadeFrame ~= warning.Frame or palette ~= warning.Palette then
+        marker:GetSprite():SetFrame(palette, fadeFrame)
+        warning.Frame, warning.Palette = fadeFrame, palette
     end
-    marker:Render(Isaac.WorldToScreen(position))
+    return true
 end
 
 return MomStompWarning

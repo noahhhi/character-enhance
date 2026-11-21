@@ -1,0 +1,3 @@
+<entities anm2root="gfx/" version="5">
+    <entity id="1000" variant="7251751" name="Character Enhance Stomp Marker" anm2path="character-enhance/ce_mom_stomp_fade.anm2" baseHP="0" collisionDamage="0" collisionMass="0" collisionRadius="0" friction="1" numGridCollisionPoints="0" shadowSize="0"/>
+</entities>
