@@ -35,6 +35,7 @@ local DEFAULT_SETTINGS = {
     cubeBabyRoomPosition = true,
     habitSharpPlugSynergy = true,
     laserSpamFpsGuard = false,
+    momStompWarning = true,
     edenStartingItemChoice = true,
     edenBlessingDuplicateFix = true,
     rerollHealthProtection = true,
@@ -255,6 +256,7 @@ local CubeBabyRoomPositionModule = include(
 )
 local HabitSharpPlugModule = include("scripts/habit_sharp_plug")
 local LaserSpamFpsGuardModule = include("scripts/laser_spam_fps_guard")
+local MomStompWarningModule = include("scripts/mom_stomp_warning")
 local EdenBlessingDuplicatesModule = include(
     "scripts/eden_blessing_duplicates"
 )
@@ -394,6 +396,7 @@ Context:RegisterModule(
     "laserSpamFpsGuard",
     LaserSpamFpsGuardModule.New(Context)
 )
+Context:RegisterModule("momStompWarning", MomStompWarningModule.New(Context))
 local edenChoicesModule = EdenBlessingDuplicatesModule.New(Context)
 Context:RegisterModule(
     "edenBlessingDuplicateFix",
@@ -420,6 +423,7 @@ if Game():GetFrameCount() > 0 then
         "couponSteamSale",
         "voidMegaMushAnimation",
         "laserSpamFpsGuard",
+        "momStompWarning",
     }) do
         local module = Context.Modules[moduleKey]
 
