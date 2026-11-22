@@ -595,10 +595,10 @@ local MENU_SETTINGS = {
     {
         key = "momStompWarning",
         group = "general",
-        zhName = "妈腿与妈手范围",
-        enName = "Mom Attack Warning",
-        zhInfo = { "标出妈腿踩踏与妈手攻击范围。", "边线颜色随房间地板变化。" },
-        enInfo = { "Shows Mom's foot and hand hit areas.", "Adjusts contrast to the room floor." },
+        zhName = "攻击范围预警",
+        enName = "Attack Range Warnings",
+        zhInfo = { "标出妈腿、妈手和撒旦踩踏范围。", "边线颜色随房间地板变化。" },
+        enInfo = { "Marks Mom's and Satan's attack areas.", "Adjusts contrast to the room floor." },
     },
 }
 

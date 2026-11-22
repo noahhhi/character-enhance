@@ -5,9 +5,11 @@ local SETTING = "momStompWarning"
 local MARKER_NAME = "Character Enhance Stomp Marker"
 local STOMP = EffectVariant.MOM_FOOT_STOMP
 local MOM = EntityType.ENTITY_MOM
+local SATAN = EntityType.ENTITY_SATAN
 local BOSS_FOOT = 10
 local NPC_VARIANTS = {
     [MOM] = -1, -- Both the door and foot entities share this type.
+    [SATAN] = BOSS_FOOT,
     [EntityType.ENTITY_MOMS_HAND] = 0,
     [EntityType.ENTITY_MOMS_DEAD_HAND] = 0,
 }
@@ -20,10 +22,13 @@ local TRANSPARENT_SHADOW_FRAME = 70
 local RING_RADIUS = 90
 local BASE_RADIUS = 60
 local BOSS_RADIUS = 50
+local SATAN_RADIUS = 70
 local SOLID_WARNING_FRAMES = 9
 local FADE_FRAMES = IMPACT_FRAME - SOLID_WARNING_FRAMES
-local QUICK_FADE_STEP = FADE_FRAMES / (HAND_IMPACT_FRAME - SOLID_WARNING_FRAMES)
-local BOSS_IMPACT_FRAMES = { Stomp = 27, QuickStompBegin = 27, QuickStomp = 7, QuickStompEnd = 7 }
+local BOSS_IMPACT_FRAMES = {
+    [MOM] = { Stomp = 27, QuickStompBegin = 27, QuickStomp = 7, QuickStompEnd = 7 },
+    [SATAN] = { Stomp = 26 },
+}
 
 -- Relative luminance of the parchment (#F4D7A5) and umber (#231319) strokes.
 local PARCHMENT_LUMINANCE = 0.705506
@@ -157,12 +162,12 @@ function MomStompWarning:RestoreShadows()
 end
 
 local function BossImpact(npc)
-    if npc.State ~= 6 and npc.State ~= 7 then
+    if npc.State ~= NpcState.STATE_STOMP and (npc.Type ~= MOM or npc.State ~= NpcState.STATE_JUMP) then
         return nil
     end
     local sprite = npc:GetSprite()
     local name = sprite:GetAnimation()
-    local impact = BOSS_IMPACT_FRAMES[name]
+    local impact = BOSS_IMPACT_FRAMES[npc.Type][name]
     if impact and sprite:IsPlaying(name) then
         local frame = sprite:GetFrame()
         if frame >= 0 and frame < impact then
@@ -188,8 +193,11 @@ local function ContactImpact(npc)
 end
 
 function MomStompWarning:OnNPC(npc)
-    if self.MarkerVariant <= 0 or (npc.Variant ~= 0 and (npc.Type ~= MOM or npc.Variant ~= BOSS_FOOT))
-        or not self.Context:IsEnabled(SETTING) then
+    if self.MarkerVariant <= 0 or not self.Context:IsEnabled(SETTING) then
+        return
+    end
+    local kind, variant = npc.Type, npc.Variant
+    if variant ~= NPC_VARIANTS[kind] and not (kind == MOM and (variant == 0 or variant == BOSS_FOOT)) then
         return
     end
     local hash = GetPtrHash(npc)
@@ -252,6 +260,7 @@ function MomStompWarning:GetFrameMetrics()
     self.NormalScale = toScreen * (BASE_RADIUS + playerRadius)
     -- Native non-player explosion size is reduced by stacked Safety Scissors.
     local blastScale = scissors >= 3 and 0.5 or scissors == 2 and 0.75 or 1
+    self.BlastScale = blastScale
     self.UnownedScale = toScreen * (BASE_RADIUS * blastScale + playerRadius)
     self.BossScale = toScreen * (BOSS_RADIUS * blastScale + playerRadius)
 
@@ -298,14 +307,22 @@ function MomStompWarning:UpdateMarkers()
     for hash, warning in pairs(self.NpcWarnings) do
         local npc = warning.Source
         if npc:Exists() then
-            local isFoot = npc.Type == MOM and npc.Variant == BOSS_FOOT
+            local isFoot = npc.Variant == BOSS_FOOT
             local getImpact = isFoot and BossImpact or ContactImpact
             local impact, frame = getImpact(npc)
             if impact then
                 self:GetFrameMetrics()
-                local scale = isFoot and self.BossScale or self.WorldScale * (npc.Size + self.PlayerRadius)
-                -- Hands and quick stomps use the three-tick fade.
-                local fadeFrame = impact == IMPACT_FRAME and frame or frame * QUICK_FADE_STEP
+                local scale
+                if npc.Type == SATAN then
+                    scale = self.WorldScale * (SATAN_RADIUS * self.BlastScale + self.PlayerRadius)
+                elseif isFoot then
+                    scale = self.BossScale
+                else
+                    scale = self.WorldScale * (npc.Size + self.PlayerRadius)
+                end
+                -- Keep a brief solid warning even on the faster attacks.
+                local fadeDuration = math.max(3, impact - SOLID_WARNING_FRAMES)
+                local fadeFrame = math.floor(frame * FADE_FRAMES / fadeDuration)
                 self:UpdateMarker(warning, scale, fadeFrame)
             elseif warning.Marker then
                 RemoveMarker(warning)
