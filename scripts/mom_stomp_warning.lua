@@ -3,6 +3,7 @@ MomStompWarning.__index = MomStompWarning
 
 local SETTING = "momStompWarning"
 local MARKER_NAME = "Character Enhance Stomp Marker"
+local MARKER_ANIMATION = "gfx/character-enhance/ce_mom_stomp_fade.anm2"
 local STOMP = EffectVariant.MOM_FOOT_STOMP
 local MOM = EntityType.ENTITY_MOM
 local SATAN = EntityType.ENTITY_SATAN
@@ -58,6 +59,12 @@ local FLOOR_LUMINANCE = {
     [61] = 0.0410, [62] = 0.0260,
 }
 
+local function LoadMarkerArt()
+    local sprite = Sprite()
+    sprite:Load(MARKER_ANIMATION, true)
+    return sprite:IsLoaded() and sprite or nil
+end
+
 function MomStompWarning.New(context)
     local self = setmetatable({
         Context = context,
@@ -91,6 +98,7 @@ function MomStompWarning.New(context)
         self:UpdateMarkers()
     end)
     context.Mod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, function()
+        self:PreloadMarkerArt()
         self:OnGameStarted()
     end)
     context.Mod:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, function()
@@ -102,6 +110,16 @@ function MomStompWarning.New(context)
         end
     end)
     return self
+end
+
+function MomStompWarning:PreloadMarkerArt()
+    if self.MarkerArt or self.MarkerVariant <= 0 or not self.Context:IsEnabled(SETTING) then
+        return
+    end
+    local loaded, sprite = pcall(LoadMarkerArt)
+    if loaded then
+        self.MarkerArt = sprite
+    end
 end
 
 function MomStompWarning:OnEffect(effect)
@@ -235,6 +253,7 @@ end
 function MomStompWarning:OnPreGameExit()
     self:RestoreShadows()
     self.MetricsFrame = nil
+    self.MarkerArt = nil
 end
 
 function MomStompWarning:GetFrameMetrics()
