@@ -23,6 +23,7 @@
   <a href="#coupon-full-shop-discount">Coupon Full-Shop Discount</a> •
   <a href="#cube-baby-room-placement">Cube Baby Room Placement</a> •
   <a href="#habit-sharp-plug-synergy">Habit + Sharp Plug Synergy</a> •
+  <a href="#mom-stomp-warning">Attack Range Warnings</a> •
   <a href="#laser-spam-fps-guard">Laser Spam FPS Guard</a> •
   <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
@@ -186,6 +187,18 @@
   half-hearts, rounded up: a six-charge item at zero charge costs three.
 - When The Battery is also held, the original three-item interaction remains
   unchanged.
+
+<a id="mom-stomp-warning"></a>
+## Attack Range Warnings
+
+- Shows Mom's stomp range in Depths II and Mausoleum II and her hand's reach
+  at the doors in Depths II. Also covers stomp effects such as Broken Shovel
+  and The High Priestess, the landing area of Mom's Hands and Mom's Dead
+  Hands, and Satan's final-phase stomps in Sheol. The edge accounts for the
+  largest player hitbox in co-op.
+- The ground stain and its boundary fade in together. The room's floor
+  backdrop determines whether the edge is parchment or dark umber.
+- Enabled by default. Toggle **Attack Range Warnings** under **General**.
 
 <a id="laser-spam-fps-guard"></a>
 ## Laser Spam FPS Guard
@@ -378,6 +391,7 @@ All thirty-six gameplay settings remain independently configurable:
 34. Shield Effects
 35. Gello Wisp Orbit Fix
 36. Explosion-proof Wisps
+37. Attack Range Warnings
 
 Options are grouped under the tabs `General`, `Item`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. Collectible- and trinket-focused fixes

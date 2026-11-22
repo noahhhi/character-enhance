@@ -592,6 +592,14 @@ local MENU_SETTINGS = {
             "Default OFF; enemy lasers stay vanilla.",
         },
     },
+    {
+        key = "momStompWarning",
+        group = "general",
+        zhName = "攻击范围预警",
+        enName = "Attack Range Warnings",
+        zhInfo = { "标出妈腿、妈手和撒旦踩踏范围。", "边线颜色随房间地板变化。" },
+        enInfo = { "Marks Mom's and Satan's attack areas.", "Adjusts contrast to the room floor." },
+    },
 }
 
 function ModConfigMenuModule.New(context)
