@@ -19,6 +19,7 @@ local DEFAULT_SETTINGS = {
     bethanyWispExplosionProtection = true,
     familiarCapacity = true,
     incubusCSectionAnimation = true,
+    familiarOccultBrimstone = true,
     smallPlayerPickupRange = true,
     clogGroundDamage = true,
     lostSoulWhiteFireFix = true,
@@ -226,6 +227,7 @@ local FamiliarCapacityModule = include("scripts/familiar_capacity")
 local IncubusCSectionAnimationModule = include(
     "scripts/incubus_c_section_animation"
 )
+local FamiliarOccultBrimstoneModule = include("scripts/familiar_occult_brimstone")
 local PickupRangeModule = include("scripts/pickup_range")
 local ClogGroundDamageModule = include("scripts/clog_ground_damage")
 local LostSoulWhiteFireModule = include(
@@ -329,6 +331,10 @@ Context:RegisterModule(
 Context:RegisterModule(
     "incubusCSectionAnimation",
     IncubusCSectionAnimationModule.New(Context)
+)
+Context:RegisterModule(
+    "familiarOccultBrimstone",
+    FamiliarOccultBrimstoneModule.New(Context)
 )
 Context:RegisterModule(
     "smallPlayerPickupRange",

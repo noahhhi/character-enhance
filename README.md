@@ -26,6 +26,7 @@
   <a href="#laser-spam-fps-guard">Laser Spam FPS Guard</a> •
   <a href="#familiar-capacity">Protect Wisps from Temporary Familiars</a> •
   <a href="#incubus-c-section-animation-fix">C Section Incubus Animation Fix</a> •
+  <a href="#familiar-occult-brimstone">Guide familiar Brimstone</a> •
   <a href="#small-player-pickup-range">Small Player Pickup Range Fix</a> •
   <a href="#clog-ground-damage">Clog Creep Damage Fix</a> •
   <a href="#lost-soul-white-fire-fix">Lost Soul White Fire Fix</a> •
@@ -231,6 +232,15 @@
   again when not firing. Shooting animations, behavior, and other familiars
   remain unchanged.
 
+<a id="familiar-occult-brimstone"></a>
+## Guide familiar Brimstone
+
+- With Eye of the Occult, Brimstone beams from attack-copying familiars
+  such as Incubus, Twisted Pair, Gello and Sprinkler follow their owner's
+  reticle in flight. The beams turn from the familiar's position and keep
+  their original damage and range.
+- Enabled by default. Toggle **Guide familiar Brimstone** under **Item**.
+
 <a id="small-player-pickup-range"></a>
 ## Small Player Pickup Range Fix
 
@@ -340,7 +350,7 @@ The first option selects English (default) or Simplified Chinese. Only the
 selected language is displayed, and the choice is saved independently from
 gameplay settings.
 
-All thirty-six gameplay settings remain independently configurable:
+Gameplay settings remain independently configurable:
 
 1. Coupon Full-Shop Discount
 2. Soul of Eve Bird Fixes
@@ -378,6 +388,7 @@ All thirty-six gameplay settings remain independently configurable:
 34. Shield Effects
 35. Gello Wisp Orbit Fix
 36. Explosion-proof Wisps
+37. Guide familiar Brimstone
 
 Options are grouped under the tabs `General`, `Item`, `Eve`, `Eden`, `T-Lost`,
 `T-Blue Baby`, `T-Eden`, and `Bethany`. Collectible- and trinket-focused fixes
