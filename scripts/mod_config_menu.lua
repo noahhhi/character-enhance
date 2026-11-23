@@ -1043,6 +1043,11 @@ function ModConfigMenuModule:TrySetup()
         self:AddBoolean(menu, setting)
     end
 
+    -- Let the last Item option scroll above the corner button prompt.
+    if menu.AddSpace then
+        menu.AddSpace(CATEGORY, self:GetSubcategory(menu, "item"))
+    end
+
     self:AddShieldStyle(menu, "visual")
     self:AddShieldStyle(menu, "hit")
     self:AddShieldStyle(menu, "sound")
