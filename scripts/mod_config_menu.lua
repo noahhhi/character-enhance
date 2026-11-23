@@ -579,6 +579,20 @@ local MENU_SETTINGS = {
         },
     },
     {
+        key = "familiarOccultBrimstone",
+        group = "item",
+        zhName = "魔眼引导跟班硫磺火",
+        enName = "Guide familiar Brimstone",
+        zhInfo = {
+            "让模仿攻击的跟班用魔眼引导硫磺火。",
+            "光束射出后仍会跟随主人的准星。",
+        },
+        enInfo = {
+            "Eye of the Occult guides copied beams.",
+            "Beams turn with your reticle.",
+        },
+    },
+    {
         key = "laserSpamFpsGuard",
         group = "general",
         zhName = "激光洪流帧率保护",
