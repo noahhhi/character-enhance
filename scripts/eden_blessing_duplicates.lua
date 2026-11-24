@@ -81,6 +81,15 @@ local function RemoveConfiguredGrant(player, getter, adder, retained, amount, ..
     end
 end
 
+local function RestoreSharedStartingHearts(player, getter, adder, retained, amount, ...)
+    local current = player[getter](player)
+    local target = math.max(retained, current - amount)
+
+    if target ~= current then
+        player[adder](player, target - current, ...)
+    end
+end
+
 function EdenChoicesModule.New(context)
     local self = setmetatable({
         Context = context,
@@ -1113,20 +1122,30 @@ function EdenChoicesModule:RestoreStartingHealth(
     local soulHearts = health.soulHearts
         + GetConfigGrant(activeConfig, "AddSoulHearts")
     local blackHearts = GetConfigGrant(activeConfig, "AddBlackHearts")
+    local unobservedTrinket = TrinketsChanged(player, retained)
 
-    if TrinketsChanged(player, retained) then
+    -- These counters have their own baseline. Native starting trinket pickup
+    -- effects for regular Eden do not grant these heart types. The engine can
+    -- give or convert them on collectible pickup without any config fields.
+    AddDifference(player, "GetGoldenHearts", "AddGoldenHearts", health.goldenHearts)
+    AddDifference(player, "GetEternalHearts", "AddEternalHearts", health.eternalHearts)
+    AddDifference(player, "GetRottenHearts", "AddRottenHearts", health.rottenHearts)
+    AddDifference(player, "GetBoneHearts", "AddBoneHearts", health.boneHearts)
+    AddDifference(player, "GetBrokenHearts", "AddBrokenHearts", health.brokenHearts)
+
+    if unobservedTrinket then
         -- There was no cache checkpoint after the retained trinket arrived
-        -- and before the passive. Keep its health effects by reversing only
-        -- the passive's declared grants instead of overwriting that state.
-        RemoveConfiguredGrant(
-            player, "GetHearts", "AddHearts", hearts,
-            GetConfigGrant(passiveConfig, "AddHearts")
-        )
-        RemoveConfiguredGrant(
+        -- and before the passive. Restore known hearts lost to conversions
+        -- and preserve gains beyond the passive's configured grants.
+        RestoreSharedStartingHearts(
             player, "GetMaxHearts", "AddMaxHearts", maxHearts,
             GetConfigGrant(passiveConfig, "AddMaxHearts"), false
         )
-        RemoveConfiguredGrant(
+        RestoreSharedStartingHearts(
+            player, "GetHearts", "AddHearts", hearts,
+            GetConfigGrant(passiveConfig, "AddHearts")
+        )
+        RestoreSharedStartingHearts(
             player, "GetSoulHearts", "AddSoulHearts", soulHearts + blackHearts,
             GetConfigGrant(passiveConfig, "AddSoulHearts")
                 + GetConfigGrant(passiveConfig, "AddBlackHearts")
@@ -1134,11 +1153,6 @@ function EdenChoicesModule:RestoreStartingHealth(
         return
     end
 
-    AddDifference(player, "GetGoldenHearts", "AddGoldenHearts", health.goldenHearts)
-    AddDifference(player, "GetEternalHearts", "AddEternalHearts", health.eternalHearts)
-    AddDifference(player, "GetRottenHearts", "AddRottenHearts", health.rottenHearts)
-    AddDifference(player, "GetBoneHearts", "AddBoneHearts", health.boneHearts)
-    AddDifference(player, "GetBrokenHearts", "AddBrokenHearts", health.brokenHearts)
     AddDifference(player, "GetMaxHearts", "AddMaxHearts", maxHearts, false)
     AddDifference(player, "GetHearts", "AddHearts", hearts)
 
