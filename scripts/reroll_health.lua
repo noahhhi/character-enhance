@@ -9,6 +9,9 @@ local TMTRAINER_SETTING_KEY = "rerollTmtrainerChance"
 local TAINTED_EDEN = PlayerType.PLAYER_EDEN_B
 local DICE_FLOOR = EffectVariant.DICE_FLOOR
 local ENTITY_EFFECT = EntityType.ENTITY_EFFECT
+-- DICE_FLOOR subtypes are zero-based, unlike the pips shown on the floor.
+local ONE_PIP_DICE = 0
+local SIX_PIP_DICE = 5
 local DICE_TRIGGER_DISTANCE_SQUARED = 40 * 40
 local DIRECT_REROLL_ITEMS = {
     [CollectibleType.COLLECTIBLE_D4] = true,
@@ -119,6 +122,7 @@ function RerollHealthModule.New(context)
         DiceRoomFloor = nil,
         DiceRoomTriggered = false,
         UpdateCallbackRegistered = false,
+        HealthRenderCallbackRegistered = false,
         DiceUpdateCallbackRegistered = false,
         InputTriggerProbeActive = false,
     }, RerollHealthModule)
@@ -131,6 +135,13 @@ function RerollHealthModule.New(context)
 
     self.UpdateCallback = function()
         self:OnUpdate()
+    end
+    self.HealthRenderCallback = function(_, player)
+        local state = self.Players[self:GetPlayerKey(player)]
+
+        if state and state.pending then
+            self:SyncPendingHealth(player, state.pending)
+        end
     end
     self.DiceUpdateCallback = function(_, player)
         self:OnPlayerEffectUpdate(player)
@@ -249,6 +260,22 @@ function RerollHealthModule:SetDiceUpdateCallbackEnabled(enabled)
             self.DiceUpdateCallback
         )
         self.DiceUpdateCallbackRegistered = false
+    end
+end
+
+function RerollHealthModule:SetHealthRenderCallbackEnabled(enabled)
+    if enabled and not self.HealthRenderCallbackRegistered then
+        self.Context.Mod:AddCallback(
+            ModCallbacks.MC_POST_PLAYER_RENDER,
+            self.HealthRenderCallback
+        )
+        self.HealthRenderCallbackRegistered = true
+    elseif not enabled and self.HealthRenderCallbackRegistered then
+        self.Context.Mod:RemoveCallback(
+            ModCallbacks.MC_POST_PLAYER_RENDER,
+            self.HealthRenderCallback
+        )
+        self.HealthRenderCallbackRegistered = false
     end
 end
 
@@ -696,6 +723,28 @@ function RerollHealthModule:RestoreHealth(player, target)
     end
 end
 
+function RerollHealthModule:SyncPendingHealth(player, pending)
+    local health = pending.health
+
+    if not health then
+        return
+    end
+
+    -- Consume the snapshot so a later update cannot undo real damage or a
+    -- pickup that takes place after the pre-HUD reconciliation.
+    pending.health = nil
+    local damageAmount = pending.damageAmount
+    pending.damageAmount = nil
+
+    if self.Context:IsEnabled(REROLL_SETTING_KEY) then
+        if damageAmount then
+            health = self:ApplyDamageToSnapshot(health, damageAmount)
+        end
+
+        self:RestoreHealth(player, health)
+    end
+end
+
 function RerollHealthModule:GetAbsorptionCandidates(source)
     local candidates = {}
     local itemConfig = Isaac.GetItemConfig()
@@ -920,7 +969,9 @@ function RerollHealthModule:QueueRestore(
 
     local tmtrainerChance = self.Context.Settings[TMTRAINER_SETTING_KEY] or 0
 
-    if not self.Context:IsEnabled(REROLL_SETTING_KEY)
+    local protectHealth = self.Context:IsEnabled(REROLL_SETTING_KEY)
+
+    if not protectHealth
         and not self.Context:IsEnabled(ABSORBED_STATS_SETTING_KEY)
         and not self.Context:IsEnabled(PILL_IDENTIFICATION_SETTING_KEY)
         and tmtrainerChance >= 100
@@ -961,14 +1012,24 @@ function RerollHealthModule:QueueRestore(
         end
 
         state.pending = {
-            health = self:CaptureHealth(player),
             absorbedStats = self:CopyStats(state.nativeAbsorbedStats),
             tmtrainerCount = tmtrainerCount,
-            damageAmount = damageAmount,
             tmtrainerAllowed = tmtrainerAllowed,
         }
-    elseif damageAmount then
-        state.pending.damageAmount = damageAmount
+    end
+
+    if protectHealth then
+        local pending = state.pending
+
+        if not pending.health then
+            pending.health = self:CaptureHealth(player)
+            -- A roll queued during or after MC_POST_UPDATE can reach the HUD
+            -- before the next update. Player rendering precedes the HUD.
+            self:SetHealthRenderCallbackEnabled(true)
+        end
+        if damageAmount then
+            pending.damageAmount = damageAmount
+        end
     end
 
     self.PendingSyncPlayers[key] = player
@@ -990,7 +1051,7 @@ function RerollHealthModule:GetInventoryDiceFloor()
     )
 
     for _, floor in ipairs(floors) do
-        if floor.SubType == 1 or floor.SubType == 6 then
+        if floor.SubType == ONE_PIP_DICE or floor.SubType == SIX_PIP_DICE then
             return floor.SubType, floor
         end
     end
@@ -1061,7 +1122,7 @@ function RerollHealthModule:OnPlayerEffectUpdate(player)
     self.DiceRoomTriggered = true
     self:SetDiceUpdateCallbackEnabled(false)
 
-    if self.DiceRoomFace == 1 then
+    if self.DiceRoomFace == ONE_PIP_DICE then
         local key = self:GetPlayerKey(player)
         self:PrepareZodiacForFullInventoryReroll(player)
         self:QueueRestore(
@@ -1157,7 +1218,7 @@ function RerollHealthModule:OnNewRoom()
     self.DiceRoomFace, self.DiceRoomFloor = self:GetInventoryDiceFloor()
 
     if self.DiceRoomFace then
-        -- The room blacklist is global, so one roll decision is shared by the
+        -- The pool callback is global, so one roll decision is shared by the
         -- single Dice Room event. If any co-op player already owns TMTRAINER,
         -- preserve vanilla behavior instead of restricting that player's roll.
         self:PrepareDiceRoomDecision()
@@ -1459,18 +1520,7 @@ function RerollHealthModule:SyncPlayer(player)
         )
     end
 
-    if self.Context:IsEnabled(REROLL_SETTING_KEY) then
-        local baseline = state.pending.health
-
-        if state.pending.damageAmount then
-            baseline = self:ApplyDamageToSnapshot(
-                baseline,
-                state.pending.damageAmount
-            )
-        end
-
-        self:RestoreHealth(player, baseline)
-    end
+    self:SyncPendingHealth(player, state.pending)
 
     if self.Context:IsEnabled(PILL_IDENTIFICATION_SETTING_KEY)
         and self:HasPillIdentifier(player)
@@ -1495,6 +1545,7 @@ end
 function RerollHealthModule:OnUpdate()
     if not self.RunActive then
         self:SetUpdateCallbackEnabled(false)
+        self:SetHealthRenderCallbackEnabled(false)
         return
     end
 
@@ -1536,10 +1587,14 @@ function RerollHealthModule:OnUpdate()
 
     self:RefreshUpdateCallback()
     self:RefreshPoolGuardCallback()
+    if next(self.PendingSyncPlayers) == nil then
+        self:SetHealthRenderCallbackEnabled(false)
+    end
 end
 
 function RerollHealthModule:OnGameStarted(isContinued)
     self:SetUpdateCallbackEnabled(false)
+    self:SetHealthRenderCallbackEnabled(false)
     self:SetDiceUpdateCallbackEnabled(false)
     self:SetPoolGuardCallbackEnabled(false)
     self.RunActive = true
@@ -1627,14 +1682,17 @@ function RerollHealthModule:OnSettingChanged(_, settingKey)
 
 
     if settingKey == REROLL_SETTING_KEY then
-        self.PendingSyncPlayers = {}
+        if not self.Context:IsEnabled(REROLL_SETTING_KEY) then
+            self:SetHealthRenderCallbackEnabled(false)
+            for key in pairs(self.PendingSyncPlayers) do
+                local state = self.Players[key]
 
-        for _, state in pairs(self.Players) do
-            state.pending = nil
+                if state and state.pending then
+                    state.pending.health = nil
+                    state.pending.damageAmount = nil
+                end
+            end
         end
-
-        self:RefreshUpdateCallback()
-        self:RefreshPoolGuardCallback()
         return
     end
 
@@ -1679,6 +1737,7 @@ function RerollHealthModule:OnPreGameExit()
     self.SavedData = self:GetSaveData()
     self.RunSeed = nil
     self:SetUpdateCallbackEnabled(false)
+    self:SetHealthRenderCallbackEnabled(false)
     self:SetDiceUpdateCallbackEnabled(false)
     self:SetPoolGuardCallbackEnabled(false)
     self.RunActive = false
