@@ -90,6 +90,11 @@ local function RestoreSharedStartingHearts(player, getter, adder, retained, amou
     end
 end
 
+local function IsSecretEntrance(door)
+    return door.TargetRoomType == RoomType.ROOM_SECRET
+        or door.TargetRoomType == RoomType.ROOM_SUPERSECRET
+end
+
 function EdenChoicesModule.New(context)
     local self = setmetatable({
         Context = context,
@@ -442,6 +447,118 @@ function EdenChoicesModule:OnNewRoom()
     -- Restored room entities initialize before POST_NEW_ROOM. The native
     -- starting grants happen after it, before POST_GAME_STARTED.
     self.StartingRoomEntered = next(self.PlayerBaselines) ~= nil
+    self.StartingRoomDoors = nil
+
+    if not self.StartingRoomEntered then
+        return
+    end
+
+    local game = Game()
+
+    if game:GetNumPlayers() ~= 1 then
+        return
+    end
+
+    local level = game:GetLevel()
+
+    if level:GetCurrentRoomIndex() ~= level:GetStartingRoomIndex() then
+        return
+    end
+
+    local room = game:GetRoom()
+    local entrances = {}
+
+    for slot = 0, DoorSlot.NUM_DOOR_SLOTS - 1 do
+        local door = room:GetDoor(slot)
+
+        if door and IsSecretEntrance(door) and not door:IsOpen()
+            and not door.Busted
+            and door:GetSaveState().Variant == DoorVariant.DOOR_HIDDEN
+        then
+            local target = level:GetRoomByIdx(door.TargetRoomIndex)
+            local sprite = door:GetSprite()
+            entrances[slot] = {
+                targetIndex = door.TargetRoomIndex,
+                targetType = door.TargetRoomType,
+                state = door.State,
+                varData = door.VarData,
+                animation = sprite:GetAnimation(),
+                frame = sprite:GetFrame(),
+                x = door.Position.X,
+                y = door.Position.Y,
+                displayFlags = target.DisplayFlags,
+                visitedCount = target.VisitedCount,
+            }
+        end
+    end
+
+    if next(entrances) then
+        self.StartingRoomDoors = {
+            roomSeed = room:GetSpawnSeed(),
+            entrances = entrances,
+        }
+    end
+end
+
+function EdenChoicesModule:RestoreStartingRoomDoors(snapshot)
+    local game = Game()
+    local room = game:GetRoom()
+
+    if not snapshot or room:GetSpawnSeed() ~= snapshot.roomSeed then
+        return
+    end
+
+    local level = game:GetLevel()
+    local restoreVisibility = false
+
+    for slot, before in pairs(snapshot.entrances) do
+        local door = room:GetDoor(slot)
+
+        if door and door.TargetRoomIndex == before.targetIndex
+            and door.TargetRoomType == before.targetType
+        then
+            local grid = door:GetSaveState()
+            local opened = door:IsOpen() or door.Busted
+            local target = level:GetRoomByIdx(before.targetIndex)
+
+            -- A grant can change the grid variant before the door update
+            -- opens it. Restore that pending reveal as well as an open door.
+            if target.VisitedCount == before.visitedCount
+                and (opened or grid.Variant ~= DoorVariant.DOOR_HIDDEN
+                    or before.revealEffects)
+            then
+                if before.revealEffects then
+                    for _, effect in ipairs(before.revealEffects) do
+                        if effect:Exists() then
+                            effect:Remove()
+                        end
+                    end
+                end
+
+                if opened then
+                    door:Close(true)
+                    door.Busted = false
+                    door.State = before.state
+                    door.CollisionClass = GridCollisionClass.COLLISION_WALL
+                    door:GetSprite():SetFrame(before.animation, before.frame)
+                end
+
+                grid.Variant = DoorVariant.DOOR_HIDDEN
+                door.VarData = before.varData
+
+                if target.DisplayFlags ~= before.displayFlags then
+                    target.DisplayFlags = before.displayFlags
+                    restoreVisibility = true
+                end
+
+                Debug(string.format("restored starting secret entrance in slot %d", slot))
+            end
+        end
+    end
+
+    if restoreVisibility then
+        level:UpdateVisibility()
+    end
 end
 
 function EdenChoicesModule:GetPlayerKey(player)
@@ -655,6 +772,24 @@ function EdenChoicesModule:OnFamiliarInit(familiar)
 end
 
 function EdenChoicesModule:OnEffectInit(effect)
+    local snapshot = self.StartingRoomDoors
+
+    if snapshot and self.StartingRoomEntered
+        and effect.Variant == EffectVariant.XRAY_WALL
+    then
+        -- The room's reveal animation can open the door later, after the
+        -- original collectible and its initial grid changes are gone.
+        local position = effect.Position
+
+        for _, entrance in pairs(snapshot.entrances) do
+            if position.X == entrance.x and position.Y == entrance.y then
+                entrance.revealEffects = entrance.revealEffects or {}
+                table.insert(entrance.revealEffects, effect)
+                break
+            end
+        end
+    end
+
     self:RemoveStartingEntity(effect)
 end
 
@@ -1316,8 +1451,10 @@ function EdenChoicesModule:OnGameStarted(isContinued)
     self.PendingPickups = {}
     self.RedirectedPickupSeeds = {}
     local baselines = self.PlayerBaselines
+    local startingRoomDoors = self.StartingRoomDoors
     self.PlayerBaselines = {}
     self.StartingRoomEntered = false
+    self.StartingRoomDoors = nil
 
     if isContinued then
         self:AttachAllChoiceMetadata()
@@ -1345,6 +1482,10 @@ function EdenChoicesModule:OnGameStarted(isContinued)
                 }
             end
         end
+    end
+
+    if #groups > 0 and startingRoomDoors and Game():GetNumPlayers() == 1 then
+        self:RestoreStartingRoomDoors(startingRoomDoors)
     end
 
     -- Finish before the native fade without creating a room rewind or
