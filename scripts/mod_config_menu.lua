@@ -592,6 +592,14 @@ local MENU_SETTINGS = {
             "Default OFF; enemy lasers stay vanilla.",
         },
     },
+    {
+        key = "mazeCursePillLabel",
+        group = "general",
+        zhName = "标记混乱诅咒药丸",
+        enName = "Label Maze Curse Pill",
+        zhInfo = { "持有已鉴定的混乱诅咒药丸时显示标签。" },
+        enInfo = { "Labels an identified Maze Curse pill." },
+    },
 }
 
 function ModConfigMenuModule.New(context)
