@@ -36,6 +36,7 @@
   <a href="#conjoined-familiar-components">连体！套装组件扩充</a> •
   <a href="#ocular-rift-sound-fix">邪眼裂口音效修复</a> •
   <a href="#pill-rewind-fix">药丸回溯识别修复</a> •
+  <a href="#maze-curse-pill-label">标记混乱诅咒药丸</a> •
   <a href="#zodiac-floor-item">黄道十二宫层效果</a> •
   <a href="#mod-config-menu">配置菜单</a> •
   <a href="#installation">安装</a>
@@ -188,6 +189,11 @@
 ## 药丸回溯识别修复
 
 - 吃过药丸后，在同一房间使用发光沙漏回溯，游戏内置道具说明和右下角 HUD 仍会显示该药丸效果，不会重新变成 `???`。
+
+<a id="maze-curse-pill-label"></a>
+## 标记混乱诅咒药丸
+
+- 手持已鉴定的「？？？」药丸时，角色头顶会显示**混乱诅咒**。未鉴定的药丸仍只显示问号。可在「通用」页即时开关。
 
 <a id="zodiac-floor-item"></a>
 ## 黄道十二宫层效果

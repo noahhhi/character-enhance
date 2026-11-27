@@ -30,6 +30,7 @@ local DEFAULT_SETTINGS = {
     conjoinedFamiliarComponents = true,
     ocularRiftSoundFix = true,
     pillRewindIdentification = true,
+    mazeCursePillLabel = true,
     zodiacFloorItemDisplay = true,
     couponSteamSale = true,
     cubeBabyRoomPosition = true,
@@ -246,6 +247,7 @@ local OcularRiftSoundModule = include("scripts/ocular_rift_sound")
 local PillRewindIdentificationModule = include(
     "scripts/pill_rewind_identification"
 )
+local MazeCursePillLabel = include("scripts/maze_curse_pill_label")
 local ZodiacFloorItemDisplayModule = include(
     "scripts/zodiac_floor_item_display"
 )
@@ -374,6 +376,7 @@ Context:RegisterModule(
     "pillRewindIdentification",
     PillRewindIdentificationModule.New(Context)
 )
+MazeCursePillLabel.New(Context)
 Context:RegisterModule(
     "zodiacFloorItemDisplay",
     ZodiacFloorItemDisplayModule.New(Context)

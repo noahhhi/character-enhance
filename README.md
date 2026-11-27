@@ -36,6 +36,7 @@
   <a href="#conjoined-familiar-components">Conjoined Familiar Components</a> •
   <a href="#ocular-rift-sound-fix">Ocular Rift Sound Fix</a> •
   <a href="#pill-rewind-fix">Pill Rewind Fix</a> •
+  <a href="#maze-curse-pill-label">Label Maze Curse Pill</a> •
   <a href="#zodiac-floor-item">Zodiac Floor Item</a> •
   <a href="#mod-config-menu">Mod Config Menu</a> •
   <a href="#installation">Installation</a>
@@ -313,6 +314,12 @@
 - After a pill is used, rewinding the same room with Glowing Hour Glass keeps
   its effect identified in the built-in Item Descriptions and the bottom-right
   HUD instead of changing it back to `???`.
+
+<a id="maze-curse-pill-label"></a>
+## Label Maze Curse Pill
+
+- Holding an identified `???` pill shows **Maze Curse** above its holder. Unknown
+  pills stay hidden until identified. The General menu toggle applies immediately.
 
 <a id="zodiac-floor-item"></a>
 ## Zodiac Floor Item
